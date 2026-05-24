@@ -6,11 +6,11 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, render_template, request, send_from_directory, jsonify
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 app = Flask(__name__)
 OUTPUT_DIR = Path("outputs")
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def clamp(value, lo, hi):
@@ -41,6 +41,20 @@ def auto_title(color_tone: str) -> str:
     return f"{random.choice(prefixes)} {suffix}"
 
 
+def run_ffmpeg(cmd):
+    print("[FFMPEG]", " ".join(shlex.quote(part) for part in cmd), flush=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("[FFMPEG][STDERR]\n" + proc.stderr, flush=True)
+        raise RuntimeError(
+            "FFmpeg failed with exit code "
+            f"{proc.returncode}\n"
+            f"Command: {' '.join(shlex.quote(part) for part in cmd)}\n"
+            f"STDERR:\n{proc.stderr.strip()}"
+        )
+    return proc
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -48,113 +62,86 @@ def index():
 
 @app.post("/generate")
 def generate():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True)
 
-    duration_min = clamp(int(data.get("duration_min", 5)), 1, 60)
-    rain_intensity = clamp(float(data.get("rain_intensity", 0.5)), 0.0, 1.0)
-    vhs_strength = clamp(float(data.get("vhs_strength", 0.4)), 0.0, 1.0)
-    color_tone = data.get("color_tone", "cool")
-    force_5m_loop = bool(data.get("force_5m_loop", True))
+        duration_min = clamp(int(data.get("duration_min", 5)), 1, 60)
+        rain_intensity = clamp(float(data.get("rain_intensity", 0.5)), 0.0, 1.0)
+        color_tone = data.get("color_tone", "cool")
 
-    target_seconds = 300 if force_5m_loop else duration_min * 60
-    clip_seconds = 10
+        # まず確実に生成できる最小構成: 1分固定MP4
+        target_seconds = 60
+        width, height = 1280, 720
+        fps = 30
 
-    width, height = 1280, 720
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    title = auto_title(color_tone)
-    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"{stamp}_{safe_slug(title)}.mp4"
-    out_path = OUTPUT_DIR / filename
+        title = auto_title(color_tone)
+        stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"{stamp}_{safe_slug(title)}.mp4"
+        out_path = OUTPUT_DIR / filename
 
-    # Visual recipe: dark Tokyo-like atmosphere from generated layers
-    base_hue = {"cool": "0.95", "warm": "1.05", "neutral": "1.0"}.get(color_tone, "1.0")
-    sat = {"cool": "0.78", "warm": "0.72", "neutral": "0.68"}.get(color_tone, "0.72")
+        hue = {"cool": "0.92", "warm": "1.08", "neutral": "1.00"}.get(color_tone, "1.00")
+        sat = {"cool": "0.85", "warm": "0.80", "neutral": "0.75"}.get(color_tone, "0.80")
+        noise = 3 + int(rain_intensity * 5)
 
-    noise = 4 + int(vhs_strength * 16)
-    vignette = 0.35 + vhs_strength * 0.35
-    glitch_shift = 1 + int(vhs_strength * 4)
-    rain_alpha = 0.05 + rain_intensity * 0.18
-    rain_speed = 1.2 + rain_intensity * 2.2
+        # filter_complex を明示し、壊れやすい演出は簡略化
+        filter_complex = (
+            f"[0:v]"
+            f"eq=brightness=-0.06:contrast=1.05:saturation={sat},"
+            f"colorchannelmixer=rr={hue}:gg=1.0:bb=0.95,"
+            f"noise=alls={noise}:allf=t+u,"
+            f"format=yuv420p[v]"
+        )
 
-    # Generate a 10-second loopable scene then loop it to target duration
-    filtergraph = (
-        f"color=c=0x0b0f18:s={width}x{height}:d={clip_seconds}[bg];"
-        f"color=c=0x1a2538:s={width}x{height}:d={clip_seconds},"
-        f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(gt(mod(X+Y*T*{rain_speed:.2f},70),66),255*{rain_alpha:.3f},0)'[rain];"
-        f"[bg][rain]overlay=shortest=1[tmp1];"
-        f"[tmp1]noise=alls={noise}:allf=t+u,"
-        f"eq=brightness=-0.08:contrast=1.05:saturation={sat},"
-        f"colorchannelmixer=rr={base_hue}:gg=1.0:bb=0.95,"
-        f"vignette=PI/{2+vignette:.2f},"
-        f"split=3[r][g][b];"
-        f"[r]crop=iw-{glitch_shift}:ih:{glitch_shift}:0[r2];"
-        f"[g]crop=iw:ih:0:0[g2];"
-        f"[b]crop=iw-{glitch_shift}:ih:0:0[b2];"
-        f"[r2][g2][b2]mergeplanes=0x001020:yuv444p,format=yuv420p[v]"
-    )
+        volume = 0.02 + rain_intensity * 0.08
 
-    # base rain ambience using anoisesrc (no external assets required)
-    volume = 0.04 + rain_intensity * 0.10
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        filtergraph,
-        "-f",
-        "lavfi",
-        "-i",
-        f"anoisesrc=color=pink:amplitude={volume:.3f}:d={clip_seconds}",
-        "-shortest",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "24",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        str(OUTPUT_DIR / "_base_loop.mp4"),
-    ]
-    subprocess.run(cmd, check=True)
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=0x111827:s={width}x{height}:r={fps}:d={target_seconds}",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=pink:amplitude={volume:.3f}:d={target_seconds}",
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[v]",
+            "-map",
+            "1:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "24",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+        run_ffmpeg(cmd)
 
-    loop_count = max(1, target_seconds // clip_seconds)
-    concat_txt = OUTPUT_DIR / "_concat.txt"
-    with concat_txt.open("w", encoding="utf-8") as f:
-        for _ in range(loop_count):
-            f.write(f"file '{(OUTPUT_DIR / '_base_loop.mp4').resolve()}'\n")
-
-    concat_cmd = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_txt),
-        "-c",
-        "copy",
-        str(out_path),
-    ]
-    subprocess.run(concat_cmd, check=True)
-
-    return jsonify(
-        {
-            "title": title,
-            "filename": filename,
-            "download_url": f"/download/{filename}",
-            "duration_sec": loop_count * clip_seconds,
-            "resolution": "1280x720",
-        }
-    )
+        return jsonify(
+            {
+                "title": title,
+                "filename": filename,
+                "download_url": f"/download/{filename}",
+                "duration_sec": target_seconds,
+                "resolution": f"{width}x{height}",
+                "note": "安定化のため現在は1分固定で生成します。",
+                "requested_duration_min": duration_min,
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": "動画生成に失敗しました", "detail": str(e)}), 500
 
 
 @app.get("/download/<path:filename>")
