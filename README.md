@@ -150,3 +150,164 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
   1. 生成したMP4を再生して冒頭10秒で黒一色でないことを確認。
   2. 再生中にミュート解除状態で、持続音 + サーッという弱いノイズの両方を確認。
   3. タイムライン中盤でも文字と背景が維持されることを確認。
+
+# AI Agent Operating Manual
+
+## Project
+
+Tokyo Rain LOFI Generator
+
+Purpose:
+Create nostalgic rainy Tokyo LOFI videos for sleep, focus, and long-form listening.
+
+---
+
+# Core Worldview
+
+Keywords:
+
+- rainy Tokyo
+- lonely
+- nostalgic
+- melancholic
+- VHS texture
+- analog noise
+- subtle glitch
+- Japanese night atmosphere
+- urban realism
+- convenience store at midnight
+- late night train station
+- sleepy city pop atmosphere
+
+---
+
+# Priorities
+
+Most important:
+
+1. sleep usability
+2. long replay endurance
+3. low stimulation
+4. calm atmosphere
+5. subtle movement
+6. loop compatibility
+7. nostalgic emotional tone
+
+---
+
+# Forbidden Style
+
+Avoid:
+
+- bright anime style
+- hyper saturation
+- flashy EDM feeling
+- TikTok fast editing
+- overactive camera movement
+- excessive CGI feeling
+- clean modern anime aesthetic
+
+---
+
+# Visual Direction
+
+Preferred visuals:
+
+- rain on windows
+- dim room lighting
+- vending machines at night
+- convenience stores
+- train platforms
+- wet streets
+- apartment interiors
+- drifting smoke
+- slow curtain movement
+- tiny camera drift
+- VHS artifacts
+- film grain
+- imperfect linework
+
+---
+
+# Technical Direction
+
+Environment:
+
+- Replit
+- FFmpeg
+- GitHub
+- mobile-friendly workflow
+
+Output goals:
+
+- long-form mp4
+- stable rendering
+- lightweight processing
+- smartphone usability
+
+---
+
+# Coding Philosophy
+
+The AI should:
+
+- prioritize stability over complexity
+- avoid unnecessary dependencies
+- generate reusable structure
+- explain major errors simply
+- keep implementation modular
+
+---
+
+# UI Philosophy
+
+UI should be:
+
+- simple
+- mobile-first
+- low cognitive load
+- minimal buttons
+- dark atmosphere
+
+---
+
+# Error Handling
+
+When errors happen:
+
+1. explain probable cause
+2. provide simple fix
+3. avoid overly technical wording
+4. preserve existing project structure
+
+---
+
+# Agent Role
+
+The human is not mainly a programmer.
+
+The human role is:
+
+- direction
+- quality control
+- worldview management
+- final approval
+- prioritization
+
+The AI role is:
+
+- implementation
+- drafting
+- troubleshooting
+- optimization support
+
+---
+
+# Long-Term Goal
+
+Build semi-automated AI-assisted content production systems focused on:
+
+- LOFI videos
+- AI-assisted workflows
+- long-term asset creation
+- scalable creative systems
