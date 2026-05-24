@@ -64,25 +64,51 @@ def set_job(job_id: str, **updates):
 def build_ffmpeg_command(data: dict, out_path: Path, title: str):
     duration_min = clamp(int(data.get("duration_min", 1)), 1, 60)
     color_tone = data.get("color_tone", "cool")
+    rain_intensity = clamp(float(data.get("rain_intensity", 0.55)), 0.0, 1.0)
+    vhs_strength = clamp(float(data.get("vhs_strength", 0.45)), 0.0, 1.0)
 
     target_seconds = duration_min * 60
     width, height, fps = 1280, 720, 30
-
-    # 生成成功最優先の最小構成（段階復帰しやすいよう将来拡張ポイントを保持）
-    minimal_safe_mode = True
 
     cmd = ["ffmpeg", "-y", "-progress", "pipe:1", "-nostats"]
 
     bg = None
     bgm = None
-    base_color = {"cool": "0x111827", "neutral": "0x1f2937", "warm": "0x2d1f17"}.get(color_tone, "0x111827")
-    cmd += ["-f", "lavfi", "-i", f"color=c={base_color}:s={width}x{height}:r={fps}:d={target_seconds}"]
-    cmd += ["-f", "lavfi", "-i", f"sine=frequency=220:sample_rate=44100:duration={target_seconds}"]
+    if color_tone == "warm":
+        top_color, bottom_color = "0x1e1722", "0x3a261f"
+    elif color_tone == "neutral":
+        top_color, bottom_color = "0x131722", "0x202733"
+    else:
+        top_color, bottom_color = "0x0a1022", "0x182c46"
 
-    # NOTE: 演出（rain/VHS/zoom/drawtext）は一旦全停止。
-    # 将来はminimal_safe_mode=Falseで段階的に戻せるよう、この分岐を拡張する。
-    if minimal_safe_mode:
-        cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+    cmd += ["-f", "lavfi", "-i", f"color=c={top_color}:s={width}x{height}:r={fps}:d={target_seconds}"]
+    cmd += ["-f", "lavfi", "-i", f"color=c={bottom_color}:s={width}x{height}:r={fps}:d={target_seconds}"]
+    cmd += ["-f", "lavfi", "-i", f"anoisesrc=color=white:amplitude=0.3:sample_rate=44100:d={target_seconds}"]
+    cmd += ["-f", "lavfi", "-i", f"sine=frequency=220:sample_rate=44100:duration={target_seconds}"]
+    cmd += ["-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.2:sample_rate=44100:d={target_seconds}"]
+
+    vhs_mix = 0.03 + vhs_strength * 0.12
+    rain_mix = 0.015 + rain_intensity * 0.045
+    lofi_mix = 0.07
+
+    filter_complex = (
+        "[0:v][1:v]blend=all_expr='A*(1-Y/H)+B*(Y/H)'[grad];"
+        "[grad]drawbox=x=0:y=H*0.68:w=W:h=H*0.32:color=0x05070d@0.45:t=fill,"
+        "drawbox=x=W*0.08:y=H*0.62:w=W*0.08:h=H*0.22:color=0xf2c572@0.20:t=fill,"
+        "drawbox=x=W*0.20:y=H*0.58:w=W*0.05:h=H*0.26:color=0x9dc7ff@0.16:t=fill,"
+        "drawbox=x=W*0.31:y=H*0.66:w=W*0.09:h=H*0.18:color=0xff8bb4@0.18:t=fill,"
+        "drawbox=x=W*0.82:y=H*0.60:w=W*0.06:h=H*0.24:color=0xa0ffd6@0.14:t=fill,"
+        "eq=contrast=1.08:brightness=-0.03:saturation=0.85[city];"
+        "[2:v]format=gray,eq=contrast=1.6:brightness=-0.18[vnoise];"
+        f"[city][vnoise]blend=all_mode=overlay:all_opacity={vhs_mix:.3f},"
+        "drawtext=text='Tokyo Rain LOFI':fontcolor=white@0.84:fontsize=56:x=(w-text_w)/2:y=h*0.10:"
+        "shadowcolor=black@0.7:shadowx=2:shadowy=2[vout];"
+        "[3:a]volume=0.10[a_lofi];"
+        "[4:a]lowpass=f=2400,highpass=f=250,volume=0.20[a_rain];"
+        f"[a_lofi][a_rain]amix=inputs=2:weights='{lofi_mix:.3f} {rain_mix:.3f}':normalize=0[aout]"
+    )
+
+    cmd += ["-filter_complex", filter_complex, "-map", "[vout]", "-map", "[aout]"]
 
     cmd += [
         "-t", str(target_seconds),
