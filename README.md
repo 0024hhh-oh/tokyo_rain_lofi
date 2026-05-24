@@ -116,3 +116,26 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 - 背景画像/レイヤー差し替え
 - BGM差し込み
 - プリセット（深夜駅/コンビニ前/路地裏）
+
+## 生成エラー対策（2026-05 更新）
+- `filter_complex` を安定化した最小構成に変更し、まず**確実に1分MP4を生成**する動作にしています。
+- 雨/VHSは簡略化済みです（クラッシュ回避優先）。
+- 出力先 `outputs/` は生成時にも毎回 `mkdir` して作成保証しています。
+- 失敗時は PowerShell のログ出力に加え、ブラウザ画面にも詳細エラーが表示されます。
+
+## Windowsローカルで再起動して生成確認する手順
+1. 実行中のサーバーを停止（`Ctrl + C`）。
+2. 必要なら仮想環境を再有効化：
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+3. アプリ再起動：
+   ```powershell
+   python app.py
+   ```
+4. ブラウザで `http://localhost:8080` を開き直し（可能なら `Ctrl + F5` で強制再読み込み）。
+5. 「🎬 生成する」を押し、1分MP4が `outputs\` に作成されることを確認。
+6. 失敗した場合は、
+   - PowerShellの `[FFMPEG][STDERR]` ログ
+   - ブラウザの「エラー詳細」欄
+   の両方を確認してください。

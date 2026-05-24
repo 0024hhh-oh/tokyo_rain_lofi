@@ -20,15 +20,25 @@ $("go").onclick = async () => {
       body: JSON.stringify(payload),
     });
 
-    if (!res.ok) throw new Error("生成に失敗しました");
-    const data = await res.json();
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = body.detail || "サーバーから詳細を取得できませんでした";
+      throw new Error(`生成に失敗しました\n${detail}`);
+    }
+    const data = body;
 
+    $("error").hidden = true;
+    $("error-detail").textContent = "";
     $("result").hidden = false;
     $("title").textContent = data.title;
     $("meta").textContent = `${data.resolution} / ${Math.round(data.duration_sec/60)}分 / MP4`;
     $("dl").href = data.download_url;
   } catch (e) {
-    alert(e.message);
+    const msg = e?.message || "不明なエラー";
+    $("result").hidden = true;
+    $("error").hidden = false;
+    $("error-detail").textContent = msg;
+    alert(msg);
   } finally {
     btn.disabled = false;
     btn.textContent = "🎬 生成する";
