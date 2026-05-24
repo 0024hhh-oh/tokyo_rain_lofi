@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tokyo Rain LOFI Generator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="card">
+    <h1>Tokyo Rain LOFI</h1>
+    <p class="sub">深夜の東京・雨・ノスタルジー。スマホから1タップ生成。</p>
+
+    <label>動画時間（分）
+      <input id="duration" type="number" min="1" max="60" value="5" />
+    </label>
+
+    <label>雨量
+      <input id="rain" type="range" min="0" max="1" step="0.05" value="0.55" />
+    </label>
+
+    <label>VHS強度
+      <input id="vhs" type="range" min="0" max="1" step="0.05" value="0.45" />
+    </label>
+
+    <label>色味
+      <select id="tone">
+        <option value="cool">Cool Blue</option>
+        <option value="neutral">Neutral Grey</option>
+        <option value="warm">Warm Amber</option>
+      </select>
+    </label>
+
+    <label class="inline"><input id="loop5" type="checkbox" checked /> 5分ループ固定（推奨）</label>
+
+    <button id="go">🎬 生成する</button>
+
+    <section id="result" hidden>
+      <h2 id="title"></h2>
+      <p id="meta"></p>
+      <a id="dl" class="download" href="#">MP4をダウンロード</a>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
