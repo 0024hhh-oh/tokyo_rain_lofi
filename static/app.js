@@ -25,7 +25,10 @@ async function pollStatus() {
     $("go").disabled = false;
     $("stop").disabled = true;
     $("error").hidden = false;
-    $("error-detail").textContent = data.error || "生成に失敗しました";
+    const parts = [data.error || "生成に失敗しました"];
+    if (data.ffmpeg_returncode !== undefined) parts.push(`returncode: ${data.ffmpeg_returncode}`);
+    if (data.ffmpeg_stderr) parts.push("--- ffmpeg stderr ---\n" + data.ffmpeg_stderr);
+    $("error-detail").textContent = parts.join("\n\n");
   }
 }
 
