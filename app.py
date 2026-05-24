@@ -103,24 +103,43 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
     set_job(job_id, status="running", progress=1)
     print("[FFMPEG]", " ".join(shlex.quote(p) for p in cmd), flush=True)
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except Exception as exc:
         set_job(job_id, status="error", error=f"FFmpeg起動失敗: {exc}")
         return
     set_job(job_id, pid=proc.pid)
 
-    stderr_lines = []
-    try:
-        for line in proc.stdout:
+    stdout_accum = ""
+    stderr_accum = ""
+    consumed_lines = 0
+
+    def update_progress(progress_text: str):
+        nonlocal consumed_lines
+        lines = progress_text.splitlines()
+        new_lines = lines[consumed_lines:]
+        consumed_lines = len(lines)
+        for line in new_lines:
             line = line.strip()
             if line.startswith("out_time_ms="):
                 ms = int(line.split("=", 1)[1] or "0")
                 p = int(clamp((ms / 1_000_000) / target_seconds * 100, 1, 99))
                 set_job(job_id, progress=p)
-        rc = proc.wait()
-        if proc.stderr:
-            stderr_lines = proc.stderr.read().splitlines()
-        stderr_full = "\n".join(stderr_lines).strip()
+
+    try:
+        while True:
+            try:
+                stdout_final, stderr_final = proc.communicate(timeout=1)
+                stdout_accum = stdout_final or ""
+                stderr_accum = stderr_final or ""
+                update_progress(stdout_accum)
+                break
+            except subprocess.TimeoutExpired as timeout_exc:
+                stdout_accum = timeout_exc.output or stdout_accum
+                stderr_accum = timeout_exc.stderr or stderr_accum
+                update_progress(stdout_accum)
+
+        rc = proc.returncode
+        stderr_full = stderr_accum.strip()
 
         if rc == 0:
             set_job(
