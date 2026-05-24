@@ -9,31 +9,20 @@
 <body>
   <main class="card">
     <h1>Tokyo Rain LOFI</h1>
-    <p class="sub">深夜の東京・雨・ノスタルジー。スマホから1タップ生成。</p>
-
-    <label>動画時間（分）
-      <input id="duration" type="number" min="1" max="60" value="5" />
-    </label>
-
-    <label>雨量
-      <input id="rain" type="range" min="0" max="1" step="0.05" value="0.55" />
-    </label>
-
-    <label>VHS強度
-      <input id="vhs" type="range" min="0" max="1" step="0.05" value="0.45" />
-    </label>
-
-    <label>色味
-      <select id="tone">
-        <option value="cool">Cool Blue</option>
-        <option value="neutral">Neutral Grey</option>
-        <option value="warm">Warm Amber</option>
-      </select>
-    </label>
-
-    <label class="inline"><input id="loop5" type="checkbox" checked /> 5分ループ固定（推奨）</label>
-
+    <p class="sub">東京の雨・深夜・ノスタルジーの1分検証から、最大60分まで生成。</p>
+    <div class="grid">
+      <label>動画時間（分）<input id="duration" type="number" min="1" max="60" value="1" /></label>
+      <label>雨量<input id="rain" type="range" min="0" max="1" step="0.05" value="0.55" /></label>
+      <label>VHS強度<input id="vhs" type="range" min="0" max="1" step="0.05" value="0.45" /></label>
+      <label>色味<select id="tone"><option value="cool">Cool Blue</option><option value="neutral">Neutral Grey</option><option value="warm">Warm Amber</option></select></label>
+    </div>
     <button id="go">🎬 生成する</button>
+    <button id="stop" class="stop" disabled>■ 停止</button>
+
+    <section id="progress-wrap" hidden>
+      <p id="progress-text">準備中...</p>
+      <progress id="progress" max="100" value="0"></progress>
+    </section>
 
     <section id="result" hidden>
       <h2 id="title"></h2>
@@ -41,10 +30,7 @@
       <a id="dl" class="download" href="#">MP4をダウンロード</a>
     </section>
 
-    <section id="error" hidden>
-      <h3>エラー詳細</h3>
-      <pre id="error-detail"></pre>
-    </section>
+    <section id="error" hidden><h3>エラー詳細</h3><pre id="error-detail"></pre></section>
   </main>
   <script src="/static/app.js"></script>
 </body>
