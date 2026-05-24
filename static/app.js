@@ -1,46 +1,65 @@
 const $ = (id) => document.getElementById(id);
+let currentJobId = null;
+let pollTimer = null;
 
-$("go").onclick = async () => {
-  const btn = $("go");
-  btn.disabled = true;
-  btn.textContent = "生成中...（約20-60秒）";
+async function pollStatus() {
+  if (!currentJobId) return;
+  const res = await fetch(`/status/${currentJobId}`);
+  const data = await res.json();
 
-  try {
-    const payload = {
-      duration_min: Number($("duration").value || 5),
-      rain_intensity: Number($("rain").value || 0.5),
-      vhs_strength: Number($("vhs").value || 0.4),
-      color_tone: $("tone").value,
-      force_5m_loop: $("loop5").checked,
-    };
+  $("progress").value = data.progress || 0;
+  $("progress-text").textContent = `生成中... ${data.progress || 0}%`;
 
-    const res = await fetch('/generate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload),
-    });
-
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const detail = body.detail || "サーバーから詳細を取得できませんでした";
-      throw new Error(`生成に失敗しました\n${detail}`);
-    }
-    const data = body;
-
-    $("error").hidden = true;
-    $("error-detail").textContent = "";
+  if (data.status === "done") {
+    clearInterval(pollTimer);
+    currentJobId = null;
+    $("go").disabled = false;
+    $("stop").disabled = true;
     $("result").hidden = false;
     $("title").textContent = data.title;
-    $("meta").textContent = `${data.resolution} / ${Math.round(data.duration_sec/60)}分 / MP4`;
+    $("meta").textContent = `${data.resolution} / ${Math.round(data.duration_sec / 60)}分 / BG:${data.background_image} / BGM:${data.bgm_file}`;
     $("dl").href = data.download_url;
-  } catch (e) {
-    const msg = e?.message || "不明なエラー";
-    $("result").hidden = true;
+  } else if (["error", "stopped"].includes(data.status)) {
+    clearInterval(pollTimer);
+    currentJobId = null;
+    $("go").disabled = false;
+    $("stop").disabled = true;
     $("error").hidden = false;
-    $("error-detail").textContent = msg;
-    alert(msg);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "🎬 生成する";
+    $("error-detail").textContent = data.error || "生成に失敗しました";
   }
+}
+
+$("go").onclick = async () => {
+  $("go").disabled = true;
+  $("stop").disabled = false;
+  $("result").hidden = true;
+  $("error").hidden = true;
+  $("progress-wrap").hidden = false;
+  $("progress").value = 0;
+  $("progress-text").textContent = "ジョブ起動中...";
+
+  const payload = {
+    duration_min: Number($("duration").value || 1),
+    rain_intensity: Number($("rain").value || 0.55),
+    vhs_strength: Number($("vhs").value || 0.45),
+    color_tone: $("tone").value,
+  };
+
+  try {
+    const res = await fetch('/generate', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || '生成失敗');
+    currentJobId = body.job_id;
+    pollTimer = setInterval(pollStatus, 1000);
+  } catch (e) {
+    $("go").disabled = false;
+    $("stop").disabled = true;
+    $("error").hidden = false;
+    $("error-detail").textContent = e.message;
+  }
+};
+
+$("stop").onclick = async () => {
+  if (!currentJobId) return;
+  await fetch(`/stop/${currentJobId}`, { method: 'POST' });
 };
