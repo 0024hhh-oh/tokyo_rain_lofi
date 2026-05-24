@@ -20,43 +20,96 @@ python app.py
 
 ブラウザで `http://localhost:8080` を開きます。
 
-## Windowsでの実行手順
+## Windowsでの実行手順（初心者向け・PowerShell）
 
-### 1. 必要ソフトをインストール
-- Python 3.10以上（`python` コマンドが使える状態）
-- FFmpeg（`ffmpeg` コマンドが使える状態）
+以下は **そのまま上から順に** 実行してください。  
+（`PS C:\...>` のような表示はプロンプトなので、コマンド部分だけ入力すればOKです）
 
-> FFmpegをインストール後、`ffmpeg -version` が通るようにPATHを設定してください。
+### ステップ 1: PowerShell を開く
+- スタートメニューで「PowerShell」と検索して開きます。
 
-### 2. プロジェクトフォルダを開く
-PowerShellでこのプロジェクトのフォルダへ移動します。
+### ステップ 2: このプロジェクトのフォルダに移動
+> 例: デスクトップに置いた場合
 
 ```powershell
-cd C:\path\to\tokyo_rain_lofi
+cd $HOME\Desktop\tokyo_rain_lofi
 ```
 
-### 3. 必要コマンド（初回セットアップ）
+> 例: Cドライブ直下に置いた場合
+
+```powershell
+cd C:\tokyo_rain_lofi
+```
+
+### ステップ 3: Python が使えるか確認
+```powershell
+python --version
+```
+
+- `Python 3.10` 以上が表示されればOKです。
+- エラーが出る場合はPythonをインストールして、PowerShellを開き直してください。
+
+### ステップ 4: FFmpeg が使えるか確認
+```powershell
+ffmpeg -version
+```
+
+- バージョン情報が表示されればOKです。
+- エラーが出る場合はFFmpegをインストールし、PATH設定後にPowerShellを再起動してください。
+
+### ステップ 5: 仮想環境を作成（初回のみ）
 ```powershell
 python -m venv .venv
+```
+
+### ステップ 6: 仮想環境を有効化
+```powershell
 .\.venv\Scripts\Activate.ps1
+```
+
+- 成功すると先頭に `(.venv)` が付きます。
+
+### ステップ 7: 必要ライブラリをインストール
+```powershell
 pip install -r requirements.txt
 ```
 
-### 4. 起動方法
+### ステップ 8: アプリを起動
 ```powershell
 python app.py
 ```
 
-起動後、ブラウザで以下を開いてください。
+### ステップ 9: ブラウザで開く
+- 次のURLにアクセスします:
+  - `http://localhost:8080`
 
-- `http://localhost:8080`
+### ステップ 10: 停止する
+- PowerShellに戻って `Ctrl + C` を押します。
 
-### 5. 停止方法
-PowerShellで `Ctrl + C` を押すと停止できます。
+---
+
+## よくあるつまずき
+
+### 実行ポリシーで `Activate.ps1` が止められる
+次を実行してから、再度アクティベートしてください。
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+その後:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### `ffmpeg` が見つからない
+- FFmpegをインストール
+- 環境変数 PATH に `ffmpeg.exe` のあるフォルダを追加
+- PowerShellを再起動して再実行
 
 ## 備考
 - 生成物は `outputs/` に保存されます。
-- FFmpegが見つからない場合は、PATH設定後にPowerShellを再起動して再実行してください。
 
 ## 今後の拡張
 - 1080p切替
