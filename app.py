@@ -63,65 +63,33 @@ def set_job(job_id: str, **updates):
 
 def build_ffmpeg_command(data: dict, out_path: Path, title: str):
     duration_min = clamp(int(data.get("duration_min", 1)), 1, 60)
-    rain_intensity = clamp(float(data.get("rain_intensity", 0.55)), 0.0, 1.0)
-    vhs_strength = clamp(float(data.get("vhs_strength", 0.45)), 0.0, 1.0)
     color_tone = data.get("color_tone", "cool")
 
     target_seconds = duration_min * 60
     width, height, fps = 1280, 720, 30
 
-    images = list_media_files(IMAGES_DIR, (".jpg", ".jpeg", ".png", ".webp"))
-    bg = random.choice(images) if images else None
-
-    bgm_files = list_media_files(AUDIO_DIR, (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"))
-    bgm = random.choice(bgm_files) if bgm_files else None
-
-    hue = {"cool": "0.92", "warm": "1.08", "neutral": "1.00"}.get(color_tone, "1.00")
-    sat = {"cool": "0.82", "warm": "0.78", "neutral": "0.74"}.get(color_tone, "0.80")
-    noise = 2 + int(vhs_strength * 8)
-
-    v_filters = [
-        f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
-        "fps=30",
-        "zoompan=z='min(1.08,zoom+0.00008)':d=1:x='iw/2-(iw/zoom/2)+sin(on/250)*10':y='ih/2-(ih/zoom/2)+cos(on/280)*8':s=1280x720",
-        f"eq=brightness=-0.06:contrast=1.08:saturation={sat}",
-        f"colorchannelmixer=rr={hue}:gg=1.0:bb=0.95",
-        "curves=all='0/0 0.35/0.28 0.7/0.78 1/1'",
-        f"noise=alls={noise}:allf=t+u",
-        "drawbox=x=0:y=0:w=iw:h=34:color=black@0.35:t=fill",
-        "drawtext=text='TOKYO RAIN LOFI':x=24:y=8:fontsize=18:fontcolor=white@0.80",
-        "format=yuv420p",
-    ]
+    # 生成成功最優先の最小構成（段階復帰しやすいよう将来拡張ポイントを保持）
+    minimal_safe_mode = True
 
     cmd = ["ffmpeg", "-y", "-progress", "pipe:1", "-nostats"]
 
-    if bg:
-        cmd += ["-loop", "1", "-i", str(bg)]
-    else:
-        cmd += ["-f", "lavfi", "-i", f"color=c=0x111827:s={width}x{height}:r={fps}:d={target_seconds}"]
+    bg = None
+    bgm = None
+    base_color = {"cool": "0x111827", "neutral": "0x1f2937", "warm": "0x2d1f17"}.get(color_tone, "0x111827")
+    cmd += ["-f", "lavfi", "-i", f"color=c={base_color}:s={width}x{height}:r={fps}:d={target_seconds}"]
+    cmd += ["-f", "lavfi", "-i", f"sine=frequency=220:sample_rate=44100:duration={target_seconds}"]
 
-    if bgm:
-        cmd += ["-stream_loop", "-1", "-i", str(bgm)]
-    else:
-        cmd += ["-f", "lavfi", "-i", f"sine=frequency=220:sample_rate=44100:duration={target_seconds}"]
-
-    cmd += ["-f", "lavfi", "-i", f"anoisesrc=color=white:amplitude={0.04 + rain_intensity * 0.12:.3f}:d={target_seconds}"]
-
-    filter_complex = (
-        f"[0:v]{','.join(v_filters)}[v];"
-        f"[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume=0.26[bgm];"
-        f"[2:a]highpass=f=200,lowpass=f=7000,volume={0.45 + rain_intensity * 0.35:.2f}[rain];"
-        "[bgm][rain]amix=inputs=2:duration=first:dropout_transition=2[a]"
-    )
+    # NOTE: 演出（rain/VHS/zoom/drawtext）は一旦全停止。
+    # 将来はminimal_safe_mode=Falseで段階的に戻せるよう、この分岐を拡張する。
+    if minimal_safe_mode:
+        cmd += ["-map", "0:v:0", "-map", "1:a:0"]
 
     cmd += [
-        "-filter_complex", filter_complex,
-        "-map", "[v]",
-        "-map", "[a]",
         "-t", str(target_seconds),
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "22",
+        "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "160k",
         "-movflags", "+faststart",
@@ -135,12 +103,13 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
     set_job(job_id, status="running", progress=1)
     print("[FFMPEG]", " ".join(shlex.quote(p) for p in cmd), flush=True)
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     except Exception as exc:
         set_job(job_id, status="error", error=f"FFmpeg起動失敗: {exc}")
         return
     set_job(job_id, pid=proc.pid)
 
+    stderr_lines = []
     try:
         for line in proc.stdout:
             line = line.strip()
@@ -149,6 +118,9 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
                 p = int(clamp((ms / 1_000_000) / target_seconds * 100, 1, 99))
                 set_job(job_id, progress=p)
         rc = proc.wait()
+        if proc.stderr:
+            stderr_lines = proc.stderr.read().splitlines()
+        stderr_full = "\n".join(stderr_lines).strip()
 
         if rc == 0:
             set_job(
@@ -164,7 +136,13 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
                 bgm_file=(bgm.name if bgm else "generated_tone"),
             )
         else:
-            set_job(job_id, status="error", error="FFmpeg failed")
+            set_job(
+                job_id,
+                status="error",
+                error=f"FFmpeg failed (returncode={rc})",
+                ffmpeg_returncode=rc,
+                ffmpeg_stderr=(stderr_full or "(stderr empty)"),
+            )
     except Exception as exc:
         set_job(job_id, status="error", error=str(exc))
 
