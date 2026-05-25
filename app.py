@@ -12,9 +12,10 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 app = Flask(__name__)
-OUTPUT_DIR = Path("outputs")
-IMAGES_DIR = Path("images")
-AUDIO_DIR = Path("audio")
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = (BASE_DIR / "outputs").resolve()
+IMAGES_DIR = (BASE_DIR / "images").resolve()
+AUDIO_DIR = (BASE_DIR / "audio").resolve()
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -62,57 +63,64 @@ def set_job(job_id: str, **updates):
 
 
 def build_ffmpeg_command(data: dict, out_path: Path, title: str):
-    duration_min = clamp(int(data.get("duration_min", 1)), 1, 60)
+    # Stability pass: always render exactly 60 seconds until the simple Windows-safe graph is proven.
+    target_seconds = 60
     color_tone = data.get("color_tone", "cool")
     rain_intensity = clamp(float(data.get("rain_intensity", 0.55)), 0.0, 1.0)
     vhs_strength = clamp(float(data.get("vhs_strength", 0.45)), 0.0, 1.0)
 
-    target_seconds = duration_min * 60
     width, height, fps = 1280, 720, 30
 
-    cmd = ["ffmpeg", "-y", "-progress", "pipe:1", "-nostats"]
-
-    bg = None
-    bgm = None
     if color_tone == "warm":
-        top_color, bottom_color = "0x1e1722", "0x3a261f"
+        base_color = "0x241923"
     elif color_tone == "neutral":
-        top_color, bottom_color = "0x131722", "0x202733"
+        base_color = "0x171b24"
     else:
-        top_color, bottom_color = "0x0a1022", "0x182c46"
+        base_color = "0x0b1020"
 
-    cmd += ["-f", "lavfi", "-i", f"color=c={top_color}:s={width}x{height}:r={fps}:d={target_seconds}"]
-    cmd += ["-f", "lavfi", "-i", f"color=c={bottom_color}:s={width}x{height}:r={fps}:d={target_seconds}"]
-    cmd += ["-f", "lavfi", "-i", f"anoisesrc=color=white:amplitude=0.3:sample_rate=44100:d={target_seconds}"]
-    cmd += ["-f", "lavfi", "-i", f"sine=frequency=220:sample_rate=44100:duration={target_seconds}"]
-    cmd += ["-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.2:sample_rate=44100:d={target_seconds}"]
+    out_path = out_path.resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    vhs_mix = 0.03 + vhs_strength * 0.12
-    rain_mix = 0.015 + rain_intensity * 0.045
-    lofi_mix = 0.07
+    # Keep this graph intentionally simple and Windows-safe:
+    # - no shell escaping
+    # - no quoted expressions
+    # - no external overlay chains
+    # - no fake video labels from audio-only sources
+    noise_strength = 8 + int(vhs_strength * 16)
+    brightness = -0.04
+    saturation = 0.76 + ((1.0 - rain_intensity) * 0.10)
 
     filter_complex = (
-        "[0:v][1:v]blend=all_expr='A*(1-Y/H)+B*(Y/H)'[grad];"
-        "[grad]drawbox=x=0:y=H*0.68:w=W:h=H*0.32:color=0x05070d@0.45:t=fill,"
-        "drawbox=x=W*0.08:y=H*0.62:w=W*0.08:h=H*0.22:color=0xf2c572@0.20:t=fill,"
-        "drawbox=x=W*0.20:y=H*0.58:w=W*0.05:h=H*0.26:color=0x9dc7ff@0.16:t=fill,"
-        "drawbox=x=W*0.31:y=H*0.66:w=W*0.09:h=H*0.18:color=0xff8bb4@0.18:t=fill,"
-        "drawbox=x=W*0.82:y=H*0.60:w=W*0.06:h=H*0.24:color=0xa0ffd6@0.14:t=fill,"
-        "eq=contrast=1.08:brightness=-0.03:saturation=0.85[city];"
-        "[2:v]format=gray,eq=contrast=1.6:brightness=-0.18[vnoise];"
-        f"[city][vnoise]blend=all_mode=overlay:all_opacity={vhs_mix:.3f}[vout];"
-        "[3:a]volume=0.10[a_lofi];"
-        "[4:a]lowpass=f=2400,highpass=f=250,volume=0.20[a_rain];"
-        f"[a_lofi][a_rain]amix=inputs=2:weights='{lofi_mix:.3f} {rain_mix:.3f}':normalize=0[aout]"
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},"
+        f"fps={fps},"
+        "format=yuv420p,"
+        f"eq=brightness={brightness:.3f}:contrast=1.080:saturation={saturation:.3f},"
+        f"noise=alls={noise_strength}:allf=t+u,"
+        "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.08:t=fill,"
+        "drawbox=x=0:y=ih*0.70:w=iw:h=ih*0.30:color=black@0.22:t=fill,"
+        "drawbox=x=iw*0.08:y=ih*0.60:w=iw*0.08:h=ih*0.24:color=0xf2c572@0.16:t=fill,"
+        "drawbox=x=iw*0.22:y=ih*0.57:w=iw*0.06:h=ih*0.27:color=0x9dc7ff@0.11:t=fill,"
+        "drawbox=x=iw*0.35:y=ih*0.64:w=iw*0.10:h=ih*0.20:color=0xff8bb4@0.10:t=fill,"
+        "drawbox=x=iw*0.80:y=ih*0.58:w=iw*0.07:h=ih*0.26:color=0xa0ffd6@0.09:t=fill"
+        "[vout];"
+        "[1:a]lowpass=f=2400,highpass=f=180,volume=0.16[aout]"
     )
 
-    cmd += ["-filter_complex", filter_complex, "-map", "[vout]", "-map", "[aout]"]
-
-    cmd += [
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f", "lavfi",
+        "-i", f"color=c={base_color}:s={width}x{height}:r={fps}:d={target_seconds}",
+        "-f", "lavfi",
+        "-i", f"anoisesrc=color=pink:amplitude=0.25:sample_rate=44100:d={target_seconds}",
         "-t", str(target_seconds),
+        "-filter_complex", filter_complex,
+        "-map", "[vout]",
+        "-map", "[aout]",
         "-c:v", "libx264",
         "-preset", "veryfast",
-        "-crf", "22",
+        "-crf", "23",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "160k",
@@ -120,74 +128,62 @@ def build_ffmpeg_command(data: dict, out_path: Path, title: str):
         "-metadata", f"title={title}",
         str(out_path),
     ]
-    return cmd, target_seconds, bg, bgm
+    return cmd, target_seconds, None, None
 
 
 def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, title: str, bg: Path | None, bgm: Path | None):
-    set_job(job_id, status="running", progress=1)
-    print("[FFMPEG]", " ".join(shlex.quote(p) for p in cmd), flush=True)
+    argv_for_log = " ".join(shlex.quote(p) for p in cmd)
+    set_job(job_id, status="running", progress=1, ffmpeg_argv=cmd, ffmpeg_command=argv_for_log)
+    print("[FFMPEG argv]", cmd, flush=True)
+    print("[FFMPEG command]", argv_for_log, flush=True)
+
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            shell=False,
+            check=False,
+        )
     except Exception as exc:
         set_job(job_id, status="error", error=f"FFmpeg起動失敗: {exc}")
         return
-    set_job(job_id, pid=proc.pid)
 
-    stdout_accum = ""
-    stderr_accum = ""
-    consumed_lines = 0
+    output_path = (OUTPUT_DIR / filename).resolve()
+    stderr_full = (result.stderr or "").strip()
+    stdout_full = (result.stdout or "").strip()
+    output_exists = output_path.exists()
+    output_size = output_path.stat().st_size if output_exists else 0
 
-    def update_progress(progress_text: str):
-        nonlocal consumed_lines
-        lines = progress_text.splitlines()
-        new_lines = lines[consumed_lines:]
-        consumed_lines = len(lines)
-        for line in new_lines:
-            line = line.strip()
-            if line.startswith("out_time_ms="):
-                ms = int(line.split("=", 1)[1] or "0")
-                p = int(clamp((ms / 1_000_000) / target_seconds * 100, 1, 99))
-                set_job(job_id, progress=p)
-
-    try:
-        while True:
-            try:
-                stdout_final, stderr_final = proc.communicate(timeout=1)
-                stdout_accum = stdout_final or ""
-                stderr_accum = stderr_final or ""
-                update_progress(stdout_accum)
-                break
-            except subprocess.TimeoutExpired as timeout_exc:
-                stdout_accum = timeout_exc.output or stdout_accum
-                stderr_accum = timeout_exc.stderr or stderr_accum
-                update_progress(stdout_accum)
-
-        rc = proc.returncode
-        stderr_full = stderr_accum.strip()
-
-        if rc == 0:
-            set_job(
-                job_id,
-                status="done",
-                progress=100,
-                title=title,
-                filename=filename,
-                download_url=f"/download/{filename}",
-                duration_sec=target_seconds,
-                resolution="1280x720",
-                background_image=(bg.name if bg else "generated_color"),
-                bgm_file=(bgm.name if bgm else "generated_tone"),
-            )
-        else:
-            set_job(
-                job_id,
-                status="error",
-                error=f"FFmpeg failed (returncode={rc})",
-                ffmpeg_returncode=rc,
-                ffmpeg_stderr=(stderr_full or "(stderr empty)"),
-            )
-    except Exception as exc:
-        set_job(job_id, status="error", error=str(exc))
+    if result.returncode == 0 and output_exists and output_size > 0:
+        set_job(
+            job_id,
+            status="done",
+            progress=100,
+            title=title,
+            filename=filename,
+            download_url=f"/download/{filename}",
+            duration_sec=target_seconds,
+            resolution="1280x720",
+            output_size_bytes=output_size,
+            background_image=(bg.name if bg else "generated_tokyo_night_color"),
+            bgm_file=(bgm.name if bgm else "generated_pink_noise_rain_bed"),
+            ffmpeg_returncode=result.returncode,
+            ffmpeg_stderr=stderr_full,
+        )
+    else:
+        set_job(
+            job_id,
+            status="error",
+            progress=0,
+            error="FFmpeg failed or output file was not created",
+            ffmpeg_returncode=result.returncode,
+            ffmpeg_stdout=(stdout_full or "(stdout empty)"),
+            ffmpeg_stderr=(stderr_full or "(stderr empty)"),
+            output_path=str(output_path),
+            output_exists=output_exists,
+            output_size_bytes=output_size,
+        )
 
 
 @app.get("/")
@@ -202,7 +198,8 @@ def generate():
         title = auto_title(data.get("color_tone", "cool"))
         stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"{stamp}_{safe_slug(title)}.mp4"
-        out_path = OUTPUT_DIR / filename
+        out_path = (OUTPUT_DIR / filename).resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
         cmd, target_seconds, bg, bgm = build_ffmpeg_command(data, out_path, title)
         job_id = uuid.uuid4().hex
@@ -211,7 +208,7 @@ def generate():
 
         t = threading.Thread(target=worker, args=(job_id, cmd, target_seconds, filename, title, bg, bgm), daemon=True)
         t.start()
-        return jsonify({"job_id": job_id, "status": "queued"})
+        return jsonify({"job_id": job_id, "status": "queued", "duration_sec": target_seconds})
     except Exception as e:
         return jsonify({"error": "動画生成に失敗しました", "detail": str(e)}), 500
 
@@ -231,14 +228,9 @@ def stop(job_id: str):
         job = JOBS.get(job_id)
     if not job:
         return jsonify({"error": "job not found"}), 404
-    pid = job.get("pid")
-    if pid and job.get("status") == "running":
-        try:
-            os.kill(pid, 15)
-            set_job(job_id, status="stopped", error="ユーザーが停止しました")
-            return jsonify({"ok": True})
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+    # subprocess.run is used for Windows-stable generation, so there is no live pid to terminate.
+    if job.get("status") == "running":
+        return jsonify({"ok": False, "reason": "generation is running in a blocking FFmpeg process"}), 409
     return jsonify({"ok": False, "reason": "not running"})
 
 
