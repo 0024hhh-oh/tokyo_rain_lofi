@@ -22,6 +22,7 @@ AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 JOBS = {}
 JOBS_LOCK = threading.Lock()
+IMAGE_EXTS = (".png", ".jpg", ".jpeg")
 
 
 def clamp(value, lo, hi):
@@ -53,7 +54,26 @@ def auto_title(color_tone: str) -> str:
 
 
 def list_media_files(directory: Path, exts: tuple[str, ...]) -> list[Path]:
-    return [p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in exts]
+    if not directory.exists():
+        return []
+    return sorted(p.resolve() for p in directory.iterdir() if p.is_file() and p.suffix.lower() in exts)
+
+
+def pick_background_image() -> Path:
+    images = list_media_files(IMAGES_DIR, IMAGE_EXTS)
+    if not images:
+        raise FileNotFoundError(
+            f"背景画像が見つかりません。{IMAGES_DIR} に .png / .jpg / .jpeg を入れてください。"
+        )
+
+    # Prefer the expected smoke-test file when present, so images/background01.png is deterministic.
+    for image in images:
+        if image.name.lower() == "background01.png":
+            return image
+    for image in images:
+        if image.stem.lower() == "background01":
+            return image
+    return images[0]
 
 
 def set_job(job_id: str, **updates):
@@ -63,57 +83,43 @@ def set_job(job_id: str, **updates):
 
 
 def build_ffmpeg_command(data: dict, out_path: Path, title: str):
-    # Stability pass: always render exactly 60 seconds until the simple Windows-safe graph is proven.
+    # Stability pass: always render exactly 60 seconds until the image-based graph is proven.
     target_seconds = 60
-    color_tone = data.get("color_tone", "cool")
     rain_intensity = clamp(float(data.get("rain_intensity", 0.55)), 0.0, 1.0)
     vhs_strength = clamp(float(data.get("vhs_strength", 0.45)), 0.0, 1.0)
 
     width, height, fps = 1280, 720, 30
-
-    if color_tone == "warm":
-        base_color = "0x241923"
-    elif color_tone == "neutral":
-        base_color = "0x171b24"
-    else:
-        base_color = "0x0b1020"
-
     out_path = out_path.resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Keep this graph intentionally simple and Windows-safe:
-    # - no shell escaping
-    # - no quoted expressions
-    # - no external overlay chains
-    # - no fake video labels from audio-only sources
-    noise_strength = 8 + int(vhs_strength * 16)
-    brightness = -0.04
-    saturation = 0.76 + ((1.0 - rain_intensity) * 0.10)
+    bg = pick_background_image().resolve()
+    if not bg.exists() or bg.suffix.lower() not in IMAGE_EXTS:
+        raise FileNotFoundError(f"背景画像を読み込めません: {bg}")
+
+    # Minimal Windows-safe graph. Keep the real image visible first.
+    # Effects are intentionally light so the source image cannot be blacked out.
+    noise_strength = 2 + int(vhs_strength * 5)
+    saturation = 0.88 + ((1.0 - rain_intensity) * 0.08)
 
     filter_complex = (
         f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
         f"crop={width}:{height},"
         f"fps={fps},"
         "format=yuv420p,"
-        f"eq=brightness={brightness:.3f}:contrast=1.080:saturation={saturation:.3f},"
-        f"noise=alls={noise_strength}:allf=t+u,"
-        "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.08:t=fill,"
-        "drawbox=x=0:y=ih*0.70:w=iw:h=ih*0.30:color=black@0.22:t=fill,"
-        "drawbox=x=iw*0.08:y=ih*0.60:w=iw*0.08:h=ih*0.24:color=0xf2c572@0.16:t=fill,"
-        "drawbox=x=iw*0.22:y=ih*0.57:w=iw*0.06:h=ih*0.27:color=0x9dc7ff@0.11:t=fill,"
-        "drawbox=x=iw*0.35:y=ih*0.64:w=iw*0.10:h=ih*0.20:color=0xff8bb4@0.10:t=fill,"
-        "drawbox=x=iw*0.80:y=ih*0.58:w=iw*0.07:h=ih*0.26:color=0xa0ffd6@0.09:t=fill"
+        f"eq=brightness=0.000:contrast=1.030:saturation={saturation:.3f},"
+        f"noise=alls={noise_strength}:allf=t+u"
         "[vout];"
-        "[1:a]lowpass=f=2400,highpass=f=180,volume=0.16[aout]"
+        "[1:a]lowpass=f=2400,highpass=f=180,volume=0.14[aout]"
     )
 
     cmd = [
         "ffmpeg",
         "-y",
+        "-loop", "1",
+        "-framerate", str(fps),
+        "-i", str(bg),
         "-f", "lavfi",
-        "-i", f"color=c={base_color}:s={width}x{height}:r={fps}:d={target_seconds}",
-        "-f", "lavfi",
-        "-i", f"anoisesrc=color=pink:amplitude=0.25:sample_rate=44100:d={target_seconds}",
+        "-i", f"anoisesrc=color=pink:amplitude=0.20:sample_rate=44100:d={target_seconds}",
         "-t", str(target_seconds),
         "-filter_complex", filter_complex,
         "-map", "[vout]",
@@ -128,14 +134,24 @@ def build_ffmpeg_command(data: dict, out_path: Path, title: str):
         "-metadata", f"title={title}",
         str(out_path),
     ]
-    return cmd, target_seconds, None, None
+    return cmd, target_seconds, bg, None
 
 
 def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, title: str, bg: Path | None, bgm: Path | None):
     argv_for_log = " ".join(shlex.quote(p) for p in cmd)
-    set_job(job_id, status="running", progress=1, ffmpeg_argv=cmd, ffmpeg_command=argv_for_log)
+    set_job(
+        job_id,
+        status="running",
+        progress=1,
+        ffmpeg_argv=cmd,
+        ffmpeg_command=argv_for_log,
+        background_image=str(bg) if bg else None,
+        background_image_name=bg.name if bg else None,
+    )
     print("[FFMPEG argv]", cmd, flush=True)
     print("[FFMPEG command]", argv_for_log, flush=True)
+    if bg:
+        print("[FFMPEG background]", str(bg), flush=True)
 
     try:
         result = subprocess.run(
@@ -166,7 +182,9 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
             duration_sec=target_seconds,
             resolution="1280x720",
             output_size_bytes=output_size,
-            background_image=(bg.name if bg else "generated_tokyo_night_color"),
+            output_path=str(output_path),
+            background_image=str(bg) if bg else None,
+            background_image_name=bg.name if bg else None,
             bgm_file=(bgm.name if bgm else "generated_pink_noise_rain_bed"),
             ffmpeg_returncode=result.returncode,
             ffmpeg_stderr=stderr_full,
@@ -183,6 +201,8 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
             output_path=str(output_path),
             output_exists=output_exists,
             output_size_bytes=output_size,
+            background_image=str(bg) if bg else None,
+            background_image_name=bg.name if bg else None,
         )
 
 
@@ -204,13 +224,30 @@ def generate():
         cmd, target_seconds, bg, bgm = build_ffmpeg_command(data, out_path, title)
         job_id = uuid.uuid4().hex
         with JOBS_LOCK:
-            JOBS[job_id] = {"status": "queued", "progress": 0, "created_at": time.time()}
+            JOBS[job_id] = {
+                "status": "queued",
+                "progress": 0,
+                "created_at": time.time(),
+                "background_image": str(bg) if bg else None,
+                "background_image_name": bg.name if bg else None,
+            }
 
         t = threading.Thread(target=worker, args=(job_id, cmd, target_seconds, filename, title, bg, bgm), daemon=True)
         t.start()
-        return jsonify({"job_id": job_id, "status": "queued", "duration_sec": target_seconds})
+        return jsonify({
+            "job_id": job_id,
+            "status": "queued",
+            "duration_sec": target_seconds,
+            "background_image": str(bg) if bg else None,
+            "background_image_name": bg.name if bg else None,
+        })
     except Exception as e:
-        return jsonify({"error": "動画生成に失敗しました", "detail": str(e)}), 500
+        return jsonify({
+            "error": "動画生成に失敗しました",
+            "detail": str(e),
+            "images_dir": str(IMAGES_DIR),
+            "supported_image_exts": list(IMAGE_EXTS),
+        }), 500
 
 
 @app.get("/status/<job_id>")
