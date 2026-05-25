@@ -66,7 +66,6 @@ def pick_background_image() -> Path:
             f"背景画像が見つかりません。{IMAGES_DIR} に .png / .jpg / .jpeg を入れてください。"
         )
 
-    # Prefer the expected smoke-test file when present, so images/background01.png is deterministic.
     for image in images:
         if image.name.lower() == "background01.png":
             return image
@@ -83,12 +82,12 @@ def set_job(job_id: str, **updates):
 
 
 def build_ffmpeg_command(data: dict, out_path: Path, title: str):
-    # Stability pass: always render exactly 60 seconds until the image-based graph is proven.
+    # Static-camera render. No zoompan, no camera drift, no black fallback.
     target_seconds = 60
     rain_intensity = clamp(float(data.get("rain_intensity", 0.55)), 0.0, 1.0)
     vhs_strength = clamp(float(data.get("vhs_strength", 0.45)), 0.0, 1.0)
 
-    width, height, fps = 1280, 720, 30
+    width, height, fps = 1920, 1080, 30
     out_path = out_path.resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -96,18 +95,30 @@ def build_ffmpeg_command(data: dict, out_path: Path, title: str):
     if not bg.exists() or bg.suffix.lower() not in IMAGE_EXTS:
         raise FileNotFoundError(f"背景画像を読み込めません: {bg}")
 
-    # Minimal Windows-safe graph. Keep the real image visible first.
-    # Effects are intentionally light so the source image cannot be blacked out.
-    noise_strength = 2 + int(vhs_strength * 5)
-    saturation = 0.88 + ((1.0 - rain_intensity) * 0.08)
+    # Stronger but still stable LOFI look. The image remains the only video source.
+    noise_strength = 10 + int(vhs_strength * 12)
+    rain_alpha = 0.025 + (rain_intensity * 0.035)
+    saturation = 0.62 + ((1.0 - rain_intensity) * 0.08)
 
     filter_complex = (
         f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
         f"crop={width}:{height},"
         f"fps={fps},"
         "format=yuv420p,"
-        f"eq=brightness=0.000:contrast=1.030:saturation={saturation:.3f},"
-        f"noise=alls={noise_strength}:allf=t+u"
+        f"eq=brightness=-0.050:contrast=1.120:saturation={saturation:.3f},"
+        "gblur=sigma=0.35,"
+        f"noise=alls={noise_strength}:allf=t+u,"
+        f"drawbox=x=iw*0.08:y=0:w=1:h=ih:color=white@{rain_alpha:.3f}:t=fill,"
+        f"drawbox=x=iw*0.16:y=0:w=1:h=ih:color=white@{rain_alpha * 0.65:.3f}:t=fill,"
+        f"drawbox=x=iw*0.29:y=0:w=1:h=ih:color=white@{rain_alpha * 0.80:.3f}:t=fill,"
+        f"drawbox=x=iw*0.43:y=0:w=1:h=ih:color=white@{rain_alpha * 0.60:.3f}:t=fill,"
+        f"drawbox=x=iw*0.58:y=0:w=1:h=ih:color=white@{rain_alpha * 0.75:.3f}:t=fill,"
+        f"drawbox=x=iw*0.72:y=0:w=1:h=ih:color=white@{rain_alpha * 0.70:.3f}:t=fill,"
+        f"drawbox=x=iw*0.88:y=0:w=1:h=ih:color=white@{rain_alpha:.3f}:t=fill,"
+        "drawbox=x=0:y=0:w=iw:h=ih*0.08:color=black@0.22:t=fill,"
+        "drawbox=x=0:y=ih*0.90:w=iw:h=ih*0.10:color=black@0.28:t=fill,"
+        "drawbox=x=0:y=0:w=iw*0.05:h=ih:color=black@0.18:t=fill,"
+        "drawbox=x=iw*0.95:y=0:w=iw*0.05:h=ih:color=black@0.18:t=fill"
         "[vout];"
         "[1:a]lowpass=f=2400,highpass=f=180,volume=0.14[aout]"
     )
@@ -125,8 +136,8 @@ def build_ffmpeg_command(data: dict, out_path: Path, title: str):
         "-map", "[vout]",
         "-map", "[aout]",
         "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23",
+        "-preset", "medium",
+        "-crf", "18",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "160k",
@@ -145,6 +156,7 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
         progress=1,
         ffmpeg_argv=cmd,
         ffmpeg_command=argv_for_log,
+        filter_complex=cmd[cmd.index("-filter_complex") + 1] if "-filter_complex" in cmd else None,
         background_image=str(bg) if bg else None,
         background_image_name=bg.name if bg else None,
     )
@@ -180,7 +192,7 @@ def worker(job_id: str, cmd: list[str], target_seconds: int, filename: str, titl
             filename=filename,
             download_url=f"/download/{filename}",
             duration_sec=target_seconds,
-            resolution="1280x720",
+            resolution="1920x1080",
             output_size_bytes=output_size,
             output_path=str(output_path),
             background_image=str(bg) if bg else None,
@@ -265,7 +277,6 @@ def stop(job_id: str):
         job = JOBS.get(job_id)
     if not job:
         return jsonify({"error": "job not found"}), 404
-    # subprocess.run is used for Windows-stable generation, so there is no live pid to terminate.
     if job.get("status") == "running":
         return jsonify({"ok": False, "reason": "generation is running in a blocking FFmpeg process"}), 409
     return jsonify({"ok": False, "reason": "not running"})
