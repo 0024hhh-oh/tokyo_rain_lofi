@@ -439,3 +439,39 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 ENABLE_WAVEFORM=0 scripts/generate_lofi_video.sh
 ENABLE_LOGO=0 scripts/generate_lofi_video.sh
 ```
+
+## GitHub ActionsでMP4をGoogle Driveへ自動アップロードする
+
+`Generate LOFI video` workflowは、生成したMP4を従来通りGitHub Actions Artifactへ保存したあと、Google Driveの `Tokyo ChillMatic FM / Outputs` にもアップロードします。
+
+### 前提
+- GitHub repository secret `GOOGLE_SERVICE_ACCOUNT_JSON` にGoogleサービスアカウントJSONを登録しておきます。
+- Google Drive上の `Tokyo ChillMatic FM` フォルダを、サービスアカウントのメールアドレスに共有します。
+- サービスアカウントには、`Tokyo ChillMatic FM` 配下でファイル作成・更新できる権限を付与します。
+
+### 実行手順
+1. GitHubの **Actions** タブを開きます。
+2. **Generate LOFI video** workflowを選びます。
+3. **Run workflow** を押します。
+4. `video_number` に素材フォルダ番号（例: `001`）を入力します。
+5. `output_file` に完成MP4ファイル名（例: `Tokyo_Memory_Archive_001.mp4`）を入力します。
+6. 実行完了後、以下を確認します。
+   - GitHub ActionsのArtifactに `output_file` と同名のMP4が保存されていること。
+   - Google Driveの `Tokyo ChillMatic FM / Outputs` に同名MP4がアップロードされていること。
+
+### Outputsフォルダについて
+- `Tokyo ChillMatic FM` 直下に `Outputs` フォルダが無い場合、workflowが自動作成します。
+- `Outputs` 内に同名MP4が既に存在する場合は、新しい生成結果で上書き更新します。
+
+### 大容量MP4アップロードの安定化
+- Driveアップロードは `MediaFileUpload(..., resumable=True)` を使用します。
+- 350MB以上のMP4でも安定しやすいよう、デフォルトで16MiBチャンクに分割してアップロードします。
+- `ResumableUploadError` や一時的なHTTPエラー（429 / 5xx）が発生した場合は、指数バックオフで最大5回リトライします。
+- 必要に応じて `scripts/upload_drive_output.py --chunk-size <bytes> --max-retries <回数>` で調整できます。
+
+### 失敗時の挙動
+- Artifact保存はGoogle Driveアップロードより先に実行されます。
+- Google Driveアップロードステップは `continue-on-error: true` のため、Driveアップロードに失敗してもArtifact保存済みのMP4は維持されます。
+- Driveアップロードに失敗した場合は、Actionsログの **Upload MP4 to Google Drive** ステップでエラー内容とリトライ履歴を確認してください。
+
+> YouTubeへの自動アップロードはまだ行いません。まずはスマホでArtifactをダウンロードする作業をなくすため、DriveへのMP4配置だけを自動化しています。
