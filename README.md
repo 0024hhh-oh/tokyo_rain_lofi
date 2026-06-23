@@ -401,7 +401,41 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 - `track01.mp3`〜`track20.mp3` を番号順に連結します。
 - 60分に足りない場合は音楽をループし、60分で切ります。
 - `rain.mp3` が存在する場合だけ、小さめの音量でミックスします。存在しない場合はBGMのみで生成します。
-- `background.png` を1920x1080の背景にします。
+- `background.png` / `background.jpg` / `background.jpeg` のいずれかを1920x1080の背景にします。
 - `rain_overlay.mp4` がある場合は薄く重ねます。
 - 出力はH.264 / AAC / MP4です。
 - 標準の完成ファイル名は `Tokyo_Memory_Archive_001.mp4` です。
+
+## GitHub Actions: LOFI動画生成素材
+
+`Generate LOFI video` workflow は、Google Drive から `video_assets/` に素材を取得し、GitHub Actions上のFFmpegでMP4を生成します。ローカルPCでの手作業やCapCutでの後処理は不要です。
+
+### 必須素材
+- `tracks/track01.mp3` 〜 `tracks/track20.mp3`
+- 背景画像（次のいずれか1つ）
+  - `background.png`
+  - `background.jpg`
+  - `background.jpeg`
+
+### 任意素材
+- `rain.mp3` — あればBGMに小さくミックスします。無い場合はBGMのみで続行します。
+- `rain_overlay.mp4` — あれば背景の上に薄く重ねます。無い場合はスキップします。
+- `logo.png` / `logo.jpg` / `logo.jpeg` — あれば中央下部に小さく重ねます。無い場合はスキップします。
+
+### 自動波形ビジュアライザー
+
+動画生成時に、最終ミックス音声へ反応するシンプルな横波形を下部中央へ自動追加します。
+
+- FFmpegの `showwaves` フィルターを使用します。
+- 波形は白系の小さめ表示で、透明背景として背景画像の上に重ねます。
+- 最終音声を `asplit` で分岐し、MP4に入れる音声と波形生成用の音声を同じミックスから作るため、`rain.mp3` がある場合は雨音込みの最終音声に反応します。
+- 安定性優先のため、波形・ロゴ・雨オーバーレイの生成に失敗した場合は、それらを外して再試行し、MP4出力を優先します。
+
+### 任意機能の無効化
+
+必要な場合はworkflowや手動実行時の環境変数で任意機能を無効化できます。
+
+```bash
+ENABLE_WAVEFORM=0 scripts/generate_lofi_video.sh
+ENABLE_LOGO=0 scripts/generate_lofi_video.sh
+```
