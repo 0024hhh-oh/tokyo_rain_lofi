@@ -354,17 +354,22 @@ track02.mp3
 track20.mp3
 ```
 
-`background.png` と `rain.mp3` は必須です。次のどちらかに置いてください。
+`background.png` は必須です。次のどちらかに置いてください。
 
 ```text
 Tokyo ChillMatic FM / Videos / video_001 / background.png
-Tokyo ChillMatic FM / Videos / video_001 / rain.mp3
 ```
 
 または共通素材として次に置いても使えます。
 
 ```text
 Tokyo ChillMatic FM / Videos / background.png
+```
+
+`rain.mp3` は任意です。存在する場合だけBGMに小さめの音量でミックスし、存在しない場合はBGMのみで動画を生成します。
+
+```text
+Tokyo ChillMatic FM / Videos / video_001 / rain.mp3
 Tokyo ChillMatic FM / Videos / rain.mp3
 ```
 
@@ -395,7 +400,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 
 - `track01.mp3`〜`track20.mp3` を番号順に連結します。
 - 60分に足りない場合は音楽をループし、60分で切ります。
-- `rain.mp3` を小さめの音量でミックスします。
+- `rain.mp3` が存在する場合だけ、小さめの音量でミックスします。存在しない場合はBGMのみで生成します。
 - `background.png` を1920x1080の背景にします。
 - `rain_overlay.mp4` がある場合は薄く重ねます。
 - 出力はH.264 / AAC / MP4です。
