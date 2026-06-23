@@ -11,6 +11,18 @@ on:
         description: "完成MP4ファイル名"
         required: true
         default: "Tokyo_Memory_Archive_001.mp4"
+      youtube_title:
+        description: "YouTube動画タイトル"
+        required: true
+        default: "Tokyo Memory Archive 001 - Tokyo ChillMatic FM"
+      youtube_description:
+        description: "YouTube動画説明文"
+        required: false
+        default: "Tokyo ChillMatic FM - rainy lofi archive."
+      youtube_tags:
+        description: "YouTubeタグ（カンマ区切り）"
+        required: false
+        default: "lofi, chill, tokyo, rain, study music"
 
 jobs:
   generate:
@@ -59,3 +71,20 @@ jobs:
           python scripts/upload_drive_output.py \
             --file "dist/${{ inputs.output_file }}" \
             --output-name "${{ inputs.output_file }}"
+
+      - name: Upload private video to YouTube
+        continue-on-error: true
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          OUTPUT_FILE: ${{ inputs.output_file }}
+          YOUTUBE_TITLE: ${{ inputs.youtube_title }}
+          YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description }}
+          YOUTUBE_TAGS: ${{ inputs.youtube_tags }}
+        run: |
+          python scripts/upload_youtube_video.py \
+            --file "dist/${OUTPUT_FILE}" \
+            --title "${YOUTUBE_TITLE}" \
+            --description "${YOUTUBE_DESCRIPTION}" \
+            --tags "${YOUTUBE_TAGS}"

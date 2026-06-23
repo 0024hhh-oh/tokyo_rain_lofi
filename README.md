@@ -468,4 +468,166 @@ ENABLE_LOGO=0 scripts/generate_lofi_video.sh
 - Google Driveアップロードステップは `continue-on-error: true` のため、Driveアップロードに失敗してもArtifact保存済みのMP4は維持されます。
 - Driveアップロードに失敗した場合は、Actionsログの **Upload MP4 to Google Drive** ステップでエラー内容を確認してください。
 
-> YouTubeへの自動アップロードはまだ行いません。まずはスマホでArtifactをダウンロードする作業をなくすため、DriveへのMP4配置だけを自動化しています。
+## GitHub ActionsでMP4をYouTubeへ非公開アップロードする
+
+`Generate LOFI video` workflowは、生成したMP4をGitHub Actions ArtifactとGoogle Drive `Tokyo ChillMatic FM / Outputs` に保存したあと、YouTubeにも自動アップロードできます。YouTube側の公開設定はworkflow内で固定しており、必ず **非公開（private）** としてアップロードします。サムネイルの自動設定は行いません。
+
+### YouTube APIの認証方式
+
+YouTube Data APIの動画アップロードには、YouTubeチャンネルへの操作権限を持つユーザーのOAuth 2.0認可が必要です。Google Drive連携で使っているサービスアカウント方式では、通常のYouTubeチャンネルへ動画をアップロードできません。
+
+このリポジトリでは、GitHub Actions上で次の流れを使います。
+
+1. Google CloudでOAuthクライアントを作成します。
+2. 対象YouTubeチャンネルを操作できるGoogleアカウントで、`https://www.googleapis.com/auth/youtube.upload` スコープを許可します。
+3. 取得したrefresh tokenをGitHub Secretsへ保存します。
+4. workflow実行時にrefresh tokenからaccess tokenを取得し、YouTube Data API `videos.insert` でMP4をアップロードします。
+
+### スマホだけでYouTube API認証情報を取得する手順
+
+以下はスマホのブラウザだけで `YOUTUBE_CLIENT_ID`、`YOUTUBE_CLIENT_SECRET`、`YOUTUBE_REFRESH_TOKEN` を取得するための手順です。Google Cloud Consoleはスマホ表示だとメニューが隠れることがあるため、見つからない場合はブラウザの **デスクトップ用Webサイトを表示** をONにしてください。
+
+#### 事前確認
+
+1. スマホのブラウザで、YouTubeへアップロードしたいチャンネルを管理しているGoogleアカウントにログインします。
+2. ブランドアカウントのチャンネルを使っている場合は、YouTubeアプリまたはYouTube Studioで、そのGoogleアカウントが対象チャンネルを操作できることを確認します。
+3. 取得した値はあとでGitHub Secretsへ貼り付けるため、スマホのメモアプリなどに一時的に控えます。作業後はメモから削除してください。
+
+#### 1. Google Cloudプロジェクトを作る
+
+1. ブラウザで `https://console.cloud.google.com/` を開きます。
+2. 右上のアカウントアイコンを押し、YouTubeチャンネルを操作するGoogleアカウントになっていることを確認します。
+3. 画面上部のプロジェクト名、または **プロジェクトを選択** を押します。
+4. **新しいプロジェクト** を押します。
+5. **プロジェクト名** に `Tokyo ChillMatic FM Uploader` など分かりやすい名前を入力します。
+6. **作成** を押します。
+7. 作成後、画面上部のプロジェクト選択から、いま作ったプロジェクトを選びます。
+
+#### 2. YouTube Data API v3を有効化する
+
+1. 左上の三本線メニューを押します。
+2. **APIとサービス** → **ライブラリ** を押します。
+3. 検索欄に `YouTube Data API v3` と入力します。
+4. 検索結果の **YouTube Data API v3** を押します。
+5. **有効にする** を押します。
+
+#### 3. OAuth同意画面を設定する
+
+1. 左上の三本線メニューを押します。
+2. **APIとサービス** → **OAuth 同意画面** を押します。
+3. **User Type** が表示された場合は、個人のGoogleアカウントでは通常 **外部** を選び、**作成** を押します。
+4. **アプリ名** に `Tokyo ChillMatic FM Uploader` と入力します。
+5. **ユーザーサポートメール** で自分のGoogleアカウントを選びます。
+6. **デベロッパーの連絡先情報** のメールアドレスに自分のメールアドレスを入力します。
+7. **保存して次へ** を押します。
+8. **スコープ** 画面では、ここでは追加せず **保存して次へ** を押します。
+9. **テストユーザー** 画面で **ユーザーを追加** を押します。
+10. YouTubeチャンネルを操作するGoogleアカウントのメールアドレスを入力し、**追加** を押します。
+11. **保存して次へ** を押します。
+12. 内容確認画面で **ダッシュボードに戻る** を押します。
+
+#### 4. OAuthクライアントを作成してClient ID / Client Secretを取得する
+
+1. 左上の三本線メニューを押します。
+2. **APIとサービス** → **認証情報** を押します。
+3. 画面上部の **認証情報を作成** を押します。
+4. **OAuth クライアント ID** を押します。
+5. **アプリケーションの種類** で **ウェブ アプリケーション** を選びます。
+6. **名前** に `GitHub Actions YouTube Uploader` と入力します。
+7. **承認済みのリダイレクト URI** の **URIを追加** を押します。
+8. 次のURLを入力します。
+
+   ```text
+   https://developers.google.com/oauthplayground
+   ```
+
+9. **作成** を押します。
+10. 表示された **クライアント ID** をコピーします。これがGitHub Secret `YOUTUBE_CLIENT_ID` の値です。
+11. 表示された **クライアント シークレット** をコピーします。これがGitHub Secret `YOUTUBE_CLIENT_SECRET` の値です。
+12. 画面を閉じてしまった場合は、**APIとサービス** → **認証情報** → 作成したOAuthクライアント名を押すと、Client ID / Client Secretを再確認できます。
+
+#### 5. OAuth PlaygroundでRefresh Tokenを取得する
+
+1. 同じスマホのブラウザで `https://developers.google.com/oauthplayground` を開きます。
+2. 右上の歯車アイコンを押します。
+3. **Use your own OAuth credentials** にチェックを入れます。
+4. **OAuth Client ID** に、先ほど取得した `YOUTUBE_CLIENT_ID` を貼り付けます。
+5. **OAuth Client secret** に、先ほど取得した `YOUTUBE_CLIENT_SECRET` を貼り付けます。
+6. 設定パネルを閉じます。
+7. 左側のスコープ一覧で **YouTube Data API v3** を探して開きます。見つからない場合は、スコープ入力欄に次を直接貼り付けます。
+
+   ```text
+   https://www.googleapis.com/auth/youtube.upload
+   ```
+
+8. `https://www.googleapis.com/auth/youtube.upload` にチェックが入っていることを確認します。
+9. **Authorize APIs** を押します。
+10. Googleのログイン画面が出たら、YouTubeへアップロードしたいチャンネルを操作できるGoogleアカウントを選びます。
+11. **このアプリはGoogleで確認されていません** と表示された場合は、**詳細** → **Tokyo ChillMatic FM Uploader（安全ではないページ）に移動** を押します。自分だけで使うテストアプリなので、この表示は想定内です。
+12. 権限確認画面で、YouTubeへのアップロード権限を確認し、**許可** を押します。
+13. OAuth Playgroundへ戻ったら、**Step 2 Exchange authorization code for tokens** の **Exchange authorization code for tokens** を押します。
+14. 表示された `Refresh token` の値をコピーします。これがGitHub Secret `YOUTUBE_REFRESH_TOKEN` の値です。
+15. `Access token` ではなく、必ず `Refresh token` をコピーしてください。GitHub Actionsで長期的に使うのはrefresh tokenです。
+
+#### 6. GitHub Secretsへ登録する
+
+1. スマホのブラウザでGitHubの対象リポジトリ `tokyo_rain_lofi` を開きます。
+2. **Settings** を押します。スマホで見えない場合は、横スクロールするか、ブラウザの **デスクトップ用Webサイトを表示** をONにします。
+3. **Secrets and variables** → **Actions** を押します。
+4. **New repository secret** を押します。
+5. **Name** に `YOUTUBE_CLIENT_ID` と入力し、**Secret** にClient IDを貼り付け、**Add secret** を押します。
+6. 同じ手順で `YOUTUBE_CLIENT_SECRET` にClient Secretを登録します。
+7. 同じ手順で `YOUTUBE_REFRESH_TOKEN` にRefresh Tokenを登録します。
+8. 既存のGoogle Drive保存も使うため、`GOOGLE_SERVICE_ACCOUNT_JSON` も登録済みであることを確認します。
+
+#### 取得できる値の対応表
+
+| GitHub Secret名 | 取得する画面 | 入れる値 |
+| --- | --- | --- |
+| `YOUTUBE_CLIENT_ID` | Google Cloud Console → APIとサービス → 認証情報 → OAuthクライアント | クライアント ID |
+| `YOUTUBE_CLIENT_SECRET` | Google Cloud Console → APIとサービス → 認証情報 → OAuthクライアント | クライアント シークレット |
+| `YOUTUBE_REFRESH_TOKEN` | OAuth Playground → Step 2 | Refresh token |
+
+### GitHub Secrets
+
+リポジトリの **Settings → Secrets and variables → Actions → Repository secrets** に次を登録してください。
+
+```text
+YOUTUBE_CLIENT_ID
+YOUTUBE_CLIENT_SECRET
+YOUTUBE_REFRESH_TOKEN
+```
+
+既存のGoogle Drive連携用secretも引き続き必要です。
+
+```text
+GOOGLE_SERVICE_ACCOUNT_JSON
+```
+
+### workflow入力
+
+**Generate LOFI video** の **Run workflow** で、YouTube用に次の入力を指定できます。
+
+- `youtube_title` — YouTube動画タイトル。
+- `youtube_description` — YouTube動画説明文。
+- `youtube_tags` — カンマ区切りタグ。例: `lofi, chill, tokyo, rain, study music`
+
+### 実行手順
+
+1. GitHubの **Actions** タブを開きます。
+2. **Generate LOFI video** workflowを選びます。
+3. **Run workflow** を押します。
+4. `video_number` と `output_file` を指定します。
+5. `youtube_title`、`youtube_description`、`youtube_tags` を指定します。
+6. workflowを実行します。
+7. 完了後、以下を確認します。
+   - GitHub Actions ArtifactにMP4が保存されていること。
+   - Google Driveの `Tokyo ChillMatic FM / Outputs` にMP4が保存されていること。
+   - YouTube Studioに非公開動画としてアップロードされていること。
+
+### 失敗時の挙動
+
+- MP4生成とArtifact保存はYouTubeアップロードより先に実行されます。
+- Google Drive保存もYouTubeアップロードより先に実行されます。
+- YouTubeアップロードステップは `continue-on-error: true` のため、YouTube API認証・クォータ・通信などが原因で失敗しても、MP4生成、Artifact保存、Google Drive保存は失敗扱いになりません。
+- YouTubeアップロードに失敗した場合は、Actionsログの **Upload private video to YouTube** ステップでエラー内容を確認してください。
