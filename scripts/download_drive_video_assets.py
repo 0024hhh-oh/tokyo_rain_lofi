@@ -113,15 +113,23 @@ def main() -> None:
         download_file(service, file_record["id"], tracks_dir / filename)
         print(f"Downloaded {filename}")
 
-    for filename in ("background.png", "rain.mp3", "rain_overlay.mp4"):
+    background_filenames = ("background.png", "background.jpg", "background.jpeg")
+    for filename in background_filenames:
         file_record = find_optional_file(service, filename, video["id"]) or find_optional_file(service, filename, videos["id"])
         if file_record:
             download_file(service, file_record["id"], output_dir / filename)
             print(f"Downloaded {filename}")
-        elif filename != "rain_overlay.mp4":
-            raise FileNotFoundError(f"必須素材が見つかりません: {filename}")
+            break
+    else:
+        raise FileNotFoundError(f"必須背景素材が見つかりません: {', '.join(background_filenames)}")
+
+    for filename in ("rain.mp3", "rain_overlay.mp4"):
+        file_record = find_optional_file(service, filename, video["id"]) or find_optional_file(service, filename, videos["id"])
+        if file_record:
+            download_file(service, file_record["id"], output_dir / filename)
+            print(f"Downloaded {filename}")
         else:
-            print("Optional rain_overlay.mp4 not found; continuing without overlay")
+            print(f"Optional {filename} not found; continuing without it")
 
 
 if __name__ == "__main__":
