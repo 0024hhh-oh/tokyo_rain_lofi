@@ -50,3 +50,12 @@ jobs:
           name: ${{ inputs.output_file }}
           path: dist/${{ inputs.output_file }}
           if-no-files-found: error
+
+      - name: Upload MP4 to Google Drive
+        continue-on-error: true
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python scripts/upload_drive_output.py \
+            --file "dist/${{ inputs.output_file }}" \
+            --output-name "${{ inputs.output_file }}"
