@@ -118,10 +118,10 @@ def main() -> None:
         if file_record:
             download_file(service, file_record["id"], output_dir / filename)
             print(f"Downloaded {filename}")
-        elif filename != "rain_overlay.mp4":
+        elif filename == "background.png":
             raise FileNotFoundError(f"必須素材が見つかりません: {filename}")
         else:
-            print("Optional rain_overlay.mp4 not found; continuing without overlay")
+            print(f"Optional {filename} not found; continuing without it")
 
 
 if __name__ == "__main__":
