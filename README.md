@@ -311,3 +311,92 @@ Build semi-automated AI-assisted content production systems focused on:
 - AI-assisted workflows
 - long-term asset creation
 - scalable creative systems
+
+## Google Apps Script: SUNO mp3整理
+
+`google_apps_script/suno_organizer.gs` には、Google Drive上の `Tokyo ChillMatic FM / Incoming` に入れたSUNO mp3を、ファイル名ではなくGoogle DriveのファイルID基準で20曲単位に整理するApps Scriptを収録しています。
+
+### Drive側の前提フォルダ
+
+```text
+Tokyo ChillMatic FM/
+├── Incoming/
+└── Videos/
+```
+
+### 使い方
+
+1. Google Apps Scriptで新規プロジェクトを作成します。
+2. `google_apps_script/suno_organizer.gs` の内容を貼り付けます。
+3. 関数 `runSunoOrganizer` を実行します。
+4. 初回のみGoogle Driveへのアクセス権限を承認します。
+
+### 動作
+
+- `Incoming` 内の `.mp3` が20曲未満なら、ログに「20曲未満のため処理なし」と出して終了します。
+- 20曲以上ある場合、`Videos` 内の既存 `video_XXX` 番号を確認し、重複しない次の番号で `video_001` のようなフォルダを作成します。
+- 各 `video_XXX` 内に `tracks` フォルダを作成します。
+- 同名mp3が複数あっても、Google DriveのファイルIDで対象を管理し、古い順に20曲ずつ `track01.mp3` から `track20.mp3` にリネームして、`Incoming` から `Videos/video_XXX/tracks` へ移動します。
+- 40曲以上ある場合は、20曲単位で繰り返し処理します。
+
+## GitHub Actionsで60分LOFI動画を生成する
+
+Google Driveの `Tokyo ChillMatic FM / Videos / video_001 / tracks` にある `track01.mp3`〜`track20.mp3` を使い、GitHub Actions上のFFmpegで60分MP4を生成できます。
+
+### Drive側に置く素材
+
+`Tokyo ChillMatic FM / Videos / video_001 / tracks`:
+
+```text
+track01.mp3
+track02.mp3
+...
+track20.mp3
+```
+
+`background.png` と `rain.mp3` は必須です。次のどちらかに置いてください。
+
+```text
+Tokyo ChillMatic FM / Videos / video_001 / background.png
+Tokyo ChillMatic FM / Videos / video_001 / rain.mp3
+```
+
+または共通素材として次に置いても使えます。
+
+```text
+Tokyo ChillMatic FM / Videos / background.png
+Tokyo ChillMatic FM / Videos / rain.mp3
+```
+
+`rain_overlay.mp4` は任意です。存在する場合だけ背景画像の上に薄く重ねます。
+
+### GitHub Secrets
+
+GitHub ActionsからGoogle Driveを読むため、リポジトリのSecretsに次を追加してください。
+
+```text
+GOOGLE_SERVICE_ACCOUNT_JSON
+```
+
+値にはGoogle CloudのサービスアカウントJSONを丸ごと貼り付けます。Drive側では、`Tokyo ChillMatic FM` フォルダをそのサービスアカウントのメールアドレスに閲覧共有してください。
+
+### 実行方法
+
+1. GitHubのリポジトリ画面を開く。
+2. 上部の **Actions** をクリックする。
+3. 左側から **Generate LOFI video** を選ぶ。
+4. **Run workflow** をクリックする。
+5. `video_number` に `001` を入力する。
+6. `output_file` は通常 `Tokyo_Memory_Archive_001.mp4` のままでOKです。
+7. もう一度 **Run workflow** を押す。
+8. 完了後、実行結果ページ下部の **Artifacts** からMP4をダウンロードする。
+
+### 生成内容
+
+- `track01.mp3`〜`track20.mp3` を番号順に連結します。
+- 60分に足りない場合は音楽をループし、60分で切ります。
+- `rain.mp3` を小さめの音量でミックスします。
+- `background.png` を1920x1080の背景にします。
+- `rain_overlay.mp4` がある場合は薄く重ねます。
+- 出力はH.264 / AAC / MP4です。
+- 標準の完成ファイル名は `Tokyo_Memory_Archive_001.mp4` です。
