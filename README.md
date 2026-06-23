@@ -468,4 +468,72 @@ ENABLE_LOGO=0 scripts/generate_lofi_video.sh
 - Google Driveアップロードステップは `continue-on-error: true` のため、Driveアップロードに失敗してもArtifact保存済みのMP4は維持されます。
 - Driveアップロードに失敗した場合は、Actionsログの **Upload MP4 to Google Drive** ステップでエラー内容を確認してください。
 
-> YouTubeへの自動アップロードはまだ行いません。まずはスマホでArtifactをダウンロードする作業をなくすため、DriveへのMP4配置だけを自動化しています。
+## GitHub ActionsでMP4をYouTubeへ非公開アップロードする
+
+`Generate LOFI video` workflowは、生成したMP4をGitHub Actions ArtifactとGoogle Drive `Tokyo ChillMatic FM / Outputs` に保存したあと、YouTubeにも自動アップロードできます。YouTube側の公開設定はworkflow内で固定しており、必ず **非公開（private）** としてアップロードします。サムネイルの自動設定は行いません。
+
+### YouTube APIの認証方式
+
+YouTube Data APIの動画アップロードには、YouTubeチャンネルへの操作権限を持つユーザーのOAuth 2.0認可が必要です。Google Drive連携で使っているサービスアカウント方式では、通常のYouTubeチャンネルへ動画をアップロードできません。
+
+このリポジトリでは、GitHub Actions上で次の流れを使います。
+
+1. Google CloudでOAuthクライアントを作成します。
+2. 対象YouTubeチャンネルを操作できるGoogleアカウントで、`https://www.googleapis.com/auth/youtube.upload` スコープを許可します。
+3. 取得したrefresh tokenをGitHub Secretsへ保存します。
+4. workflow実行時にrefresh tokenからaccess tokenを取得し、YouTube Data API `videos.insert` でMP4をアップロードします。
+
+### Google Cloud / YouTube API設定
+
+1. Google Cloud Consoleでプロジェクトを開きます。
+2. **YouTube Data API v3** を有効化します。
+3. **OAuth consent screen** を設定します。
+   - 外部公開しない個人運用の場合でも、テストユーザーに対象Googleアカウントを追加してください。
+   - スコープは `https://www.googleapis.com/auth/youtube.upload` を使います。
+4. **Credentials** でOAuthクライアントIDを作成します。
+   - 種類は、手元でrefresh tokenを取得しやすい方式（Desktop appなど）で構いません。
+5. 対象YouTubeチャンネルを操作できるGoogleアカウントでOAuth認可を行い、refresh tokenを取得します。
+
+### GitHub Secrets
+
+リポジトリの **Settings → Secrets and variables → Actions → Repository secrets** に次を登録してください。
+
+```text
+YOUTUBE_CLIENT_ID
+YOUTUBE_CLIENT_SECRET
+YOUTUBE_REFRESH_TOKEN
+```
+
+既存のGoogle Drive連携用secretも引き続き必要です。
+
+```text
+GOOGLE_SERVICE_ACCOUNT_JSON
+```
+
+### workflow入力
+
+**Generate LOFI video** の **Run workflow** で、YouTube用に次の入力を指定できます。
+
+- `youtube_title` — YouTube動画タイトル。
+- `youtube_description` — YouTube動画説明文。
+- `youtube_tags` — カンマ区切りタグ。例: `lofi, chill, tokyo, rain, study music`
+
+### 実行手順
+
+1. GitHubの **Actions** タブを開きます。
+2. **Generate LOFI video** workflowを選びます。
+3. **Run workflow** を押します。
+4. `video_number` と `output_file` を指定します。
+5. `youtube_title`、`youtube_description`、`youtube_tags` を指定します。
+6. workflowを実行します。
+7. 完了後、以下を確認します。
+   - GitHub Actions ArtifactにMP4が保存されていること。
+   - Google Driveの `Tokyo ChillMatic FM / Outputs` にMP4が保存されていること。
+   - YouTube Studioに非公開動画としてアップロードされていること。
+
+### 失敗時の挙動
+
+- MP4生成とArtifact保存はYouTubeアップロードより先に実行されます。
+- Google Drive保存もYouTubeアップロードより先に実行されます。
+- YouTubeアップロードステップは `continue-on-error: true` のため、YouTube API認証・クォータ・通信などが原因で失敗しても、MP4生成、Artifact保存、Google Drive保存は失敗扱いになりません。
+- YouTubeアップロードに失敗した場合は、Actionsログの **Upload private video to YouTube** ステップでエラー内容を確認してください。
