@@ -8,6 +8,8 @@ OUTPUT_FILE="${OUTPUT_FILE:-Tokyo_Memory_Archive_001.mp4}"
 TARGET_SECONDS="${TARGET_SECONDS:-3600}"
 ENABLE_WAVEFORM="${ENABLE_WAVEFORM:-1}"
 ENABLE_LOGO="${ENABLE_LOGO:-1}"
+ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-1}"
+ENABLE_FILM_DUST="${ENABLE_FILM_DUST:-1}"
 mkdir -p "$OUTPUT_DIR"
 
 CONCAT_FILE="$OUTPUT_DIR/tracks_concat.txt"
@@ -74,13 +76,56 @@ HAS_WAVEFORM=0
 if [[ "$ENABLE_WAVEFORM" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]showwaves[[:space:]]'; then
     HAS_WAVEFORM=1
-    echo "Audio waveform visualizer enabled."
+    echo "Audio waveform visualizer enabled: 1536x180, centered near the bottom, white/gray at ~72% opacity."
   else
     echo "FFmpeg showwaves filter not available; continuing without waveform."
   fi
 else
   echo "Audio waveform visualizer disabled by ENABLE_WAVEFORM=$ENABLE_WAVEFORM"
 fi
+
+HAS_FILM_GRAIN=0
+if [[ "$ENABLE_FILM_GRAIN" == "1" ]]; then
+  if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]noise[[:space:]]'; then
+    HAS_FILM_GRAIN=1
+    echo "Subtle moving film grain enabled."
+  else
+    echo "FFmpeg noise filter not available; continuing without film grain."
+  fi
+else
+  echo "Film grain disabled by ENABLE_FILM_GRAIN=$ENABLE_FILM_GRAIN"
+fi
+
+HAS_FILM_DUST=0
+if [[ "$ENABLE_FILM_DUST" == "1" ]]; then
+  HAS_FILM_DUST=1
+  echo "Light procedural film dust enabled."
+else
+  echo "Film dust disabled by ENABLE_FILM_DUST=$ENABLE_FILM_DUST"
+fi
+
+log_output_metadata() {
+  local output_path="$1"
+  if [[ ! -f "$output_path" ]]; then
+    echo "Output metadata unavailable; file was not created: $output_path" >&2
+    return 1
+  fi
+
+  echo "Generated file: $output_path"
+  stat -c 'Generated file size: %s bytes' "$output_path"
+
+  if command -v ffprobe >/dev/null 2>&1; then
+    ffprobe -v error \
+      -select_streams v:0 \
+      -show_entries stream=width,height,duration \
+      -of default=noprint_wrappers=1 "$output_path"
+    ffprobe -v error \
+      -show_entries format=duration,size \
+      -of default=noprint_wrappers=1 "$output_path"
+  else
+    echo "ffprobe not found; skipping generated resolution and duration log." >&2
+  fi
+}
 
 run_ffmpeg() {
   local include_optional_visuals="$1"
@@ -123,7 +168,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]showwaves=s=720x96:mode=line:rate=30:colors=white@0.70,format=rgba[wave];"
+    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]showwaves=s=1536x180:mode=p2p:rate=30:colors=0xeeeeee@0.72,format=rgba,gblur=sigma=1.1[wave];"
   else
     filter_complex+="[audio_mix]anull[aout];"
   fi
@@ -142,21 +187,41 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-64:shortest=0,format=yuv420p[vout]"
+    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-64:shortest=0[tmp_wave];"
+    current_video="tmp_wave"
+  fi
+
+  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_DUST" -eq 1 ]]; then
+    filter_complex+="[${current_video}]drawbox=x=mod(n*431\,1920):y=mod(n*197\,1080):w=3:h=3:color=black@0.16:t=fill:enable='lt(mod(t\,5.5)\,0.10)',drawbox=x=mod(n*719+320\,1920):y=mod(n*313+140\,1080):w=2:h=2:color=white@0.10:t=fill:enable='lt(mod(t+1.7\,8.0)\,0.08)',drawbox=x=mod(n*157+860\,1920):y=mod(n*89+220\,1080):w=1:h=260:color=white@0.07:t=fill:enable='between(mod(t+2.3\,13.0)\,0.0\,0.16)'[tmp_dust];"
+    current_video="tmp_dust"
+  fi
+
+  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
+    filter_complex+="[${current_video}]format=yuv420p,noise=alls=7:allf=t+u[vout]"
   else
     filter_complex+="[${current_video}]format=yuv420p[vout]"
   fi
 
-  ffmpeg -y \
-    "${inputs[@]}" \
-    -filter_complex "$filter_complex" \
-    -map "[vout]" -map "[aout]" -t "$TARGET_SECONDS" \
-    -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p \
-    -c:a aac -b:a 192k -ar 48000 -movflags +faststart \
+  local -a ffmpeg_cmd=(
+    ffmpeg -y
+    "${inputs[@]}"
+    -filter_complex "$filter_complex"
+    -map "[vout]" -map "[aout]" -t "$TARGET_SECONDS"
+    -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p
+    -c:a aac -b:a 192k -ar 48000 -movflags +faststart
     "$OUTPUT_DIR/$OUTPUT_FILE"
+  )
+
+  echo "FFmpeg command:"
+  printf ' %q' "${ffmpeg_cmd[@]}"
+  echo
+
+  "${ffmpeg_cmd[@]}"
 }
 
 if ! run_ffmpeg 1; then
-  echo "Optional visual generation failed; retrying without waveform, logo, or rain overlay to prioritize MP4 output." >&2
+  echo "Optional visual generation failed; retrying without waveform, logo, rain overlay, film grain, or dust to prioritize MP4 output." >&2
   run_ffmpeg 0
 fi
+
+log_output_metadata "$OUTPUT_DIR/$OUTPUT_FILE"
