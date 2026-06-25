@@ -10,6 +10,7 @@ ENABLE_WAVEFORM="${ENABLE_WAVEFORM:-1}"
 ENABLE_LOGO="${ENABLE_LOGO:-1}"
 ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-1}"
 ENABLE_FILM_DUST="${ENABLE_FILM_DUST:-1}"
+FAIL_ON_OPTIONAL_VISUAL_FALLBACK="${FAIL_ON_OPTIONAL_VISUAL_FALLBACK:-0}"
 mkdir -p "$OUTPUT_DIR"
 
 CONCAT_FILE="$OUTPUT_DIR/tracks_concat.txt"
@@ -76,7 +77,7 @@ HAS_WAVEFORM=0
 if [[ "$ENABLE_WAVEFORM" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]showwaves[[:space:]]'; then
     HAS_WAVEFORM=1
-    echo "Audio waveform visualizer enabled: 1536x180, centered near the bottom, white/gray at ~72% opacity."
+    echo "Audio waveform visualizer enabled: showwaves, 1680x300, centered near the bottom, white/gray, boosted for visible motion."
   else
     echo "FFmpeg showwaves filter not available; continuing without waveform."
   fi
@@ -88,7 +89,7 @@ HAS_FILM_GRAIN=0
 if [[ "$ENABLE_FILM_GRAIN" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]noise[[:space:]]'; then
     HAS_FILM_GRAIN=1
-    echo "Subtle moving film grain enabled."
+    echo "Visible moving film grain enabled: FFmpeg noise filter will be applied."
   else
     echo "FFmpeg noise filter not available; continuing without film grain."
   fi
@@ -99,9 +100,24 @@ fi
 HAS_FILM_DUST=0
 if [[ "$ENABLE_FILM_DUST" == "1" ]]; then
   HAS_FILM_DUST=1
-  echo "Light procedural film dust enabled."
+  echo "Visible procedural film dust enabled: animated drawbox dust/scratch filters will be applied."
 else
   echo "Film dust disabled by ENABLE_FILM_DUST=$ENABLE_FILM_DUST"
+fi
+
+if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
+  if [[ "$ENABLE_WAVEFORM" == "1" && "$HAS_WAVEFORM" -ne 1 ]]; then
+    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required showwaves waveform is unavailable." >&2
+    exit 1
+  fi
+  if [[ "$ENABLE_FILM_GRAIN" == "1" && "$HAS_FILM_GRAIN" -ne 1 ]]; then
+    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required noise film grain is unavailable." >&2
+    exit 1
+  fi
+  if [[ "$ENABLE_FILM_DUST" == "1" && "$HAS_FILM_DUST" -ne 1 ]]; then
+    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required procedural film dust is unavailable." >&2
+    exit 1
+  fi
 fi
 
 log_output_metadata() {
@@ -168,7 +184,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]showwaves=s=1536x180:mode=p2p:rate=30:colors=0xeeeeee@0.72,format=rgba,gblur=sigma=1.1[wave];"
+    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]volume=3.2,alimiter=limit=0.98,showwaves=s=1680x300:mode=p2p:rate=30:colors=0xf2f2f2@0.96:scale=sqrt,format=rgba,split=2[wave_core][wave_glow_src];[wave_glow_src]gblur=sigma=6,colorchannelmixer=aa=0.42[wave_glow];[wave_core]gblur=sigma=0.6[wave_line];[wave_glow][wave_line]overlay=0:0:shortest=1[wave];"
   else
     filter_complex+="[audio_mix]anull[aout];"
   fi
@@ -187,19 +203,43 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-64:shortest=0[tmp_wave];"
+    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-48:shortest=0[tmp_wave];"
     current_video="tmp_wave"
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_DUST" -eq 1 ]]; then
-    filter_complex+="[${current_video}]drawbox=x=mod(n*431\,1920):y=mod(n*197\,1080):w=3:h=3:color=black@0.16:t=fill:enable='lt(mod(t\,5.5)\,0.10)',drawbox=x=mod(n*719+320\,1920):y=mod(n*313+140\,1080):w=2:h=2:color=white@0.10:t=fill:enable='lt(mod(t+1.7\,8.0)\,0.08)',drawbox=x=mod(n*157+860\,1920):y=mod(n*89+220\,1080):w=1:h=260:color=white@0.07:t=fill:enable='between(mod(t+2.3\,13.0)\,0.0\,0.16)'[tmp_dust];"
+    filter_complex+="[${current_video}]drawbox=x=mod(n*431\,1920):y=mod(n*197\,1080):w=5:h=5:color=black@0.28:t=fill:enable='lt(mod(t\,2.2)\,0.18)',drawbox=x=mod(n*719+320\,1920):y=mod(n*313+140\,1080):w=4:h=4:color=white@0.24:t=fill:enable='lt(mod(t+1.1\,3.0)\,0.16)',drawbox=x=mod(n*157+860\,1920):y=mod(n*89+220\,1080):w=2:h=420:color=white@0.16:t=fill:enable='between(mod(t+2.3\,7.0)\,0.0\,0.28)',drawbox=x=mod(n*283+120\,1920):y=mod(n*337+640\,1080):w=7:h=2:color=black@0.20:t=fill:enable='lt(mod(t+0.5\,4.0)\,0.14)'[tmp_dust];"
     current_video="tmp_dust"
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
-    filter_complex+="[${current_video}]format=yuv420p,noise=alls=7:allf=t+u[vout]"
+    filter_complex+="[${current_video}]format=yuv420p,noise=alls=18:allf=t+u[vout]"
   else
     filter_complex+="[${current_video}]format=yuv420p[vout]"
+  fi
+
+  echo "Optional visual filter status:"
+  if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
+    echo "  showwaves: APPLIED (1680x300, p2p, 30fps, boosted audio, thick glow line)"
+    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-48)"
+  else
+    echo "  showwaves: NOT APPLIED"
+    echo "  waveform overlay: NOT APPLIED"
+  fi
+  if [[ "$include_optional_visuals" == "1" && "$HAS_RAIN_OVERLAY" -eq 1 ]]; then
+    echo "  rain overlay: APPLIED"
+  else
+    echo "  rain overlay: NOT APPLIED"
+  fi
+  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_DUST" -eq 1 ]]; then
+    echo "  dust: APPLIED (animated drawbox specks and scratches)"
+  else
+    echo "  dust: NOT APPLIED"
+  fi
+  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
+    echo "  noise: APPLIED (alls=18:allf=t+u)"
+  else
+    echo "  noise: NOT APPLIED"
   fi
 
   local -a ffmpeg_cmd=(
@@ -221,6 +261,10 @@ run_ffmpeg() {
 
 if ! run_ffmpeg 1; then
   echo "Optional visual generation failed; retrying without waveform, logo, rain overlay, film grain, or dust to prioritize MP4 output." >&2
+  if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
+    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; failing instead of generating a fallback video without optional visuals." >&2
+    exit 1
+  fi
   run_ffmpeg 0
 fi
 
