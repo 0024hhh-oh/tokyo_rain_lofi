@@ -42,11 +42,78 @@ jobs:
           OUTPUT_DIR: dist
           OUTPUT_FILE: ${{ inputs.output_file }}
           TARGET_SECONDS: "30"
+          FAIL_ON_OPTIONAL_VISUAL_FALLBACK: "1"
         run: scripts/generate_lofi_video.sh
 
-      - name: Upload test MP4 artifact
+      - name: Probe generated 30 second test MP4
+        env:
+          OUTPUT_PATH: dist/${{ inputs.output_file }}
+        run: |
+          set -euo pipefail
+
+          echo "Generated MP4 metadata:"
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate \
+            -show_entries stream=index,codec_type,codec_name,width,height,r_frame_rate,duration \
+            -of default=noprint_wrappers=1 "$OUTPUT_PATH"
+
+          duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUTPUT_PATH")"
+          echo "Generated MP4 duration_seconds=$duration"
+
+      - name: Extract review frames and waveform crops
+        env:
+          OUTPUT_PATH: dist/${{ inputs.output_file }}
+          REVIEW_DIR: dist/review_frames
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$REVIEW_DIR"
+
+          for timestamp in 0 15 29; do
+            label="$(printf '%02d' "$timestamp")"
+            ffmpeg -y -ss "$timestamp" -i "$OUTPUT_PATH" -frames:v 1 \
+              "$REVIEW_DIR/frame_${label}s.png"
+
+            ffmpeg -y -ss "$timestamp" -i "$OUTPUT_PATH" -frames:v 1 \
+              -vf "crop=1680:300:(iw-1680)/2:ih-300-48" \
+              "$REVIEW_DIR/waveform_crop_${label}s.png"
+          done
+
+          ffmpeg -y \
+            -i "$REVIEW_DIR/waveform_crop_00s.png" \
+            -i "$REVIEW_DIR/waveform_crop_15s.png" \
+            -filter_complex "blend=all_mode=difference,format=gray" \
+            -frames:v 1 "$REVIEW_DIR/waveform_diff_00s_15s.png"
+
+          ffmpeg -y \
+            -i "$REVIEW_DIR/waveform_crop_15s.png" \
+            -i "$REVIEW_DIR/waveform_crop_29s.png" \
+            -filter_complex "blend=all_mode=difference,format=gray" \
+            -frames:v 1 "$REVIEW_DIR/waveform_diff_15s_29s.png"
+
+          echo "Review frame files:"
+          find "$REVIEW_DIR" -maxdepth 1 -type f -print | sort
+
+          echo "Waveform crop SHA-256 hashes:"
+          sha256sum "$REVIEW_DIR"/waveform_crop_*.png
+
+          echo "Waveform difference image SHA-256 hashes:"
+          sha256sum "$REVIEW_DIR"/waveform_diff_*.png
+
+          if cmp -s "$REVIEW_DIR/waveform_crop_00s.png" "$REVIEW_DIR/waveform_crop_15s.png" &&
+             cmp -s "$REVIEW_DIR/waveform_crop_15s.png" "$REVIEW_DIR/waveform_crop_29s.png"; then
+            echo "Waveform crop images are byte-identical at 0s, 15s, and 29s." >&2
+            echo "This indicates the waveform area may not be changing." >&2
+            exit 1
+          fi
+
+          echo "Waveform crop images differ across timestamps; waveform/visual movement is observable in Actions artifacts."
+
+      - name: Upload test MP4 and review frame artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.output_file }}
-          path: dist/${{ inputs.output_file }}
+          path: |
+            dist/${{ inputs.output_file }}
+            dist/review_frames/*.png
           if-no-files-found: error
