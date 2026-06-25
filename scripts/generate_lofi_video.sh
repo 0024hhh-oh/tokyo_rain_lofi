@@ -99,8 +99,7 @@ fi
 
 HAS_FILM_DUST=0
 if [[ "$ENABLE_FILM_DUST" == "1" ]]; then
-  HAS_FILM_DUST=1
-  echo "Visible procedural film dust enabled: animated drawbox dust/scratch filters will be applied."
+  echo "Procedural film dust disabled for FFmpeg stability; skipping drawbox dust filters."
 else
   echo "Film dust disabled by ENABLE_FILM_DUST=$ENABLE_FILM_DUST"
 fi
@@ -112,10 +111,6 @@ if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
   fi
   if [[ "$ENABLE_FILM_GRAIN" == "1" && "$HAS_FILM_GRAIN" -ne 1 ]]; then
     echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required noise film grain is unavailable." >&2
-    exit 1
-  fi
-  if [[ "$ENABLE_FILM_DUST" == "1" && "$HAS_FILM_DUST" -ne 1 ]]; then
-    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required procedural film dust is unavailable." >&2
     exit 1
   fi
 fi
@@ -205,11 +200,6 @@ run_ffmpeg() {
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
     filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-48:shortest=0[tmp_wave];"
     current_video="tmp_wave"
-  fi
-
-  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_DUST" -eq 1 ]]; then
-    filter_complex+="[${current_video}]drawbox=x=172:y=226:w=5:h=5:color=black@0.28:t=fill:enable='lt(mod(t\,2.2)\,0.18)',drawbox=x=1284:y=742:w=4:h=4:color=white@0.24:t=fill:enable='lt(mod(t+1.1\,3.0)\,0.16)',drawbox=x=944:y=118:w=2:h=420:color=white@0.16:t=fill:enable='between(mod(t+2.3\,7.0)\,0.0\,0.28)',drawbox=x=412:y=884:w=7:h=2:color=black@0.20:t=fill:enable='lt(mod(t+0.5\,4.0)\,0.14)',drawbox=x=1510:y=360:w=6:h=6:color=white@0.20:t=fill:enable='lt(mod(t+2.0\,5.0)\,0.20)',drawbox=x=744:y=690:w=3:h=3:color=black@0.24:t=fill:enable='lt(mod(t+3.0\,4.5)\,0.18)'[tmp_dust];"
-    current_video="tmp_dust"
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
