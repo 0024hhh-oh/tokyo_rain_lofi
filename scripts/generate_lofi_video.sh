@@ -99,8 +99,7 @@ fi
 
 HAS_FILM_DUST=0
 if [[ "$ENABLE_FILM_DUST" == "1" ]]; then
-  HAS_FILM_DUST=1
-  echo "Visible procedural film dust enabled: animated drawbox dust/scratch filters will be applied."
+  echo "Film dust requested but disabled for FFmpeg stability; continuing without dust."
 else
   echo "Film dust disabled by ENABLE_FILM_DUST=$ENABLE_FILM_DUST"
 fi
@@ -112,10 +111,6 @@ if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
   fi
   if [[ "$ENABLE_FILM_GRAIN" == "1" && "$HAS_FILM_GRAIN" -ne 1 ]]; then
     echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required noise film grain is unavailable." >&2
-    exit 1
-  fi
-  if [[ "$ENABLE_FILM_DUST" == "1" && "$HAS_FILM_DUST" -ne 1 ]]; then
-    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required procedural film dust is unavailable." >&2
     exit 1
   fi
 fi
@@ -207,11 +202,6 @@ run_ffmpeg() {
     current_video="tmp_wave"
   fi
 
-  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_DUST" -eq 1 ]]; then
-    filter_complex+="[${current_video}]drawbox=x=mod(n*431\,1920):y=mod(n*197\,1080):w=5:h=5:color=black@0.28:t=fill:enable='lt(mod(t\,2.2)\,0.18)',drawbox=x=mod(n*719+320\,1920):y=mod(n*313+140\,1080):w=4:h=4:color=white@0.24:t=fill:enable='lt(mod(t+1.1\,3.0)\,0.16)',drawbox=x=mod(n*157+860\,1920):y=mod(n*89+220\,1080):w=2:h=420:color=white@0.16:t=fill:enable='between(mod(t+2.3\,7.0)\,0.0\,0.28)',drawbox=x=mod(n*283+120\,1920):y=mod(n*337+640\,1080):w=7:h=2:color=black@0.20:t=fill:enable='lt(mod(t+0.5\,4.0)\,0.14)'[tmp_dust];"
-    current_video="tmp_dust"
-  fi
-
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
     filter_complex+="[${current_video}]format=yuv420p,noise=alls=18:allf=t+u[vout]"
   else
@@ -231,11 +221,7 @@ run_ffmpeg() {
   else
     echo "  rain overlay: NOT APPLIED"
   fi
-  if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_DUST" -eq 1 ]]; then
-    echo "  dust: APPLIED (animated drawbox specks and scratches)"
-  else
-    echo "  dust: NOT APPLIED"
-  fi
+  echo "  dust: NOT APPLIED"
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
     echo "  noise: APPLIED (alls=18:allf=t+u)"
   else
