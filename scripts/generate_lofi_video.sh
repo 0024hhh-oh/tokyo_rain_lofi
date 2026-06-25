@@ -77,7 +77,7 @@ HAS_WAVEFORM=0
 if [[ "$ENABLE_WAVEFORM" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]showwaves[[:space:]]'; then
     HAS_WAVEFORM=1
-    echo "Audio waveform visualizer enabled: showwaves, 1680x300, centered near the bottom, white/gray, boosted for visible motion."
+    echo "Audio waveform visualizer enabled: showwaves, 1840x150, centered near the bottom, white/gray, subtle glow, thicker visible line."
   else
     echo "FFmpeg showwaves filter not available; continuing without waveform."
   fi
@@ -89,7 +89,7 @@ HAS_FILM_GRAIN=0
 if [[ "$ENABLE_FILM_GRAIN" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]noise[[:space:]]'; then
     HAS_FILM_GRAIN=1
-    echo "Visible moving film grain enabled: FFmpeg noise filter will be applied."
+    echo "Visible LOFI/VHS film grain enabled: FFmpeg noise filter will be applied."
   else
     echo "FFmpeg noise filter not available; continuing without film grain."
   fi
@@ -179,7 +179,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]volume=3.2,alimiter=limit=0.98,showwaves=s=1680x300:mode=p2p:rate=30:colors=0xf2f2f2@0.96:scale=sqrt,format=rgba,split=2[wave_core][wave_glow_src];[wave_glow_src]gblur=sigma=6,colorchannelmixer=aa=0.42[wave_glow];[wave_core]gblur=sigma=0.6[wave_line];[wave_glow][wave_line]overlay=0:0:shortest=1[wave];"
+    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]volume=2.6,alimiter=limit=0.98,showwaves=s=1840x150:mode=p2p:rate=30:colors=0xf4f4f4@0.92:scale=sqrt,format=rgba,split=3[wave_core_a][wave_core_b][wave_glow_src];[wave_glow_src]gblur=sigma=4,colorchannelmixer=aa=0.28[wave_glow];[wave_core_a]gblur=sigma=0.45[wave_line_a];[wave_core_b]gblur=sigma=1.15,colorchannelmixer=aa=0.44[wave_line_b];[wave_glow][wave_line_b]overlay=0:0:shortest=1[wave_thick];[wave_thick][wave_line_a]overlay=0:0:shortest=1[wave];"
   else
     filter_complex+="[audio_mix]anull[aout];"
   fi
@@ -198,20 +198,20 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-48:shortest=0[tmp_wave];"
+    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-62:shortest=0[tmp_wave];"
     current_video="tmp_wave"
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
-    filter_complex+="[${current_video}]format=yuv420p,noise=alls=18:allf=t+u[vout]"
+    filter_complex+="[${current_video}]format=yuv420p,noise=alls=24:allf=t+u[vout]"
   else
     filter_complex+="[${current_video}]format=yuv420p[vout]"
   fi
 
   echo "Optional visual filter status:"
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    echo "  showwaves: APPLIED (1680x300, p2p, 30fps, boosted audio, thick glow line)"
-    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-48)"
+    echo "  showwaves: APPLIED (1840x150, p2p, 30fps, boosted audio, subtle glow, thicker line)"
+    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-62)"
   else
     echo "  showwaves: NOT APPLIED"
     echo "  waveform overlay: NOT APPLIED"
@@ -223,7 +223,7 @@ run_ffmpeg() {
   fi
   echo "  dust: NOT APPLIED"
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
-    echo "  noise: APPLIED (alls=18:allf=t+u)"
+    echo "  noise: APPLIED (alls=24:allf=t+u)"
   else
     echo "  noise: NOT APPLIED"
   fi
