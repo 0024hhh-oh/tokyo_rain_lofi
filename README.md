@@ -537,3 +537,29 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 - Google Drive保存もYouTubeアップロードより先に実行されます。
 - YouTubeアップロードステップは `continue-on-error: true` のため、YouTube API認証・クォータ・通信などが原因で失敗しても、MP4生成、Artifact保存、Google Drive保存は失敗扱いになりません。
 - YouTubeアップロードに失敗した場合は、Actionsログの **Upload private video to YouTube** ステップでエラー内容を確認してください。
+
+## GitHub Actions: 検証用LOFI動画生成とアップロード
+
+`.github/workflows/generate_lofi_video.yml` は手動実行（`workflow_dispatch`）で、MP4生成、Google Driveアップロード、YouTube非公開アップロードを順に検証できます。
+
+### 推奨実行手順（まず3分）
+1. GitHub の **Actions** タブを開きます。
+2. **Generate LOFI video** workflow を選びます。
+3. **Run workflow** を押します。
+4. `duration_minutes` はデフォルトの `3` のまま実行します。
+5. 成功したら artifact、Google Drive、YouTube Studio の非公開動画を確認します。
+
+### 本番用に60分で実行する場合
+- 3分検証で MP4生成、Google Driveアップロード、YouTube非公開アップロードまで通ることを確認してから、`duration_minutes` を `60` に変更して実行してください。
+- 入力値は `1`〜`60` 分のみ許可しています。
+
+### FFmpeg高速化設定
+GitHub Actions では長時間エンコードの検証前にアップロード経路を確認するため、以下の高速化設定で実行します。
+
+- `FFMPEG_PRESET=ultrafast`
+- `FFMPEG_CRF=30`
+- `ENABLE_WAVEFORM=0`
+- `ENABLE_FILM_GRAIN=0`
+- `ENABLE_FILM_DUST=0`
+
+これにより、まず短い3分MP4で GitHub Actions 上の処理時間を抑え、Drive/YouTube連携の検証を優先します。

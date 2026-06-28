@@ -6,6 +6,8 @@ TRACK_DIR="$ASSET_DIR/tracks"
 OUTPUT_DIR="${OUTPUT_DIR:-dist}"
 OUTPUT_FILE="${OUTPUT_FILE:-Tokyo_Memory_Archive_001.mp4}"
 TARGET_SECONDS="${TARGET_SECONDS:-3600}"
+FFMPEG_PRESET="${FFMPEG_PRESET:-ultrafast}"
+FFMPEG_CRF="${FFMPEG_CRF:-30}"
 ENABLE_WAVEFORM="${ENABLE_WAVEFORM:-1}"
 ENABLE_LOGO="${ENABLE_LOGO:-1}"
 ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-1}"
@@ -233,7 +235,7 @@ run_ffmpeg() {
     "${inputs[@]}"
     -filter_complex "$filter_complex"
     -map "[vout]" -map "[aout]" -t "$TARGET_SECONDS"
-    -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p
+    -c:v libx264 -preset "$FFMPEG_PRESET" -crf "$FFMPEG_CRF" -pix_fmt yuv420p
     -c:a aac -b:a 192k -ar 48000 -movflags +faststart
     "$OUTPUT_DIR/$OUTPUT_FILE"
   )
