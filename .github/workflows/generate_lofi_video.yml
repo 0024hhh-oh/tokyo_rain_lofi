@@ -27,6 +27,11 @@ on:
         description: "生成する動画の長さ（検証は3、本番は60）"
         required: true
         default: "3"
+      upload_to_drive:
+        description: "生成したMP4をGoogle Driveへアップロードする"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   generate:
@@ -84,6 +89,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload MP4 to Google Drive
+        if: ${{ inputs.upload_to_drive }}
         continue-on-error: true
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
