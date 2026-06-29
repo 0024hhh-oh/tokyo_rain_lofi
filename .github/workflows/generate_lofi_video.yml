@@ -23,6 +23,15 @@ on:
         description: "YouTubeタグ（カンマ区切り）"
         required: false
         default: "lofi, chill, tokyo, rain, study music"
+      duration_minutes:
+        description: "生成する動画の長さ（検証は3、本番は60）"
+        required: true
+        default: "3"
+      upload_to_drive:
+        description: "生成したMP4をGoogle Driveへアップロードする"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   generate:
@@ -48,13 +57,29 @@ jobs:
             --video-number "${{ inputs.video_number }}" \
             --output-dir video_assets
 
-      - name: Generate 60 minute MP4
+      - name: Generate MP4
         env:
           ASSET_DIR: video_assets
           OUTPUT_DIR: dist
           OUTPUT_FILE: ${{ inputs.output_file }}
-          TARGET_SECONDS: "3600"
-        run: scripts/generate_lofi_video.sh
+          DURATION_MINUTES: ${{ inputs.duration_minutes }}
+          FFMPEG_PRESET: ultrafast
+          FFMPEG_CRF: "30"
+          ENABLE_WAVEFORM: "0"
+          ENABLE_FILM_GRAIN: "0"
+          ENABLE_FILM_DUST: "0"
+        run: |
+          if ! [[ "${DURATION_MINUTES}" =~ ^[0-9]+$ ]]; then
+            echo "duration_minutes must be a positive integer: ${DURATION_MINUTES}" >&2
+            exit 1
+          fi
+          if (( DURATION_MINUTES < 1 || DURATION_MINUTES > 60 )); then
+            echo "duration_minutes must be between 1 and 60: ${DURATION_MINUTES}" >&2
+            exit 1
+          fi
+          export TARGET_SECONDS=$((DURATION_MINUTES * 60))
+          echo "Generating ${DURATION_MINUTES} minute MP4 (${TARGET_SECONDS} seconds)."
+          scripts/generate_lofi_video.sh
 
       - name: Upload MP4 artifact
         uses: actions/upload-artifact@v4
@@ -64,6 +89,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload MP4 to Google Drive
+        if: ${{ inputs.upload_to_drive }}
         continue-on-error: true
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
