@@ -15,6 +15,9 @@ from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg"}
+FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+ROOT_FOLDER = "Tokyo ChillMatic FM"
+ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
 
 
 def quote_drive_query(value: str) -> str:
@@ -41,7 +44,7 @@ def get_drive_service():
 def find_single_folder(service, name: str, parent_id: str | None = None) -> dict:
     safe_name = quote_drive_query(name)
     query = (
-        "mimeType = 'application/vnd.google-apps.folder' "
+        f"mimeType = '{FOLDER_MIME_TYPE}' "
         f"and name = '{safe_name}' "
         "and trashed = false"
     )
@@ -61,6 +64,23 @@ def find_single_folder(service, name: str, parent_id: str | None = None) -> dict
     if len(folders) > 1:
         raise RuntimeError(f"同名フォルダが複数あります: {name}")
     return folders[0]
+
+
+def get_folder_by_id(service, folder_id: str) -> dict:
+    folder = service.files().get(
+        fileId=folder_id,
+        fields="id,name,mimeType",
+        supportsAllDrives=True,
+    ).execute()
+    if folder.get("mimeType") != FOLDER_MIME_TYPE:
+        raise RuntimeError(f"Google Drive ID is not a folder: {folder_id}")
+    return folder
+
+
+def resolve_root_folder(service, root_folder_name: str, root_folder_id: str | None = None) -> dict:
+    if root_folder_id:
+        return get_folder_by_id(service, root_folder_id)
+    return find_single_folder(service, root_folder_name)
 
 
 def find_optional_file(service, name: str, parent_id: str) -> dict | None:
@@ -111,10 +131,10 @@ def download_file(service, file_id: str, destination: Path) -> None:
             _, done = downloader.next_chunk()
 
 
-def download_legacy_video_folder(service, video_number: str, output_dir: Path) -> None:
+def download_legacy_video_folder(service, video_number: str, output_dir: Path, root_folder_id: str | None = None) -> None:
     video_folder_name = f"video_{str(video_number).zfill(3)}"
     tracks_dir = output_dir / "tracks"
-    root = find_single_folder(service, "Tokyo ChillMatic FM")
+    root = resolve_root_folder(service, ROOT_FOLDER, root_folder_id)
     videos = find_single_folder(service, "Videos", root["id"])
     video = find_single_folder(service, video_folder_name, videos["id"])
     tracks = find_single_folder(service, "tracks", video["id"])
@@ -176,6 +196,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--video-number", default="001", help="video_XXX の番号。例: 001")
     parser.add_argument("--drive-folder-id", help="incoming内の作品フォルダID。指定時はこのフォルダから直接取得します。")
+    parser.add_argument("--root-folder-id", default=os.environ.get(ROOT_FOLDER_ID_ENV), help=f"DriveルートフォルダID（{ROOT_FOLDER_ID_ENV} が指定されていればID優先）")
     parser.add_argument("--output-dir", default="video_assets", help="ダウンロード先ディレクトリ")
     args = parser.parse_args()
 
@@ -184,7 +205,7 @@ def main() -> None:
     if args.drive_folder_id:
         download_incoming_work_folder(service, args.drive_folder_id, output_dir)
     else:
-        download_legacy_video_folder(service, args.video_number, output_dir)
+        download_legacy_video_folder(service, args.video_number, output_dir, args.root_folder_id)
 
 
 if __name__ == "__main__":

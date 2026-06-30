@@ -26,5 +26,6 @@ jobs:
       - name: Move ready Projects folders to incoming
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
         run: |
           python scripts/drive_projects_ready.py

@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime, timezone
 
 from drive_incoming_queue import (
     FOLDER_MIME,
     IMAGE_EXTENSIONS,
     ROOT_FOLDER,
+    ROOT_FOLDER_ID_ENV,
     ensure_child_folder,
     find_single_folder,
     get_drive_service,
+    resolve_root_folder,
     list_files,
     quote_drive_query,
 )
@@ -81,7 +84,7 @@ def move_folder(service, folder: dict, destination_id: str, dry_run: bool) -> No
 
 def check_projects(args: argparse.Namespace) -> None:
     service = get_drive_service()
-    root = find_single_folder(service, args.root_folder)
+    root = resolve_root_folder(service, args.root_folder, args.root_folder_id)
     projects = find_single_folder(service, args.projects_folder, root["id"])
     incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
     processed = ensure_child_folder(service, root["id"], args.processed_folder)
@@ -122,6 +125,7 @@ def check_projects(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Move complete Projects folders into incoming.")
     parser.add_argument("--root-folder", default=ROOT_FOLDER)
+    parser.add_argument("--root-folder-id", default=os.environ.get(ROOT_FOLDER_ID_ENV), help=f"DriveルートフォルダID（{ROOT_FOLDER_ID_ENV} が指定されていればID優先）")
     parser.add_argument("--projects-folder", default="Projects")
     parser.add_argument("--incoming-folder", default="incoming")
     parser.add_argument("--processed-folder", default="processed")
