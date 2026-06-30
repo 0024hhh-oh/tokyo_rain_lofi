@@ -735,3 +735,61 @@ Google Drive/
 ### 認証情報
 
 既存のSecrets（`GOOGLE_SERVICE_ACCOUNT_JSON`, `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`）をそのまま使います。自動処理ではDriveフォルダ移動を行うため、`GOOGLE_SERVICE_ACCOUNT_JSON` のサービスアカウントが `TokyoChillMatic` 配下の読み取り・移動権限を持っている必要があります。
+
+## iPhone中心のGoogle Drive Projects運用
+
+PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。
+
+### Driveフォルダ構成
+
+```text
+TokyoChillMatic/
+  Projects/
+    SHINBASHI/
+      background.png
+      SHINBASHI 01.mp3
+      SHINBASHI 02.mp3
+      ...
+      SHINBASHI 20.mp3
+  incoming/
+  processed/
+  failed/
+```
+
+### iPhoneでの手順
+
+1. Suno上で曲名を手動で整えます。
+2. iPhoneで音源を手動ダウンロードし、Google Driveの `TokyoChillMatic/Projects/<作品名>/` に保存します。
+3. 背景画像を `background.png` / `background.jpg` / `background.jpeg` のいずれかの名前で同じ作品フォルダに保存します。
+4. 作品フォルダ内が `background.*` 画像1枚 + `.mp3` 音源20曲になったら、ProjectsチェックWorkflowが `incoming` へ移動します。
+5. `incoming` に入った作品フォルダは、既存のスケジュール実行Workflowが検知し、動画生成とYouTubeアップロードの対象になります。
+
+### 自動チェックの動き
+
+- `.github/workflows/check_drive_projects.yml` は手動実行（`workflow_dispatch`）できます。
+- 同Workflowはスケジュールでも30分ごとに `TokyoChillMatic/Projects` を確認します。
+- 完成条件を満たした作品フォルダだけを `incoming` へ移動します。
+- `incoming` への投入後は既存の `Generate LOFI video` Workflowが従来通り処理します。
+- 既存の手動Run Workflowは残しているため、これまで通りDrive番号指定での手動生成も可能です。
+
+### 移動される条件
+
+- `background.*` 画像がちょうど1枚あること。
+- `.mp3` ファイルがちょうど20曲あること。
+- `incoming` に同名フォルダが存在しないこと。
+- `processed` に同名フォルダが存在しないこと。
+- `failed` に同名フォルダが存在しないこと。
+
+### スキップされる条件
+
+- `background.*` 画像が0枚。
+- `background.*` 画像が2枚以上。
+- `.mp3` ファイルが20曲未満。
+- `.mp3` ファイルが20曲超。
+- `incoming` / `processed` / `failed` のいずれかに同名フォルダがある。
+
+### `processed` / `failed` の意味
+
+- `incoming`: 実行キュー専用です。ここに入った作品フォルダは動画生成・YouTubeアップロード対象になります。
+- `processed`: 自動生成とアップロードが成功した作品フォルダの移動先です。同名作品の二重処理防止にも使います。
+- `failed`: 自動生成またはアップロードが失敗した作品フォルダの移動先です。同名作品の再投入防止にも使います。
