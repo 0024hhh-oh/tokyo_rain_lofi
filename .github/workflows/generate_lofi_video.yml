@@ -65,7 +65,8 @@ jobs:
           DURATION_MINUTES: ${{ inputs.duration_minutes }}
           FFMPEG_PRESET: ultrafast
           FFMPEG_CRF: "30"
-          ENABLE_WAVEFORM: "0"
+          ENABLE_WAVEFORM: "1"
+          ENABLE_RAIN_OVERLAY: "0"
           ENABLE_FILM_GRAIN: "0"
           ENABLE_FILM_DUST: "0"
         run: |
