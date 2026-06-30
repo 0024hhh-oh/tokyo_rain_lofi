@@ -14,7 +14,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-ROOT_FOLDER = "TokyoChillMatic"
+ROOT_FOLDER = "Tokyo ChillMatic FM"
+ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 
@@ -64,6 +65,23 @@ def find_single_folder(service, name: str, parent_id: str | None = None) -> dict
     return folders[0]
 
 
+def get_folder_by_id(service, folder_id: str) -> dict:
+    folder = service.files().get(
+        fileId=folder_id,
+        fields="id,name,mimeType",
+        supportsAllDrives=True,
+    ).execute()
+    if folder.get("mimeType") != FOLDER_MIME:
+        raise RuntimeError(f"Google Drive ID is not a folder: {folder_id}")
+    return folder
+
+
+def resolve_root_folder(service, root_folder_name: str, root_folder_id: str | None = None) -> dict:
+    if root_folder_id:
+        return get_folder_by_id(service, root_folder_id)
+    return find_single_folder(service, root_folder_name)
+
+
 def ensure_child_folder(service, parent_id: str, name: str) -> dict:
     query = f"mimeType = '{FOLDER_MIME}' and name = '{quote_drive_query(name)}' and '{quote_drive_query(parent_id)}' in parents and trashed = false"
     folders = list_files(service, query, fields="files(id,name)")
@@ -106,7 +124,7 @@ def safe_file_stem(name: str) -> str:
 
 def detect(args: argparse.Namespace) -> None:
     service = get_drive_service()
-    root = find_single_folder(service, args.root_folder)
+    root = resolve_root_folder(service, args.root_folder, args.root_folder_id)
     incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
     ensure_child_folder(service, root["id"], args.processed_folder)
     ensure_child_folder(service, root["id"], args.failed_folder)
@@ -133,7 +151,7 @@ def move(args: argparse.Namespace) -> None:
     if not args.folder_id:
         raise RuntimeError("--folder-id is required for move")
     service = get_drive_service()
-    root = find_single_folder(service, args.root_folder)
+    root = resolve_root_folder(service, args.root_folder, args.root_folder_id)
     destination = ensure_child_folder(service, root["id"], args.destination)
     file_record = service.files().get(fileId=args.folder_id, fields="id,name,parents", supportsAllDrives=True).execute()
     previous_parents = ",".join(file_record.get("parents", []))
@@ -153,6 +171,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=("detect", "move"))
     parser.add_argument("--root-folder", default=ROOT_FOLDER)
+    parser.add_argument("--root-folder-id", default=os.environ.get(ROOT_FOLDER_ID_ENV), help=f"DriveルートフォルダID（{ROOT_FOLDER_ID_ENV} が指定されていればID優先）")
     parser.add_argument("--incoming-folder", default="incoming")
     parser.add_argument("--processed-folder", default="processed")
     parser.add_argument("--failed-folder", default="failed")
