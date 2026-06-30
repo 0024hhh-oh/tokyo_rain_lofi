@@ -8,10 +8,11 @@ OUTPUT_FILE="${OUTPUT_FILE:-Tokyo_Memory_Archive_001.mp4}"
 TARGET_SECONDS="${TARGET_SECONDS:-3600}"
 FFMPEG_PRESET="${FFMPEG_PRESET:-ultrafast}"
 FFMPEG_CRF="${FFMPEG_CRF:-30}"
-ENABLE_WAVEFORM="${ENABLE_WAVEFORM:-1}"
+ENABLE_WAVEFORM="${ENABLE_WAVEFORM:-0}"
 ENABLE_LOGO="${ENABLE_LOGO:-1}"
-ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-1}"
-ENABLE_FILM_DUST="${ENABLE_FILM_DUST:-1}"
+ENABLE_RAIN_OVERLAY="${ENABLE_RAIN_OVERLAY:-0}"
+ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-0}"
+ENABLE_FILM_DUST="${ENABLE_FILM_DUST:-0}"
 FAIL_ON_OPTIONAL_VISUAL_FALLBACK="${FAIL_ON_OPTIONAL_VISUAL_FALLBACK:-0}"
 mkdir -p "$OUTPUT_DIR"
 
@@ -55,10 +56,14 @@ else
 fi
 
 HAS_RAIN_OVERLAY=0
-if [[ -f "$ASSET_DIR/rain_overlay.mp4" ]]; then
-  HAS_RAIN_OVERLAY=1
+if [[ "$ENABLE_RAIN_OVERLAY" == "1" ]]; then
+  if [[ -f "$ASSET_DIR/rain_overlay.mp4" ]]; then
+    HAS_RAIN_OVERLAY=1
+  else
+    echo "Optional rain overlay not found; continuing without overlay: $ASSET_DIR/rain_overlay.mp4"
+  fi
 else
-  echo "Optional rain overlay not found; continuing without overlay: $ASSET_DIR/rain_overlay.mp4"
+  echo "Rain overlay disabled by ENABLE_RAIN_OVERLAY=$ENABLE_RAIN_OVERLAY"
 fi
 
 LOGO_FILE=""
@@ -79,7 +84,7 @@ HAS_WAVEFORM=0
 if [[ "$ENABLE_WAVEFORM" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]showwaves[[:space:]]'; then
     HAS_WAVEFORM=1
-    echo "Audio waveform visualizer enabled: showwaves, 1840x150, centered near the bottom, white/gray, subtle glow, thicker visible line."
+    echo "Audio waveform visualizer enabled: showwaves, 1600x96, centered near the bottom, white/gray, subtle."
   else
     echo "FFmpeg showwaves filter not available; continuing without waveform."
   fi
@@ -181,7 +186,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]volume=2.6,alimiter=limit=0.98,showwaves=s=1840x150:mode=p2p:rate=30:colors=0xf4f4f4@0.92:scale=sqrt,format=rgba,split=3[wave_core_a][wave_core_b][wave_glow_src];[wave_glow_src]gblur=sigma=4,colorchannelmixer=aa=0.28[wave_glow];[wave_core_a]gblur=sigma=0.45[wave_line_a];[wave_core_b]gblur=sigma=1.15,colorchannelmixer=aa=0.44[wave_line_b];[wave_glow][wave_line_b]overlay=0:0:shortest=1[wave_thick];[wave_thick][wave_line_a]overlay=0:0:shortest=1[wave];"
+    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]volume=1.6,showwaves=s=1600x96:mode=p2p:rate=30:colors=0xf4f4f4@0.55:scale=sqrt,format=rgba[wave];"
   else
     filter_complex+="[audio_mix]anull[aout];"
   fi
@@ -200,7 +205,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-62:shortest=0[tmp_wave];"
+    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-40:shortest=0[tmp_wave];"
     current_video="tmp_wave"
   fi
 
@@ -212,8 +217,8 @@ run_ffmpeg() {
 
   echo "Optional visual filter status:"
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    echo "  showwaves: APPLIED (1840x150, p2p, 30fps, boosted audio, subtle glow, thicker line)"
-    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-62)"
+    echo "  showwaves: APPLIED (1600x96, p2p, 30fps, subtle line)"
+    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-40)"
   else
     echo "  showwaves: NOT APPLIED"
     echo "  waveform overlay: NOT APPLIED"
@@ -248,7 +253,7 @@ run_ffmpeg() {
 }
 
 if ! run_ffmpeg 1; then
-  echo "Optional visual generation failed; retrying without waveform, logo, rain overlay, film grain, or dust to prioritize MP4 output." >&2
+  echo "Optional visual generation failed; retrying without waveform, logo, rain overlay, film grain, or dust to prioritize MP4 output. Check the FFmpeg command above for the failing filter graph." >&2
   if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
     echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; failing instead of generating a fallback video without optional visuals." >&2
     exit 1
