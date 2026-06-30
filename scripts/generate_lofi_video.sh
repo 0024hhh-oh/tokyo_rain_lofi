@@ -84,7 +84,7 @@ HAS_WAVEFORM=0
 if [[ "$ENABLE_WAVEFORM" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]showwaves[[:space:]]'; then
     HAS_WAVEFORM=1
-    echo "Audio waveform visualizer enabled: showwaves, 1600x96, centered near the bottom, white/gray, subtle."
+    echo "Audio waveform visualizer enabled: showwaves, 720x64, centered near the bottom, white/gray, subtle."
   else
     echo "FFmpeg showwaves filter not available; continuing without waveform."
   fi
@@ -186,7 +186,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]volume=1.6,showwaves=s=1600x96:mode=p2p:rate=30:colors=0xf4f4f4@0.55:scale=sqrt,format=rgba[wave];"
+    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]showwaves=s=720x64:mode=line:rate=30:colors=white@0.70,format=rgba[wave];"
   else
     filter_complex+="[audio_mix]anull[aout];"
   fi
@@ -205,7 +205,7 @@ run_ffmpeg() {
   fi
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-40:shortest=0[tmp_wave];"
+    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-64:shortest=0[tmp_wave];"
     current_video="tmp_wave"
   fi
 
@@ -217,8 +217,8 @@ run_ffmpeg() {
 
   echo "Optional visual filter status:"
   if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    echo "  showwaves: APPLIED (1600x96, p2p, 30fps, subtle line)"
-    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-40)"
+    echo "  showwaves: APPLIED (720x64, line, 30fps, subtle line)"
+    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-64)"
   else
     echo "  showwaves: NOT APPLIED"
     echo "  waveform overlay: NOT APPLIED"
