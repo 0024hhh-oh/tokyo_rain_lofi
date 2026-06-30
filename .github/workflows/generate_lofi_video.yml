@@ -69,6 +69,7 @@ jobs:
           ENABLE_RAIN_OVERLAY: "0"
           ENABLE_FILM_GRAIN: "0"
           ENABLE_FILM_DUST: "0"
+          FAIL_ON_OPTIONAL_VISUAL_FALLBACK: "1"
         run: |
           if ! [[ "${DURATION_MINUTES}" =~ ^[0-9]+$ ]]; then
             echo "duration_minutes must be a positive integer: ${DURATION_MINUTES}" >&2
@@ -79,6 +80,8 @@ jobs:
             exit 1
           fi
           export TARGET_SECONDS=$((DURATION_MINUTES * 60))
+          echo "Output file: dist/${OUTPUT_FILE}"
+          echo "showwaves requested: ENABLE_WAVEFORM=${ENABLE_WAVEFORM}"
           echo "Generating ${DURATION_MINUTES} minute MP4 (${TARGET_SECONDS} seconds)."
           scripts/generate_lofi_video.sh
 
@@ -100,7 +103,6 @@ jobs:
             --output-name "${{ inputs.output_file }}"
 
       - name: Upload private video to YouTube
-        continue-on-error: true
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -110,6 +112,7 @@ jobs:
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags }}
         run: |
+          echo "YouTube upload starting: dist/${OUTPUT_FILE}"
           python scripts/upload_youtube_video.py \
             --file "dist/${OUTPUT_FILE}" \
             --title "${YOUTUBE_TITLE}" \
