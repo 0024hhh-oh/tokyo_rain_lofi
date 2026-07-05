@@ -6,21 +6,21 @@ on:
   workflow_dispatch:
     inputs:
       DRIVE_FOLDER_ID:
-        description: "Driveの取得対象フォルダID（指定時はvideo_numberを使わない）"
+        description: "デバッグ用: 指定したDriveフォルダIDを直接処理（通常は空）"
         required: false
         default: ""
       video_number:
-        description: "Driveの video_XXX 番号（DRIVE_FOLDER_ID未指定時のみ使用）"
-        required: true
-        default: "001"
+        description: "デバッグ用: Driveの video_XXX 番号（DRIVE_FOLDER_IDもincomingも未使用時のみ）"
+        required: false
+        default: ""
       output_file:
-        description: "完成MP4ファイル名"
-        required: true
-        default: "Tokyo_Memory_Archive_001.mp4"
+        description: "デバッグ用: 完成MP4ファイル名（通常はincomingフォルダ名から自動設定）"
+        required: false
+        default: ""
       youtube_title:
-        description: "YouTube動画タイトル"
-        required: true
-        default: "Tokyo Memory Archive 001 - Tokyo ChillMatic FM"
+        description: "デバッグ用: YouTube動画タイトル（通常はincomingフォルダ名から自動設定）"
+        required: false
+        default: ""
       youtube_description:
         description: "YouTube動画説明文"
         required: false
@@ -31,11 +31,11 @@ on:
         default: "lofi, chill, tokyo, rain, study music"
       duration_minutes:
         description: "生成する動画の長さ（検証は3、本番は60）"
-        required: true
-        default: "3"
+        required: false
+        default: ""
       upload_to_drive:
         description: "生成したMP4をGoogle Driveへアップロードする"
-        required: true
+        required: false
         type: boolean
         default: false
 
@@ -57,7 +57,7 @@ jobs:
 
       - name: Check Google Drive incoming queue
         id: incoming
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
@@ -65,22 +65,22 @@ jobs:
           python scripts/drive_incoming_queue.py detect
 
       - name: Stop when no incoming work is ready
-        if: ${{ github.event_name != 'workflow_dispatch' && steps.incoming.outputs.found != 'true' }}
+        if: ${{ (github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '') && steps.incoming.outputs.found != 'true' }}
         run: |
           echo "No valid incoming work folder found. Exiting without generation."
 
       - name: Download assets from Google Drive
-        if: ${{ github.event_name == 'workflow_dispatch' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
           WORKFLOW_DISPATCH_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
           WORKFLOW_DISPATCH_VIDEO_NUMBER: ${{ inputs.video_number || '' }}
-          DRIVE_FOLDER_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID || steps.incoming.outputs.work_folder_id }}
+          DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || steps.incoming.outputs.work_folder_id }}
           VIDEO_NUMBER: ${{ inputs.video_number || '001' }}
         run: |
           rm -rf video_assets dist
-          echo "workflow_dispatch inputs: DRIVE_FOLDER_ID=${WORKFLOW_DISPATCH_DRIVE_FOLDER_ID} video_number=${WORKFLOW_DISPATCH_VIDEO_NUMBER}"
+          echo "workflow_dispatch debug inputs: DRIVE_FOLDER_ID=${WORKFLOW_DISPATCH_DRIVE_FOLDER_ID} video_number=${WORKFLOW_DISPATCH_VIDEO_NUMBER}"
           echo "DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}"
           echo "VIDEO_NUMBER=${VIDEO_NUMBER}"
           if [[ -n "${DRIVE_FOLDER_ID}" ]]; then
@@ -96,7 +96,7 @@ jobs:
           fi
 
       - name: Generate MP4
-        if: ${{ github.event_name == 'workflow_dispatch' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
         env:
           ASSET_DIR: video_assets
           OUTPUT_DIR: dist
@@ -125,7 +125,7 @@ jobs:
           scripts/generate_lofi_video.sh
 
       - name: Upload MP4 artifact
-        if: ${{ github.event_name == 'workflow_dispatch' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.output_file || steps.incoming.outputs.output_file }}
@@ -144,7 +144,7 @@ jobs:
             --output-name "${{ inputs.output_file }}"
 
       - name: Upload private video to YouTube
-        if: ${{ github.event_name == 'workflow_dispatch' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -161,18 +161,18 @@ jobs:
             --description "${YOUTUBE_DESCRIPTION}" \
             --tags "${YOUTUBE_TAGS}"
 
-      - name: Move incoming work to processed
-        if: ${{ success() && github.event_name != 'workflow_dispatch' && steps.incoming.outputs.found == 'true' }}
+      - name: Move incoming work to completed
+        if: ${{ success() && inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
         run: |
           python scripts/drive_incoming_queue.py move \
             --folder-id "${{ steps.incoming.outputs.work_folder_id }}" \
-            --destination processed
+            --destination completed
 
       - name: Move incoming work to failed
-        if: ${{ failure() && github.event_name != 'workflow_dispatch' && steps.incoming.outputs.found == 'true' }}
+        if: ${{ failure() && inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}

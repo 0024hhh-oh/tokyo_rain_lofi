@@ -74,3 +74,11 @@ def test_validate_work_folder_reports_actual_skip_condition(capsys):
     assert "検出したファイル数: 2" in output
     assert "検出したフォルダ数: 1" in output
     assert "判定内訳: background_loop.mp4=0, background画像=0, mp3=2" in output
+
+
+def test_move_destination_choices_are_completed_or_failed():
+    # Verify the production parser contract by checking the source-level choices users can pass.
+    source = Path(drive_incoming_queue.__file__).read_text()
+    assert 'parser.add_argument("--completed-folder", default="completed")' in source
+    assert 'parser.add_argument("--destination", choices=("completed", "failed"))' in source
+    assert "processed" not in source
