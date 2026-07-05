@@ -5,8 +5,12 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
+      DRIVE_FOLDER_ID:
+        description: "Driveの取得対象フォルダID（指定時はvideo_numberを使わない）"
+        required: false
+        default: ""
       video_number:
-        description: "Driveの video_XXX 番号"
+        description: "Driveの video_XXX 番号（DRIVE_FOLDER_ID未指定時のみ使用）"
         required: true
         default: "001"
       output_file:
@@ -70,15 +74,22 @@ jobs:
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
-          DRIVE_FOLDER_ID: ${{ steps.incoming.outputs.work_folder_id }}
+          WORKFLOW_DISPATCH_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
+          WORKFLOW_DISPATCH_VIDEO_NUMBER: ${{ inputs.video_number || '' }}
+          DRIVE_FOLDER_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID || steps.incoming.outputs.work_folder_id }}
           VIDEO_NUMBER: ${{ inputs.video_number || '001' }}
         run: |
           rm -rf video_assets dist
+          echo "workflow_dispatch inputs: DRIVE_FOLDER_ID=${WORKFLOW_DISPATCH_DRIVE_FOLDER_ID} video_number=${WORKFLOW_DISPATCH_VIDEO_NUMBER}"
+          echo "DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}"
+          echo "VIDEO_NUMBER=${VIDEO_NUMBER}"
           if [[ -n "${DRIVE_FOLDER_ID}" ]]; then
+            echo "asset acquisition method=drive-folder-id"
             python scripts/download_drive_video_assets.py \
               --drive-folder-id "${DRIVE_FOLDER_ID}" \
               --output-dir video_assets
           else
+            echo "asset acquisition method=video-number"
             python scripts/download_drive_video_assets.py \
               --video-number "${VIDEO_NUMBER}" \
               --output-dir video_assets
