@@ -23,6 +23,41 @@ from drive_incoming_queue import (
 
 REQUIRED_BACKGROUND_COUNT = 1
 REQUIRED_MP3_COUNT = 20
+VIDEO_MIME_PREFIX = "video/"
+MP4_MIME_TYPES = {"video/mp4", "application/octet-stream"}
+
+
+def normalized_drive_name(item: dict) -> str:
+    return item.get("name", "").strip().casefold()
+
+
+def is_background_loop(item: dict) -> bool:
+    if normalized_drive_name(item) != BACKGROUND_LOOP_NAME:
+        return False
+    mime_type = item.get("mimeType", "")
+    return (
+        mime_type.startswith(VIDEO_MIME_PREFIX)
+        or mime_type in MP4_MIME_TYPES
+        or mime_type == "application/vnd.google-apps.shortcut"
+    )
+
+
+def is_background_image(item: dict) -> bool:
+    name = normalized_drive_name(item)
+    mime_type = item.get("mimeType", "")
+    return (
+        name.startswith("background.")
+        and name.endswith(IMAGE_EXTENSIONS)
+        and (mime_type.startswith("image/") or mime_type == "application/octet-stream")
+    )
+
+
+def describe_children(children: list[dict]) -> str:
+    if not children:
+        return "取得ファイルなし"
+    return ", ".join(
+        f"{item.get('name', '<no name>')} [{item.get('mimeType', '<no mime>')}]" for item in children
+    )
 
 
 def child_folders_query(parent_id: str) -> str:
@@ -41,27 +76,26 @@ def inspect_project_folder(service, folder: dict) -> tuple[bool, str]:
     children = list_files(
         service,
         f"'{quote_drive_query(folder['id'])}' in parents and trashed = false",
-        fields="files(id,name,mimeType)",
+        fields="files(id,name,mimeType,shortcutDetails)",
     )
-    background_loops = [item for item in children if item["name"].lower() == BACKGROUND_LOOP_NAME]
-    backgrounds = [
-        item
-        for item in children
-        if item["name"].lower().startswith("background.") and item["name"].lower().endswith(IMAGE_EXTENSIONS)
-    ]
-    mp3s = [item for item in children if item["name"].lower().endswith(".mp3")]
+    background_loops = [item for item in children if is_background_loop(item)]
+    backgrounds = [item for item in children if is_background_image(item)]
+    mp3s = [item for item in children if normalized_drive_name(item).endswith(".mp3")]
+    print(f"INSPECT: {folder['name']} - Google Drive files: {describe_children(children)}")
 
     if len(background_loops) > REQUIRED_BACKGROUND_COUNT:
         return False, f"background_loop.mp4 が複数あります（検出数: {len(background_loops)}）"
     if len(backgrounds) > REQUIRED_BACKGROUND_COUNT:
         return False, f"background.* 画像が複数あります（検出数: {len(backgrounds)}）"
     if len(background_loops) == 0 and len(backgrounds) == 0:
-        return False, "background_loop.mp4 または background.png が必要です"
+        return False, f"background_loop.mp4 または background.png が必要です（取得一覧: {describe_children(children)}）"
     if len(mp3s) < REQUIRED_MP3_COUNT:
         return False, f"mp3音源が不足しています（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）"
     if len(mp3s) > REQUIRED_MP3_COUNT:
         return False, f"mp3音源が多すぎます（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）"
-    return True, "素材OK（background_loop.mp4 または background.*、mp3 20曲）"
+    if background_loops:
+        return True, "素材OK（background_loop.mp4優先、mp3 20曲）"
+    return True, "素材OK（background.*、mp3 20曲）"
 
 
 def move_folder(service, folder: dict, destination_id: str, dry_run: bool) -> None:
