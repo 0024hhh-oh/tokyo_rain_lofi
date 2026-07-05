@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -143,13 +144,63 @@ def list_files(service, parent_id: str) -> list[dict]:
             return files
 
 
-def log_drive_download(file_record: dict, destination: Path) -> None:
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def drive_source_path(*parts: str) -> str:
+    return "/".join(part.strip("/") for part in parts if part)
+
+
+def remove_stale_background_assets(output_dir: Path) -> None:
+    """Remove prior background files so a failed/missing download cannot be masked."""
+    for pattern in ("background.*", BACKGROUND_LOOP_NAME):
+        for stale in output_dir.glob(pattern):
+            if stale.is_file():
+                stale.unlink()
+                print(
+                    f"Removed stale background asset before download: {stale.as_posix()}"
+                )
+
+
+def log_drive_download(
+    file_record: dict, destination: Path, source_path: str | None = None
+) -> None:
     drive_name = file_record.get("name", "<unknown>")
     drive_id = file_record.get("id", "<unknown>")
+    source = source_path or drive_name
+    sha256 = file_sha256(destination) if destination.exists() else "<missing>"
     print(
-        f"Downloaded from Google Drive: {drive_name} "
-        f"(id: {drive_id}) -> {destination.as_posix()}"
+        "Downloaded from Google Drive: "
+        f"source_name={drive_name} file_id={drive_id} "
+        f"source_path={source} destination={destination.as_posix()} sha256={sha256}"
     )
+
+
+def shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+def write_background_manifest(
+    file_record: dict, destination: Path, source_path: str
+) -> None:
+    manifest = destination.parent / "background_manifest.env"
+    values = {
+        "BACKGROUND_SOURCE_NAME": file_record.get("name", "<unknown>"),
+        "BACKGROUND_DRIVE_FILE_ID": file_record.get("id", "<unknown>"),
+        "BACKGROUND_SOURCE_PATH": source_path,
+        "BACKGROUND_DESTINATION_PATH": destination.as_posix(),
+        "BACKGROUND_SHA256": file_sha256(destination),
+    }
+    manifest.write_text(
+        "".join(f"{key}={shell_quote(value)}\n" for key, value in values.items()),
+        encoding="utf-8",
+    )
+    print(f"Wrote background manifest: {manifest.as_posix()}")
 
 
 def download_file(service, file_id: str, destination: Path) -> None:
@@ -165,6 +216,7 @@ def download_file(service, file_id: str, destination: Path) -> None:
 def download_legacy_video_folder(
     service, video_number: str, output_dir: Path, root_folder_id: str | None = None
 ) -> None:
+    remove_stale_background_assets(output_dir)
     video_folder_name = f"video_{str(video_number).zfill(3)}"
     tracks_dir = output_dir / "tracks"
     root = resolve_root_folder(service, ROOT_FOLDER, root_folder_id)
@@ -181,7 +233,13 @@ def download_legacy_video_folder(
             )
         destination = tracks_dir / filename
         download_file(service, file_record["id"], destination)
-        log_drive_download(file_record, destination)
+        log_drive_download(
+            file_record,
+            destination,
+            drive_source_path(
+                ROOT_FOLDER, "Videos", video_folder_name, "tracks", filename
+            ),
+        )
 
     background_loop = find_optional_file(
         service, BACKGROUND_LOOP_NAME, video["id"]
@@ -192,11 +250,19 @@ def download_legacy_video_folder(
     if background_loop:
         destination = output_dir / BACKGROUND_LOOP_NAME
         download_file(service, background_loop["id"], destination)
-        log_drive_download(background_loop, destination)
+        source_path = drive_source_path(
+            ROOT_FOLDER, "Videos", video_folder_name, background_loop["name"]
+        )
+        log_drive_download(background_loop, destination, source_path)
+        write_background_manifest(background_loop, destination, source_path)
     elif background_png:
         destination = output_dir / "background.png"
         download_file(service, background_png["id"], destination)
-        log_drive_download(background_png, destination)
+        source_path = drive_source_path(
+            ROOT_FOLDER, "Videos", video_folder_name, background_png["name"]
+        )
+        log_drive_download(background_png, destination, source_path)
+        write_background_manifest(background_png, destination, source_path)
     else:
         raise FileNotFoundError("background_loop.mp4 または background.png が必要です")
 
@@ -207,12 +273,19 @@ def download_legacy_video_folder(
         if file_record:
             destination = output_dir / filename
             download_file(service, file_record["id"], destination)
-            log_drive_download(file_record, destination)
+            log_drive_download(
+                file_record,
+                destination,
+                drive_source_path(
+                    ROOT_FOLDER, "Videos", video_folder_name, file_record["name"]
+                ),
+            )
         else:
             print(f"Optional {filename} not found; continuing without it")
 
 
 def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> None:
+    remove_stale_background_assets(output_dir)
     tracks_dir = output_dir / "tracks"
     children = list_files(service, folder_id)
     mp3_files = [item for item in children if item["name"].lower().endswith(".mp3")]
@@ -249,18 +322,24 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
         background_loop = background_loop_files[0]
         destination = output_dir / BACKGROUND_LOOP_NAME
         download_file(service, background_loop["id"], destination)
-        log_drive_download(background_loop, destination)
+        source_path = drive_source_path(f"folder:{folder_id}", background_loop["name"])
+        log_drive_download(background_loop, destination, source_path)
+        write_background_manifest(background_loop, destination, source_path)
     else:
         background = image_files[0]
         suffix = Path(background["name"]).suffix.lower() or ".png"
         destination = output_dir / f"background{suffix}"
         download_file(service, background["id"], destination)
-        log_drive_download(background, destination)
+        source_path = drive_source_path(f"folder:{folder_id}", background["name"])
+        log_drive_download(background, destination, source_path)
+        write_background_manifest(background, destination, source_path)
 
     for index, item in enumerate(mp3_files[:20], start=1):
         destination = tracks_dir / f"track{index:02d}.mp3"
         download_file(service, item["id"], destination)
-        log_drive_download(item, destination)
+        log_drive_download(
+            item, destination, drive_source_path(f"folder:{folder_id}", item["name"])
+        )
 
     if len(mp3_files) < 20:
         for index in range(len(mp3_files) + 1, 21):

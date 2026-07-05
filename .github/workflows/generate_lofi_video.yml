@@ -73,6 +73,7 @@ jobs:
           DRIVE_FOLDER_ID: ${{ steps.incoming.outputs.work_folder_id }}
           VIDEO_NUMBER: ${{ inputs.video_number || '001' }}
         run: |
+          rm -rf video_assets dist
           if [[ -n "${DRIVE_FOLDER_ID}" ]]; then
             python scripts/download_drive_video_assets.py \
               --drive-folder-id "${DRIVE_FOLDER_ID}" \

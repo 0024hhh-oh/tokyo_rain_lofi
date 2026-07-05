@@ -56,6 +56,7 @@ jobs:
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
+          rm -rf video_assets dist
           python scripts/download_drive_video_assets.py \
             --video-number "${{ inputs.video_number }}" \
             --output-dir video_assets
