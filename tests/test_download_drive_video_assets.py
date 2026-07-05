@@ -70,6 +70,11 @@ def test_incoming_download_logs_and_manifests_selected_background(tmp_path, caps
     bg_hash = hashlib.sha256(b"bg-id").hexdigest()
     output = capsys.readouterr().out
     assert (
+        "Selected incoming background image: source_name=background.JPG file_id=bg-id "
+        f"destination={bg_path.as_posix()}"
+        in output
+    )
+    assert (
         "Downloaded from Google Drive: source_name=background.JPG file_id=bg-id "
         f"source_path=folder:folder-id/background.JPG destination={bg_path.as_posix()} sha256={bg_hash}"
         in output
@@ -114,3 +119,66 @@ def test_incoming_download_removes_stale_background_before_selecting_latest(tmp_
     assert not stale.exists()
     assert (output_dir / "background.jpg").read_bytes() == b"new-bg-id"
     assert "new-bg-id" in (output_dir / "background_manifest.env").read_text()
+
+
+def test_incoming_background_image_detection_accepts_required_names():
+    accepted_names = [
+        "background.png",
+        "background.jpg",
+        "background.jpeg",
+        "background.PNG",
+        "background.JPG",
+        "background.JPEG",
+    ]
+
+    for name in accepted_names:
+        assert download_drive_video_assets.is_background_image_file(
+            {"id": name, "name": name, "mimeType": "application/octet-stream"}
+        )
+
+    assert not download_drive_video_assets.is_background_image_file(
+        {"id": "gif", "name": "background.gif", "mimeType": "image/gif"}
+    )
+    assert not download_drive_video_assets.is_background_image_file(
+        {"id": "other", "name": "background-final.jpg", "mimeType": "image/jpeg"}
+    )
+
+
+def test_incoming_background_jpeg_is_normalized_to_background_jpg(tmp_path):
+    children = [
+        {"id": "jpeg-bg-id", "name": "background.JPEG", "mimeType": "image/jpeg"},
+        {"id": "mp3-id", "name": "lofi.mp3", "mimeType": "audio/mpeg"},
+    ]
+
+    def write_download(service, file_id, destination):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(file_id.encode())
+
+    with (
+        patch.object(download_drive_video_assets, "list_files", return_value=children),
+        patch.object(
+            download_drive_video_assets, "download_file", side_effect=write_download
+        ),
+    ):
+        download_drive_video_assets.download_incoming_work_folder(
+            None, "folder-id", tmp_path / "video_assets"
+        )
+
+    assert (tmp_path / "video_assets/background.jpg").read_bytes() == b"jpeg-bg-id"
+    assert not (tmp_path / "video_assets/background.jpeg").exists()
+
+
+def test_incoming_missing_background_error_mentions_background_image(tmp_path):
+    children = [
+        {"id": "mp3-id", "name": "lofi.mp3", "mimeType": "audio/mpeg"},
+    ]
+
+    with patch.object(download_drive_video_assets, "list_files", return_value=children):
+        try:
+            download_drive_video_assets.download_incoming_work_folder(
+                None, "folder-id", tmp_path / "video_assets"
+            )
+        except FileNotFoundError as exc:
+            assert str(exc) == "background_loop.mp4 または background画像が必要です"
+        else:
+            raise AssertionError("FileNotFoundError was not raised")
