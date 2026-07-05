@@ -52,7 +52,46 @@ else
   exit 1
 fi
 
-echo "Using background: $BACKGROUND_FILE"
+log_selected_background() {
+  local background_path="$1"
+  local background_realpath
+  local actual_sha256
+  local manifest_path="$ASSET_DIR/background_manifest.env"
+  background_realpath="$(realpath "$background_path")"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_sha256="$(sha256sum "$background_path" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_sha256="$(shasum -a 256 "$background_path" | awk '{print $1}')"
+  else
+    actual_sha256="<unavailable: sha256sum/shasum not found>"
+  fi
+
+  if [[ -f "$manifest_path" ]]; then
+    # shellcheck disable=SC1090
+    source "$manifest_path"
+  else
+    BACKGROUND_SOURCE_NAME="$(basename "$background_path")"
+    BACKGROUND_DRIVE_FILE_ID="<unknown: manifest missing>"
+    BACKGROUND_SOURCE_PATH="$background_path"
+    BACKGROUND_DESTINATION_PATH="$background_path"
+    BACKGROUND_SHA256="$actual_sha256"
+  fi
+
+  echo "Selected background for FFmpeg:"
+  echo "  source_name=$BACKGROUND_SOURCE_NAME"
+  echo "  drive_file_id=$BACKGROUND_DRIVE_FILE_ID"
+  echo "  source_path=$BACKGROUND_SOURCE_PATH"
+  echo "  destination_path=$BACKGROUND_DESTINATION_PATH"
+  echo "  actual_path=$background_realpath"
+  echo "  manifest_sha256=$BACKGROUND_SHA256"
+  echo "  actual_sha256=$actual_sha256"
+  if [[ "$BACKGROUND_SHA256" != "$actual_sha256" ]]; then
+    echo "Background SHA256 mismatch between download manifest and selected FFmpeg input." >&2
+    exit 1
+  fi
+}
+
+log_selected_background "$BACKGROUND_FILE"
 
 HAS_RAIN_AUDIO=0
 if [[ -f "$ASSET_DIR/rain.mp3" ]]; then
