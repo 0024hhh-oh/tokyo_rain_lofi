@@ -240,7 +240,7 @@ def detect(args: argparse.Namespace) -> None:
     service = get_drive_service()
     root = resolve_root_folder(service, args.root_folder, args.root_folder_id)
     incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
-    ensure_child_folder(service, root["id"], args.processed_folder)
+    ensure_child_folder(service, root["id"], args.completed_folder)
     ensure_child_folder(service, root["id"], args.failed_folder)
     query = f"mimeType = '{FOLDER_MIME}' and '{quote_drive_query(incoming['id'])}' in parents and trashed = false"
     work_folders = list_files(service, query)
@@ -306,10 +306,10 @@ def main() -> None:
         help=f"DriveルートフォルダID（{ROOT_FOLDER_ID_ENV} が指定されていればID優先）",
     )
     parser.add_argument("--incoming-folder", default="incoming")
-    parser.add_argument("--processed-folder", default="processed")
+    parser.add_argument("--completed-folder", default="completed")
     parser.add_argument("--failed-folder", default="failed")
     parser.add_argument("--folder-id")
-    parser.add_argument("--destination", choices=("processed", "failed"))
+    parser.add_argument("--destination", choices=("completed", "failed"))
     args = parser.parse_args()
     if args.command == "detect":
         detect(args)
