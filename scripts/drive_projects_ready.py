@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timezone
 
 from drive_incoming_queue import (
+    BACKGROUND_LOOP_NAME,
     FOLDER_MIME,
     IMAGE_EXTENSIONS,
     ROOT_FOLDER,
@@ -42,6 +43,7 @@ def inspect_project_folder(service, folder: dict) -> tuple[bool, str]:
         f"'{quote_drive_query(folder['id'])}' in parents and trashed = false",
         fields="files(id,name,mimeType)",
     )
+    background_loops = [item for item in children if item["name"].lower() == BACKGROUND_LOOP_NAME]
     backgrounds = [
         item
         for item in children
@@ -49,15 +51,17 @@ def inspect_project_folder(service, folder: dict) -> tuple[bool, str]:
     ]
     mp3s = [item for item in children if item["name"].lower().endswith(".mp3")]
 
-    if len(backgrounds) == 0:
-        return False, "background.* 画像がありません"
+    if len(background_loops) > REQUIRED_BACKGROUND_COUNT:
+        return False, f"background_loop.mp4 が複数あります（検出数: {len(background_loops)}）"
     if len(backgrounds) > REQUIRED_BACKGROUND_COUNT:
         return False, f"background.* 画像が複数あります（検出数: {len(backgrounds)}）"
+    if len(background_loops) == 0 and len(backgrounds) == 0:
+        return False, "background_loop.mp4 または background.png が必要です"
     if len(mp3s) < REQUIRED_MP3_COUNT:
         return False, f"mp3音源が不足しています（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）"
     if len(mp3s) > REQUIRED_MP3_COUNT:
         return False, f"mp3音源が多すぎます（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）"
-    return True, "素材OK（background.* 1枚、mp3 20曲）"
+    return True, "素材OK（background_loop.mp4 または background.*、mp3 20曲）"
 
 
 def move_folder(service, folder: dict, destination_id: str, dry_run: bool) -> None:

@@ -40,9 +40,15 @@ find_first_asset() {
   return 1
 }
 
-BACKGROUND_FILE="$(find_first_asset background || true)"
-if [[ -z "$BACKGROUND_FILE" ]]; then
-  echo "Missing required background: $ASSET_DIR/background.png, .jpg, or .jpeg" >&2
+BACKGROUND_FILE=""
+BACKGROUND_TYPE="image"
+if [[ -f "$ASSET_DIR/background_loop.mp4" ]]; then
+  BACKGROUND_FILE="$ASSET_DIR/background_loop.mp4"
+  BACKGROUND_TYPE="video"
+elif BACKGROUND_FILE="$(find_first_asset background || true)"; [[ -n "$BACKGROUND_FILE" ]]; then
+  BACKGROUND_TYPE="image"
+else
+  echo "background_loop.mp4 または background.png が必要です" >&2
   exit 1
 fi
 
@@ -163,7 +169,11 @@ run_ffmpeg() {
   fi
 
   background_index="$input_index"
-  inputs+=( -loop 1 -i "$BACKGROUND_FILE" )
+  if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+    inputs+=( -stream_loop -1 -i "$BACKGROUND_FILE" )
+  else
+    inputs+=( -loop 1 -i "$BACKGROUND_FILE" )
+  fi
   input_index=$((input_index + 1))
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_RAIN_OVERLAY" -eq 1 ]]; then
