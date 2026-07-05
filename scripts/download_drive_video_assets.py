@@ -15,6 +15,11 @@ from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg"}
+BACKGROUND_IMAGE_NAMES = {
+    "background.png",
+    "background.jpg",
+    "background.jpeg",
+}
 BACKGROUND_LOOP_NAME = "background_loop.mp4"
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 ROOT_FOLDER = "Tokyo ChillMatic FM"
@@ -156,6 +161,23 @@ def drive_source_path(*parts: str) -> str:
     return "/".join(part.strip("/") for part in parts if part)
 
 
+def is_background_image_file(item: dict) -> bool:
+    """Return True for supported incoming background image filenames."""
+    name = item.get("name", "").lower()
+    if name not in BACKGROUND_IMAGE_NAMES:
+        return False
+    return item.get("mimeType") in IMAGE_MIME_TYPES or name.endswith(
+        (".png", ".jpg", ".jpeg")
+    )
+
+
+def background_image_destination(output_dir: Path, drive_name: str) -> Path:
+    """Normalize supported image names to generator-compatible destinations."""
+    suffix = Path(drive_name).suffix.lower()
+    normalized_suffix = ".png" if suffix == ".png" else ".jpg"
+    return output_dir / f"background{normalized_suffix}"
+
+
 def remove_stale_background_assets(output_dir: Path) -> None:
     """Remove prior background files so a failed/missing download cannot be masked."""
     for pattern in ("background.*", BACKGROUND_LOOP_NAME):
@@ -264,7 +286,7 @@ def download_legacy_video_folder(
         log_drive_download(background_png, destination, source_path)
         write_background_manifest(background_png, destination, source_path)
     else:
-        raise FileNotFoundError("background_loop.mp4 または background.png が必要です")
+        raise FileNotFoundError("background_loop.mp4 または background画像が必要です")
 
     for filename in ("rain.mp3", "rain_overlay.mp4"):
         file_record = find_optional_file(
@@ -292,15 +314,7 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
     background_loop_files = [
         item for item in children if item["name"].lower() == BACKGROUND_LOOP_NAME
     ]
-    image_files = [
-        item
-        for item in children
-        if item["name"].lower().startswith("background.")
-        and (
-            item.get("mimeType") in IMAGE_MIME_TYPES
-            or item["name"].lower().endswith((".png", ".jpg", ".jpeg"))
-        )
-    ]
+    image_files = [item for item in children if is_background_image_file(item)]
     if len(background_loop_files) > 1:
         raise FileNotFoundError(
             f"background_loop.mp4 は1つだけ必要です。検出数: {len(background_loop_files)}"
@@ -310,7 +324,7 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
             f"background画像は1枚だけ必要です。検出数: {len(image_files)}"
         )
     if not background_loop_files and not image_files:
-        raise FileNotFoundError("background_loop.mp4 または background.png が必要です")
+        raise FileNotFoundError("background_loop.mp4 または background画像が必要です")
     if len(mp3_files) < 1:
         raise FileNotFoundError(
             "mp3音源が見つかりません。理想は20曲、最低1曲以上が必要です。"
@@ -327,8 +341,12 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
         write_background_manifest(background_loop, destination, source_path)
     else:
         background = image_files[0]
-        suffix = Path(background["name"]).suffix.lower() or ".png"
-        destination = output_dir / f"background{suffix}"
+        destination = background_image_destination(output_dir, background["name"])
+        print(
+            "Selected incoming background image: "
+            f"source_name={background['name']} file_id={background['id']} "
+            f"destination={destination.as_posix()}"
+        )
         download_file(service, background["id"], destination)
         source_path = drive_source_path(f"folder:{folder_id}", background["name"])
         log_drive_download(background, destination, source_path)
