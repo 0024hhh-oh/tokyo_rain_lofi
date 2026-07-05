@@ -18,6 +18,7 @@ ROOT_FOLDER = "Tokyo ChillMatic FM"
 ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
+BACKGROUND_LOOP_NAME = "background_loop.mp4"
 
 
 def quote_drive_query(value: str) -> str:
@@ -96,10 +97,15 @@ def ensure_child_folder(service, parent_id: str, name: str) -> dict:
 
 def validate_work_folder(service, folder_id: str) -> tuple[bool, str, int]:
     children = list_files(service, f"'{quote_drive_query(folder_id)}' in parents and trashed = false", fields="files(id,name,mimeType)")
+    background_loops = [item for item in children if item["name"].lower() == BACKGROUND_LOOP_NAME]
     backgrounds = [item for item in children if item["name"].lower().startswith("background.") and item["name"].lower().endswith(IMAGE_EXTENSIONS)]
     mp3s = [item for item in children if item["name"].lower().endswith(".mp3")]
-    if len(backgrounds) != 1:
+    if len(background_loops) > 1:
+        return False, f"background_loop.mp4 は1つだけ必要です（検出数: {len(background_loops)}）", len(mp3s)
+    if len(backgrounds) > 1:
         return False, f"background画像は1枚だけ必要です（検出数: {len(backgrounds)}）", len(mp3s)
+    if not background_loops and not backgrounds:
+        return False, "background_loop.mp4 または background.png が必要です", len(mp3s)
     if len(mp3s) < 1:
         return False, "mp3音源がありません（理想は20曲）", 0
     if len(mp3s) < 20:
