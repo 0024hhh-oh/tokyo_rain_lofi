@@ -13,6 +13,9 @@ ENABLE_RAIN_OVERLAY="${ENABLE_RAIN_OVERLAY:-0}"
 ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-0}"
 ENABLE_FILM_DUST="${ENABLE_FILM_DUST:-0}"
 FAIL_ON_OPTIONAL_VISUAL_FALLBACK="${FAIL_ON_OPTIONAL_VISUAL_FALLBACK:-0}"
+BGM_VOLUME="${BGM_VOLUME:-1.0}"
+RAIN_VOLUME="${RAIN_VOLUME:-0.35}"
+AUDIO_LIMIT="${AUDIO_LIMIT:-0.98}"
 mkdir -p "$OUTPUT_DIR"
 
 CONCAT_FILE="$OUTPUT_DIR/tracks_concat.txt"
@@ -84,6 +87,15 @@ log_selected_background() {
   echo "  actual_path=$background_realpath"
   echo "  manifest_sha256=$BACKGROUND_SHA256"
   echo "  actual_sha256=$actual_sha256"
+  if command -v ffprobe >/dev/null 2>&1; then
+    echo "Selected background ffprobe:"
+    ffprobe -v error \
+      -show_entries format=filename,format_name,duration,size,bit_rate \
+      -show_entries stream=index,codec_type,codec_name,width,height,avg_frame_rate,duration,bit_rate \
+      -of default=noprint_wrappers=1 "$background_path" || true
+  else
+    echo "ffprobe not found; skipping selected background probe." >&2
+  fi
   if [[ "$BACKGROUND_SHA256" != "$actual_sha256" ]]; then
     echo "Background SHA256 mismatch between download manifest and selected FFmpeg input." >&2
     exit 1
@@ -100,7 +112,9 @@ else
 fi
 
 HAS_RAIN_OVERLAY=0
-if [[ "$ENABLE_RAIN_OVERLAY" == "1" ]]; then
+if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+  echo "Rain overlay skipped for background_loop.mp4 passthrough; ENABLE_RAIN_OVERLAY=$ENABLE_RAIN_OVERLAY does not modify the CapCut video."
+elif [[ "$ENABLE_RAIN_OVERLAY" == "1" ]]; then
   if [[ -f "$ASSET_DIR/rain_overlay.mp4" ]]; then
     HAS_RAIN_OVERLAY=1
   else
@@ -112,7 +126,9 @@ fi
 
 LOGO_FILE=""
 HAS_LOGO=0
-if [[ "$ENABLE_LOGO" == "1" ]]; then
+if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+  echo "Logo overlay skipped for background_loop.mp4 passthrough; ENABLE_LOGO=$ENABLE_LOGO does not modify the CapCut video."
+elif [[ "$ENABLE_LOGO" == "1" ]]; then
   LOGO_FILE="$(find_first_asset logo || true)"
   if [[ -n "$LOGO_FILE" ]]; then
     HAS_LOGO=1
@@ -125,9 +141,19 @@ else
 fi
 
 echo "No audio-reactive overlay is added: CapCut background_loop.mp4 already contains rain and film noise."
+echo "Audio volume settings:"
+echo "  BGM_VOLUME=$BGM_VOLUME"
+echo "  RAIN_VOLUME=$RAIN_VOLUME"
+echo "  AUDIO_LIMIT=$AUDIO_LIMIT"
+echo "  amix normalize=0 (prevents amix from attenuating BGM/rain inputs)"
+if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+  echo "CapCut background_loop.mp4 passthrough mode: no FFmpeg visual filters, fade, blend, overlay, format conversion, rain overlay, film grain, or dust will be applied to the background video."
+fi
 
 HAS_FILM_GRAIN=0
-if [[ "$ENABLE_FILM_GRAIN" == "1" ]]; then
+if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+  echo "Film grain skipped for background_loop.mp4 passthrough; ENABLE_FILM_GRAIN=$ENABLE_FILM_GRAIN does not modify the CapCut video."
+elif [[ "$ENABLE_FILM_GRAIN" == "1" ]]; then
   if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]noise[[:space:]]'; then
     HAS_FILM_GRAIN=1
     echo "Visible LOFI/VHS film grain enabled: FFmpeg noise filter will be applied."
@@ -139,7 +165,9 @@ else
 fi
 
 HAS_FILM_DUST=0
-if [[ "$ENABLE_FILM_DUST" == "1" ]]; then
+if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+  echo "Film dust skipped for background_loop.mp4 passthrough; ENABLE_FILM_DUST=$ENABLE_FILM_DUST does not modify the CapCut video."
+elif [[ "$ENABLE_FILM_DUST" == "1" ]]; then
   echo "Film dust requested but disabled for FFmpeg stability; continuing without dust."
 else
   echo "Film dust disabled by ENABLE_FILM_DUST=$ENABLE_FILM_DUST"
@@ -214,16 +242,37 @@ run_ffmpeg() {
 
   local filter_complex=""
   if [[ "$HAS_RAIN_AUDIO" -eq 1 ]]; then
-    filter_complex="[0:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=0.92[music];[${rain_audio_index}:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=0.16[rain];[music][rain]amix=inputs=2:duration=first:dropout_transition=3,alimiter=limit=0.95[audio_mix];"
+    filter_complex="[0:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME}[music];[${rain_audio_index}:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=${RAIN_VOLUME}[rain];[music][rain]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_mix];"
   else
-    filter_complex="[0:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=0.92,alimiter=limit=0.95[audio_mix];"
+    filter_complex="[0:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},alimiter=limit=${AUDIO_LIMIT}[audio_mix];"
   fi
 
   filter_complex+="[audio_mix]anull[aout];"
 
   if [[ "$BACKGROUND_TYPE" == "video" ]]; then
-    # CapCut-rendered loops already contain the intended rain/film-noise look; keep frames visually unchanged.
-    filter_complex+="[${background_index}:v]fps=30,format=rgba[bg];"
+    echo "Video filter graph: SKIPPED for background_loop.mp4 (mapping source video stream directly)."
+    echo "Optional visual filter status:"
+    echo "  audio-reactive overlay: REMOVED"
+    echo "  rain overlay: NOT APPLIED to background_loop.mp4"
+    echo "  logo overlay: NOT APPLIED to background_loop.mp4"
+    echo "  dust: NOT APPLIED"
+    echo "  noise: NOT APPLIED"
+    local -a ffmpeg_cmd=(
+      ffmpeg -y
+      "${inputs[@]}"
+      -filter_complex "$filter_complex"
+      -map "${background_index}:v:0" -map "[aout]" -t "$TARGET_SECONDS"
+      -c:v copy
+      -c:a aac -b:a 192k -ar 48000 -movflags +faststart
+      "$OUTPUT_DIR/$OUTPUT_FILE"
+    )
+
+    echo "FFmpeg command:"
+    printf ' %q' "${ffmpeg_cmd[@]}"
+    echo
+
+    "${ffmpeg_cmd[@]}"
+    return
   else
     filter_complex+="[${background_index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30,format=rgba[bg];"
   fi
