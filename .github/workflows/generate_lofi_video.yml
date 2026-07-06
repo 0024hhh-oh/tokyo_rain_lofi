@@ -76,23 +76,29 @@ jobs:
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
           WORKFLOW_DISPATCH_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
           WORKFLOW_DISPATCH_VIDEO_NUMBER: ${{ inputs.video_number || '' }}
-          DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || steps.incoming.outputs.work_folder_id }}
+          RESOLVED_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
+          INCOMING_WORK_FOLDER_ID: ${{ steps.incoming.outputs.work_folder_id || '' }}
           VIDEO_NUMBER: ${{ inputs.video_number || '001' }}
         run: |
           rm -rf video_assets dist
-          echo "workflow_dispatch debug inputs: DRIVE_FOLDER_ID=${WORKFLOW_DISPATCH_DRIVE_FOLDER_ID} video_number=${WORKFLOW_DISPATCH_VIDEO_NUMBER}"
-          echo "DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}"
+          echo "workflow_dispatch DRIVE_FOLDER_ID=${WORKFLOW_DISPATCH_DRIVE_FOLDER_ID}"
+          echo "resolved DRIVE_FOLDER_ID=${RESOLVED_DRIVE_FOLDER_ID}"
+          echo "incoming selected work_folder_id=${INCOMING_WORK_FOLDER_ID}"
+          echo "workflow_dispatch debug inputs: video_number=${WORKFLOW_DISPATCH_VIDEO_NUMBER}"
           echo "VIDEO_NUMBER=${VIDEO_NUMBER}"
-          if [[ -n "${DRIVE_FOLDER_ID}" ]]; then
+          if [[ -n "${RESOLVED_DRIVE_FOLDER_ID}" ]]; then
             echo "asset acquisition method=drive-folder-id"
             python scripts/download_drive_video_assets.py \
-              --drive-folder-id "${DRIVE_FOLDER_ID}" \
+              --drive-folder-id "${RESOLVED_DRIVE_FOLDER_ID}" \
+              --output-dir video_assets
+          elif [[ -n "${INCOMING_WORK_FOLDER_ID}" ]]; then
+            echo "asset acquisition method=incoming-queue"
+            python scripts/download_drive_video_assets.py \
+              --drive-folder-id "${INCOMING_WORK_FOLDER_ID}" \
               --output-dir video_assets
           else
-            echo "asset acquisition method=video-number"
-            python scripts/download_drive_video_assets.py \
-              --video-number "${VIDEO_NUMBER}" \
-              --output-dir video_assets
+            echo "No incoming work folder found and no debug DRIVE_FOLDER_ID was provided." >&2
+            exit 1
           fi
 
       - name: Generate MP4
