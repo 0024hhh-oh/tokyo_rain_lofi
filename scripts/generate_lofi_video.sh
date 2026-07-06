@@ -150,7 +150,7 @@ Visual processing intentionally disabled:
 
 CapCut background_loop.mp4 is treated as the completed video source.
 The video stream is looped and copied without FFmpeg video filters or re-encoding.
-Its audio is looped to the total video duration and mixed with the non-looped concatenated Suno BGM. After the Suno BGM ends, only the original background rain audio continues for the configured outro duration.
+Its audio is looped to the total video duration and kept at the same volume for both the main program and the outro. The concatenated Suno BGM is not looped; it is padded with silence after its natural end so only the original background rain audio remains for the configured outro duration.
 EOF_STATUS
 
 log_media_metadata "Selected background loop video" "$BACKGROUND_FILE"
@@ -159,7 +159,7 @@ ffmpeg_cmd=(
   ffmpeg -y
   -stream_loop -1 -i "$BACKGROUND_FILE"
   -f concat -safe 0 -i "$CONCAT_FILE"
-  -filter_complex "[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  -filter_complex "[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
   -map 0:v:0 -map "[audio_out]"
   -t "$VIDEO_TOTAL_SECONDS"
   -c:v copy

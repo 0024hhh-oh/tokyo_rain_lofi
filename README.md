@@ -429,15 +429,16 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 - FFmpeg側では音声由来の波形表示を追加しません。
 - `background_loop.mp4` 自体に含まれる雨やフィルムノイズを前提にし、音源は従来通りMP4へ付けます。
 - `background_loop.mp4` 使用時は、CapCutで作成した映像をできるだけそのまま使うため、FFmpegの映像フィルター（scale / fps / format / fade / blend / overlay / noise）をかけず、動画ストリームを直接マップしてコピーします。
+- `background_loop.mp4` に含まれる雨音は本編と同じ音量のままループし、Suno BGM終了後も既定5秒間だけ雨映像と一緒に継続してから同時終了します（フェードアウトなし）。
 - `ENABLE_RAIN_OVERLAY=0` や `ENABLE_FILM_GRAIN=0` は、FFmpegで追加する任意効果だけを制御します。CapCut動画内に既に入っている雨・フィルムノイズを弱める処理は行いません。
 - 安定性優先のため、画像背景使用時にロゴ・雨オーバーレイ・フィルムグレインの生成に失敗した場合は、それらを外して再試行し、MP4出力を優先します。
 
 ### 音量調整
 
-BGMと雨音の音量は環境変数で調整できます。`rain.mp3` がある場合、`amix` は `normalize=0` でミックスし、入力音量が自動的に半分へ下がらないようにしています。
+BGMと`background_loop.mp4`内の雨音の音量は環境変数で調整できます。`amix` は `normalize=0` でミックスし、入力音量が自動的に半分へ下がらないようにしています。
 
 ```bash
-BGM_VOLUME=1.0 RAIN_VOLUME=0.35 AUDIO_LIMIT=0.98 scripts/generate_lofi_video.sh
+BGM_VOLUME=1.0 BACKGROUND_AUDIO_VOLUME=1.0 AUDIO_LIMIT=0.98 scripts/generate_lofi_video.sh
 ```
 
 ### 任意機能の無効化
@@ -668,15 +669,16 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 1. GitHub の **Actions** タブを開きます。
 2. **Generate LOFI video** workflow を選びます。
 3. **Run workflow** を押します。
-4. 動画の長さはダウンロードしたSuno音源を連結した合計再生時間から自動計算されます。
+4. 動画の長さは、ダウンロードしたSuno音源を連結した合計再生時間に雨音アウトロ5秒を足して自動計算されます。
 5. `upload_to_drive` はデフォルトの `false` のままにします（Service Account の Drive 保存容量制限を避け、YouTube非公開アップロード検証を優先します）。
 6. 成功したら artifact と YouTube Studio の非公開動画を確認します。
 7. Google Driveへの保存も検証したい場合だけ、`upload_to_drive` を `true` にして再実行します。
 
 ### 動画尺
-- `TARGET_SECONDS` や `duration_minutes` で固定尺を指定せず、連結したSuno音源の合計時間を動画長として使用します。
-- Suno音源はループせず、曲が終わったら動画も終了します。
-- `background_loop.mp4` はSuno音源の合計時間までループします。
+- `TARGET_SECONDS` や `duration_minutes` で固定尺を指定せず、連結したSuno音源の合計時間に `RAIN_OUTRO_SECONDS`（既定5秒）を足した長さを動画長として使用します。
+- Suno音源はループせず最後まで再生し、終了後は無音としてパディングするためBGMは鳴りません。
+- `background_loop.mp4` の雨映像と雨音は動画全体（Suno合計尺＋アウトロ）までループし、アウトロ終了時に同時停止します。
+- 雨音アウトロにフェードアウトはかけず、雨音の音量は本編中の`background_loop.mp4`音声と同じです。
 - Google Driveアップロードは `upload_to_drive=true` の場合のみ実行されます。
 
 ### FFmpeg高速化設定
