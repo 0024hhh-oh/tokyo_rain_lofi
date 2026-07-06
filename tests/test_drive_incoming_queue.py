@@ -146,3 +146,114 @@ def test_log_incoming_work_folders_includes_id_and_folder_list(capsys):
         "incoming直下フォルダ[2]: name=City Rain id=work-2 mimeType=application/vnd.google-apps.folder"
         in output
     )
+
+
+def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(capsys):
+    folders = [
+        {
+            "id": "work-024",
+            "name": "音源024",
+            "mimeType": drive_incoming_queue.FOLDER_MIME,
+        },
+        {
+            "id": "work-025",
+            "name": "音源025",
+            "mimeType": drive_incoming_queue.FOLDER_MIME,
+        },
+    ]
+    children_by_folder = {
+        "work-024": [
+            {"id": "bg-024", "name": "background_loop.mp4", "mimeType": "video/mp4"},
+            {"id": "tr-024", "name": "track024.mp3", "mimeType": "audio/mpeg"},
+        ],
+        "work-025": [
+            {"id": "bg-025", "name": "background_loop.mp4", "mimeType": "video/mp4"},
+            {"id": "tr-025", "name": "track025.mp3", "mimeType": "audio/mpeg"},
+        ],
+    }
+    incoming_ids = ["work-024", "work-025"]
+    moved_to_completed = []
+
+    class FakeFiles:
+        def get(self, fileId, fields, supportsAllDrives):
+            class Request:
+                def execute(self_inner):
+                    return {
+                        "id": fileId,
+                        "name": next(f["name"] for f in folders if f["id"] == fileId),
+                        "parents": ["incoming-id"],
+                    }
+
+            return Request()
+
+        def update(
+            self, fileId, addParents, removeParents, body, fields, supportsAllDrives
+        ):
+            class Request:
+                def execute(self_inner):
+                    incoming_ids.remove(fileId)
+                    moved_to_completed.append(fileId)
+                    return {"id": fileId, "name": fileId, "parents": [addParents]}
+
+            return Request()
+
+    class FakeService:
+        def files(self):
+            return FakeFiles()
+
+    def fake_list_files(
+        _service,
+        query,
+        fields="files(id,name,mimeType,createdTime,modifiedTime,parents)",
+    ):
+        if "'incoming-id' in parents" in query:
+            return [folder for folder in folders if folder["id"] in incoming_ids]
+        for folder_id, children in children_by_folder.items():
+            if f"'{folder_id}' in parents" in query:
+                return children
+        return []
+
+    args = types.SimpleNamespace(
+        root_folder="Tokyo ChillMatic FM",
+        root_folder_id=None,
+        incoming_folder="incoming",
+        completed_folder="completed",
+        failed_folder="failed",
+        folder_id=None,
+        destination=None,
+    )
+
+    with patch.object(
+        drive_incoming_queue, "get_drive_service", return_value=FakeService()
+    ), patch.object(
+        drive_incoming_queue,
+        "resolve_root_folder",
+        return_value={"id": "root-id", "name": "root"},
+    ), patch.object(
+        drive_incoming_queue,
+        "ensure_child_folder",
+        side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
+    ), patch.object(
+        drive_incoming_queue, "list_files", side_effect=fake_list_files
+    ):
+        detected_names = []
+        while True:
+            drive_incoming_queue.detect(args)
+            output = capsys.readouterr().out
+            if "found=true" not in output:
+                break
+            folder_id = output.split("work_folder_id=", 1)[1].splitlines()[0]
+            folder_name = output.split("work_folder_name=", 1)[1].splitlines()[0]
+            detected_names.append(folder_name)
+            move_args = types.SimpleNamespace(
+                root_folder=args.root_folder,
+                root_folder_id=args.root_folder_id,
+                folder_id=folder_id,
+                destination="completed",
+            )
+            drive_incoming_queue.move(move_args)
+            capsys.readouterr()
+
+    assert detected_names == ["音源024", "音源025"]
+    assert moved_to_completed == ["work-024", "work-025"]
+    assert incoming_ids == []
