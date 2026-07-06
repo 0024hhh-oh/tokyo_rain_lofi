@@ -71,8 +71,7 @@ def test_incoming_download_logs_and_manifests_selected_background(tmp_path, caps
     output = capsys.readouterr().out
     assert (
         "Selected incoming background image: source_name=background.JPG file_id=bg-id "
-        f"destination={bg_path.as_posix()}"
-        in output
+        f"destination={bg_path.as_posix()}" in output
     )
     assert (
         "Downloaded from Google Drive: source_name=background.JPG file_id=bg-id "
@@ -168,6 +167,44 @@ def test_incoming_background_jpeg_is_normalized_to_background_jpg(tmp_path):
     assert not (tmp_path / "video_assets/background.jpeg").exists()
 
 
+def test_incoming_download_accepts_single_nonstandard_video_name(tmp_path):
+    children = [
+        {"id": "video-id", "name": "rendered final.MOV", "mimeType": "video/quicktime"},
+        {"id": "mp3-id", "name": "lofi.mp3", "mimeType": "audio/mpeg"},
+    ]
+
+    def write_download(service, file_id, destination):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(file_id.encode())
+
+    with (
+        patch.object(download_drive_video_assets, "list_files", return_value=children),
+        patch.object(
+            download_drive_video_assets, "download_file", side_effect=write_download
+        ),
+    ):
+        download_drive_video_assets.download_incoming_work_folder(
+            None, "folder-id", tmp_path / "video_assets"
+        )
+
+    assert (tmp_path / "video_assets/background_loop.mp4").read_bytes() == b"video-id"
+
+
+def test_background_loop_mov_is_prioritized_over_other_video():
+    children = [
+        {"id": "other", "name": "other.mp4", "mimeType": "video/mp4"},
+        {"id": "mov", "name": "background_loop.MOV", "mimeType": "video/quicktime"},
+    ]
+
+    selected, candidates, reason = (
+        download_drive_video_assets.select_background_loop_file(children)
+    )
+
+    assert selected["id"] == "mov"
+    assert len(candidates) == 2
+    assert reason == "background_loop.mov"
+
+
 def test_incoming_missing_background_error_mentions_background_image(tmp_path, capsys):
     children = [
         {"id": "mp3-id", "name": "lofi.mp3", "mimeType": "audio/mpeg"},
@@ -186,13 +223,19 @@ def test_incoming_missing_background_error_mentions_background_image(tmp_path, c
     output = capsys.readouterr().out
     assert "Starting download_incoming_work_folder: work_folder_id=folder-id" in output
     assert "Incoming work folder items: count=1" in output
-    assert "Incoming work folder items[1]: name=lofi.mp3 id=mp3-id mimeType=audio/mpeg" in output
+    assert (
+        "Incoming work folder items[1]: name=lofi.mp3 id=mp3-id mimeType=audio/mpeg"
+        in output
+    )
     assert "background_loop.mp4 candidates: count=0" in output
     assert "background_loop.mp4 candidates: <none>" in output
     assert "background image candidates: count=0" in output
     assert "background image candidates: <none>" in output
     assert "track audio candidates: count=1" in output
-    assert "track audio candidates[1]: name=lofi.mp3 id=mp3-id mimeType=audio/mpeg" in output
+    assert (
+        "track audio candidates[1]: name=lofi.mp3 id=mp3-id mimeType=audio/mpeg"
+        in output
+    )
     assert "No usable background asset detected before FileNotFoundError" in output
     assert "because no item name matched 'background_loop.mp4'" in output
     assert "because no item matched names=" in output

@@ -21,6 +21,9 @@ BACKGROUND_IMAGE_NAMES = {
     "background.jpeg",
 }
 BACKGROUND_LOOP_NAME = "background_loop.mp4"
+BACKGROUND_LOOP_MOV_NAMES = {"background_loop.mov"}
+VIDEO_EXTENSIONS = (".mp4", ".mov")
+VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 ROOT_FOLDER = "Tokyo ChillMatic FM"
 ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
@@ -188,6 +191,44 @@ def is_background_image_file(item: dict) -> bool:
     )
 
 
+def normalized_drive_name(item: dict) -> str:
+    return item.get("name", "").strip().casefold()
+
+
+def is_video_file(item: dict) -> bool:
+    """Return True for supported Drive video assets by extension or MIME type."""
+    name = normalized_drive_name(item)
+    mime_type = item.get("mimeType", "")
+    return name.endswith(VIDEO_EXTENSIONS) or mime_type in VIDEO_MIME_TYPES
+
+
+def select_background_loop_file(
+    items: list[dict],
+) -> tuple[dict | None, list[dict], str]:
+    """Select a background loop using the documented filename/MIME priority."""
+    video_files = [item for item in items if is_video_file(item)]
+    exact_mp4 = [
+        item
+        for item in video_files
+        if normalized_drive_name(item) == BACKGROUND_LOOP_NAME
+    ]
+    if exact_mp4:
+        return exact_mp4[0], video_files, BACKGROUND_LOOP_NAME
+
+    exact_mov = [
+        item
+        for item in video_files
+        if normalized_drive_name(item) in BACKGROUND_LOOP_MOV_NAMES
+    ]
+    if exact_mov:
+        return exact_mov[0], video_files, "background_loop.mov"
+
+    if len(video_files) == 1:
+        return video_files[0], video_files, "single video file"
+
+    return None, video_files, "no unambiguous video file"
+
+
 def background_image_destination(output_dir: Path, drive_name: str) -> Path:
     """Normalize supported image names to generator-compatible destinations."""
     suffix = Path(drive_name).suffix.lower()
@@ -197,7 +238,7 @@ def background_image_destination(output_dir: Path, drive_name: str) -> Path:
 
 def remove_stale_background_assets(output_dir: Path) -> None:
     """Remove prior background files so a failed/missing download cannot be masked."""
-    for pattern in ("background.*", BACKGROUND_LOOP_NAME):
+    for pattern in ("background.*", "*.mp4", "*.mov"):
         for stale in output_dir.glob(pattern):
             if stale.is_file():
                 stale.unlink()
@@ -330,16 +371,18 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
     children = list_files(service, folder_id)
     log_drive_items("Incoming work folder items", children)
     mp3_files = [item for item in children if item["name"].lower().endswith(".mp3")]
-    background_loop_files = [
-        item for item in children if item["name"].lower() == BACKGROUND_LOOP_NAME
-    ]
+    background_loop, video_files, video_selection_reason = select_background_loop_file(
+        children
+    )
     image_files = [item for item in children if is_background_image_file(item)]
-    log_drive_items("background_loop.mp4 candidates", background_loop_files)
+    background_loop_files = [background_loop] if background_loop else []
+    log_drive_items("background_loop.mp4 candidates", video_files)
+    print(f"background video selection: {video_selection_reason}")
     log_drive_items("background image candidates", image_files)
     log_drive_items("track audio candidates", mp3_files)
-    if len(background_loop_files) > 1:
+    if not background_loop and len(video_files) > 1:
         raise FileNotFoundError(
-            f"background_loop.mp4 は1つだけ必要です。検出数: {len(background_loop_files)}"
+            f"背景動画候補が複数あります。background_loop.mp4 / background_loop.mov を優先名として1つ指定してください（検出数: {len(video_files)}）"
         )
     if len(image_files) > 1:
         raise FileNotFoundError(
@@ -348,8 +391,8 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
     if not background_loop_files and not image_files:
         print(
             "No usable background asset detected before FileNotFoundError: "
-            f"background_loop.mp4 candidates={len(background_loop_files)} "
-            f"because no item name matched {BACKGROUND_LOOP_NAME!r}; "
+            f"background_loop.mp4 candidates={len(video_files)} "
+            f"because no item name matched 'background_loop.mp4' and no supported video matched priority rules; "
             f"background image candidates={len(image_files)} because no item matched "
             f"names={sorted(BACKGROUND_IMAGE_NAMES)} and mimeTypes={sorted(IMAGE_MIME_TYPES)}"
         )

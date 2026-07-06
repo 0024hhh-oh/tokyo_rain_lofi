@@ -21,6 +21,9 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 BACKGROUND_LOOP_NAME = "background_loop.mp4"
 VIDEO_MIME_PREFIX = "video/"
 MP4_MIME_TYPES = {"video/mp4", "application/octet-stream"}
+VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
+VIDEO_EXTENSIONS = (".mp4", ".mov")
+BACKGROUND_LOOP_MOV_NAME = "background_loop.mov"
 IMAGE_MIME_PREFIX = "image/"
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "application/octet-stream"}
 SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
@@ -118,15 +121,38 @@ def is_folder(item: dict) -> bool:
     return item.get("mimeType") == FOLDER_MIME
 
 
-def is_background_loop(item: dict) -> bool:
-    if normalized_drive_name(item) != BACKGROUND_LOOP_NAME:
-        return False
+def is_video_file(item: dict) -> bool:
+    name = normalized_drive_name(item)
     mime_type = item.get("mimeType", "")
     return (
-        mime_type.startswith(VIDEO_MIME_PREFIX)
-        or mime_type in MP4_MIME_TYPES
-        or mime_type == SHORTCUT_MIME
+        name.endswith(VIDEO_EXTENSIONS)
+        or mime_type in VIDEO_MIME_TYPES
+        or mime_type.startswith(VIDEO_MIME_PREFIX)
     )
+
+
+def select_background_loop_file(items: list[dict]) -> tuple[dict | None, list[dict]]:
+    videos = [item for item in items if is_video_file(item)]
+    exact_mp4 = [
+        item for item in videos if normalized_drive_name(item) == BACKGROUND_LOOP_NAME
+    ]
+    if exact_mp4:
+        return exact_mp4[0], videos
+    exact_mov = [
+        item
+        for item in videos
+        if normalized_drive_name(item) == BACKGROUND_LOOP_MOV_NAME
+    ]
+    if exact_mov:
+        return exact_mov[0], videos
+    if len(videos) == 1:
+        return videos[0], videos
+    return None, videos
+
+
+def is_background_loop(item: dict) -> bool:
+    selected, _ = select_background_loop_file([item])
+    return selected is item
 
 
 def is_background_image(item: dict) -> bool:
@@ -215,7 +241,8 @@ def validate_work_folder(service, folder: dict) -> tuple[bool, str, int]:
     )
     child_folders = [item for item in children if is_folder(item)]
     child_files = [item for item in children if not is_folder(item)]
-    background_loops = [item for item in children if is_background_loop(item)]
+    background_loop, video_files = select_background_loop_file(children)
+    background_loops = [background_loop] if background_loop else []
     backgrounds = [item for item in children if is_background_image(item)]
     mp3s = [item for item in children if is_mp3(item)]
 
@@ -242,13 +269,13 @@ def validate_work_folder(service, folder: dict) -> tuple[bool, str, int]:
     print(f"mp3 が何個あるか: {len(mp3s)}")
     print(f"検出アイテム: {describe_children(children)}")
 
-    if len(background_loops) > 1:
+    if not background_loop and len(video_files) > 1:
         print(
-            f"無効判定の理由: background_loop.mp4 は1つだけ必要です（検出数: {len(background_loops)}）"
+            f"無効判定の理由: 背景動画候補が複数あります（検出数: {len(video_files)}）。background_loop.mp4 または background_loop.mov を使ってください"
         )
         return (
             False,
-            f"background_loop.mp4 は1つだけ必要です（検出数: {len(background_loops)}）",
+            f"背景動画候補が複数あります（検出数: {len(video_files)}）。background_loop.mp4 または background_loop.mov を使ってください",
             len(mp3s),
         )
     if len(backgrounds) > 1:
