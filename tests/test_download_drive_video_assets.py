@@ -168,7 +168,7 @@ def test_incoming_background_jpeg_is_normalized_to_background_jpg(tmp_path):
     assert not (tmp_path / "video_assets/background.jpeg").exists()
 
 
-def test_incoming_missing_background_error_mentions_background_image(tmp_path):
+def test_incoming_missing_background_error_mentions_background_image(tmp_path, capsys):
     children = [
         {"id": "mp3-id", "name": "lofi.mp3", "mimeType": "audio/mpeg"},
     ]
@@ -182,3 +182,17 @@ def test_incoming_missing_background_error_mentions_background_image(tmp_path):
             assert str(exc) == "background_loop.mp4 または background画像が必要です"
         else:
             raise AssertionError("FileNotFoundError was not raised")
+
+    output = capsys.readouterr().out
+    assert "Starting download_incoming_work_folder: work_folder_id=folder-id" in output
+    assert "Incoming work folder items: count=1" in output
+    assert "Incoming work folder items[1]: name=lofi.mp3 id=mp3-id mimeType=audio/mpeg" in output
+    assert "background_loop.mp4 candidates: count=0" in output
+    assert "background_loop.mp4 candidates: <none>" in output
+    assert "background image candidates: count=0" in output
+    assert "background image candidates: <none>" in output
+    assert "track audio candidates: count=1" in output
+    assert "track audio candidates[1]: name=lofi.mp3 id=mp3-id mimeType=audio/mpeg" in output
+    assert "No usable background asset detected before FileNotFoundError" in output
+    assert "because no item name matched 'background_loop.mp4'" in output
+    assert "because no item matched names=" in output
