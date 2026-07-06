@@ -51,8 +51,12 @@ def test_validate_work_folder_logs_counts_and_accepts_normalized_names(capsys):
     assert track_count == 1
     assert "mp3音源は1曲" in reason
     assert "対象フォルダ: name=SHIBUYA Rain id=work-folder-id" in output
+    assert "各フォルダ内のファイル一覧: folder=SHIBUYA Rain id=work-folder-id count=3" in output
+    assert "file[1]: name= background_loop.mp4  id=bg mimeType=application/octet-stream" in output
     assert "検出したファイル数: 2" in output
     assert "検出したフォルダ数: 1" in output
+    assert "background検出数: 1" in output
+    assert "track検出数: 1" in output
     assert "判定内訳: background_loop.mp4=1, background画像=0, mp3=1" in output
 
 
@@ -82,3 +86,19 @@ def test_move_destination_choices_are_completed_or_failed():
     assert 'parser.add_argument("--completed-folder", default="completed")' in source
     assert 'parser.add_argument("--destination", choices=("completed", "failed"))' in source
     assert "processed" not in source
+
+
+def test_log_incoming_work_folders_includes_id_and_folder_list(capsys):
+    incoming = {"id": "incoming-id", "name": "incoming"}
+    work_folders = [
+        {"id": "work-1", "name": "Night Rain", "mimeType": drive_incoming_queue.FOLDER_MIME},
+        {"id": "work-2", "name": "City Rain", "mimeType": drive_incoming_queue.FOLDER_MIME},
+    ]
+
+    drive_incoming_queue.log_incoming_work_folders(incoming, work_folders)
+    output = capsys.readouterr().out
+
+    assert "incoming folder id: incoming-id" in output
+    assert "incoming直下のフォルダ一覧: count=2" in output
+    assert "incoming直下フォルダ[1]: name=Night Rain id=work-1 mimeType=application/vnd.google-apps.folder" in output
+    assert "incoming直下フォルダ[2]: name=City Rain id=work-2 mimeType=application/vnd.google-apps.folder" in output
