@@ -164,15 +164,30 @@ def describe_children(children: list[dict]) -> str:
     )
 
 
+def log_incoming_items(incoming: dict, items: list[dict]) -> None:
+    print(f"incoming folder id: {incoming['id']}")
+    print(f"incomingフォルダ: name={incoming['name']} id={incoming['id']}")
+    print(f"incoming内で取得できた全item一覧: count={len(items)}")
+    if not items:
+        print("incoming内で取得できた全item一覧: 取得アイテムなし")
+        return
+    for index, item in enumerate(items, start=1):
+        print(f"incoming item[{index}]: {describe_drive_item(item)}")
+
+
 def log_incoming_work_folders(incoming: dict, work_folders: list[dict]) -> None:
     print(f"incoming folder id: {incoming['id']}")
     print(f"incomingフォルダ: name={incoming['name']} id={incoming['id']}")
+    print(f"フォルダ候補一覧: count={len(work_folders)}")
     print(f"incoming直下のフォルダ一覧: count={len(work_folders)}")
     if not work_folders:
+        print("フォルダ候補一覧: 取得フォルダなし")
         print("incoming直下のフォルダ一覧: 取得フォルダなし")
         return
     for index, folder in enumerate(work_folders, start=1):
-        print(f"incoming直下フォルダ[{index}]: {describe_drive_item(folder)}")
+        description = describe_drive_item(folder)
+        print(f"フォルダ候補[{index}]: {description}")
+        print(f"incoming直下フォルダ[{index}]: {description}")
 
 
 def ensure_child_folder(service, parent_id: str, name: str) -> dict:
@@ -205,7 +220,9 @@ def validate_work_folder(service, folder: dict) -> tuple[bool, str, int]:
     mp3s = [item for item in children if is_mp3(item)]
 
     print(f"対象フォルダ: name={folder.get('name', '<no name>')} id={folder_id}")
-    print(f"各フォルダ内のファイル一覧: folder={folder.get('name', '<no name>')} id={folder_id} count={len(children)}")
+    print(
+        f"各フォルダ内のファイル一覧: folder={folder.get('name', '<no name>')} id={folder_id} count={len(children)}"
+    )
     if children:
         for index, child in enumerate(children, start=1):
             print(f"  file[{index}]: {describe_drive_item(child)}")
@@ -221,30 +238,44 @@ def validate_work_folder(service, folder: dict) -> tuple[bool, str, int]:
         f"background画像={len(backgrounds)}, "
         f"mp3={len(mp3s)}"
     )
+    print(f"background_loop.mp4 があるか: {'yes' if background_loops else 'no'}")
+    print(f"mp3 が何個あるか: {len(mp3s)}")
     print(f"検出アイテム: {describe_children(children)}")
 
     if len(background_loops) > 1:
+        print(
+            f"無効判定の理由: background_loop.mp4 は1つだけ必要です（検出数: {len(background_loops)}）"
+        )
         return (
             False,
             f"background_loop.mp4 は1つだけ必要です（検出数: {len(background_loops)}）",
             len(mp3s),
         )
     if len(backgrounds) > 1:
+        print(
+            f"無効判定の理由: background画像は1枚だけ必要です（検出数: {len(backgrounds)}）"
+        )
         return (
             False,
             f"background画像は1枚だけ必要です（検出数: {len(backgrounds)}）",
             len(mp3s),
         )
     if not background_loops and not backgrounds:
+        print("無効判定の理由: background_loop.mp4 または background.png が必要です")
         return False, "background_loop.mp4 または background.png が必要です", len(mp3s)
     if len(mp3s) < 1:
+        print("無効判定の理由: mp3音源がありません（理想は20曲）")
         return False, "mp3音源がありません（理想は20曲）", 0
     if len(mp3s) < 20:
+        print(
+            f"有効判定の理由: mp3音源は{len(mp3s)}曲です（理想は20曲）。不足分は生成前に複製して互換性を保ちます。"
+        )
         return (
             True,
             f"mp3音源は{len(mp3s)}曲です（理想は20曲）。不足分は生成前に複製して互換性を保ちます。",
             len(mp3s),
         )
+    print("有効判定の理由: 素材OK")
     return True, "素材OK", len(mp3s)
 
 
@@ -269,8 +300,16 @@ def detect(args: argparse.Namespace) -> None:
     incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
     ensure_child_folder(service, root["id"], args.completed_folder)
     ensure_child_folder(service, root["id"], args.failed_folder)
-    query = f"mimeType = '{FOLDER_MIME}' and '{quote_drive_query(incoming['id'])}' in parents and trashed = false"
-    work_folders = list_files(service, query)
+    incoming_items_query = (
+        f"'{quote_drive_query(incoming['id'])}' in parents and trashed = false"
+    )
+    incoming_items = list_files(
+        service,
+        incoming_items_query,
+        fields="files(id,name,mimeType,createdTime,modifiedTime,parents,shortcutDetails)",
+    )
+    work_folders = [item for item in incoming_items if is_folder(item)]
+    log_incoming_items(incoming, incoming_items)
     log_incoming_work_folders(incoming, work_folders)
     print(f"incoming内の作品フォルダ数: {len(work_folders)}")
     found_false_reasons: list[str] = []
@@ -286,6 +325,7 @@ def detect(args: argparse.Namespace) -> None:
             print(f"スキップ理由: {reason}")
             continue
         print(f"処理対象: {folder['name']} - {message}")
+        print(f"最終的に選ばれた folder id: {folder['id']}")
         stem = safe_file_stem(folder["name"])
         write_github_output(
             {
@@ -304,6 +344,7 @@ def detect(args: argparse.Namespace) -> None:
     for index, reason in enumerate(found_false_reasons, start=1):
         print(f"  {index}. {reason}")
     print("スキップ理由: 有効なincoming作品フォルダがありません")
+    print("最終的に選ばれた folder id: <none>")
     write_github_output({"found": "false"})
 
 
