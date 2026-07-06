@@ -428,7 +428,17 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 
 - FFmpeg側では音声由来の波形表示を追加しません。
 - `background_loop.mp4` 自体に含まれる雨やフィルムノイズを前提にし、音源は従来通りMP4へ付けます。
-- 安定性優先のため、ロゴ・雨オーバーレイ・フィルムグレインの生成に失敗した場合は、それらを外して再試行し、MP4出力を優先します。
+- `background_loop.mp4` 使用時は、CapCutで作成した映像をできるだけそのまま使うため、FFmpegの映像フィルター（scale / fps / format / fade / blend / overlay / noise）をかけず、動画ストリームを直接マップしてコピーします。
+- `ENABLE_RAIN_OVERLAY=0` や `ENABLE_FILM_GRAIN=0` は、FFmpegで追加する任意効果だけを制御します。CapCut動画内に既に入っている雨・フィルムノイズを弱める処理は行いません。
+- 安定性優先のため、画像背景使用時にロゴ・雨オーバーレイ・フィルムグレインの生成に失敗した場合は、それらを外して再試行し、MP4出力を優先します。
+
+### 音量調整
+
+BGMと雨音の音量は環境変数で調整できます。`rain.mp3` がある場合、`amix` は `normalize=0` でミックスし、入力音量が自動的に半分へ下がらないようにしています。
+
+```bash
+BGM_VOLUME=1.0 RAIN_VOLUME=0.35 AUDIO_LIMIT=0.98 scripts/generate_lofi_video.sh
+```
 
 ### 任意機能の無効化
 
