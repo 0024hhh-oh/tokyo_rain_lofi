@@ -110,7 +110,6 @@ jobs:
           DURATION_MINUTES: ${{ inputs.duration_minutes || '60' }}
           FFMPEG_PRESET: ultrafast
           FFMPEG_CRF: "30"
-          ENABLE_WAVEFORM: "1"
           ENABLE_RAIN_OVERLAY: "0"
           ENABLE_FILM_GRAIN: "0"
           ENABLE_FILM_DUST: "0"
@@ -126,7 +125,7 @@ jobs:
           fi
           export TARGET_SECONDS=$((DURATION_MINUTES * 60))
           echo "Output file: dist/${OUTPUT_FILE}"
-          echo "showwaves requested: ENABLE_WAVEFORM=${ENABLE_WAVEFORM}"
+          echo "No audio-reactive overlay is added; using CapCut background loop as source video."
           echo "Generating ${DURATION_MINUTES} minute MP4 (${TARGET_SECONDS} seconds)."
           scripts/generate_lofi_video.sh
 
