@@ -339,9 +339,9 @@ Tokyo ChillMatic FM/
 - 同名mp3が複数あっても、Google DriveのファイルIDで対象を管理し、古い順に20曲ずつ `track01.mp3` から `track20.mp3` にリネームして、`Incoming` から `Videos/video_XXX/tracks` へ移動します。
 - 40曲以上ある場合は、20曲単位で繰り返し処理します。
 
-## GitHub Actionsで60分LOFI動画を生成する
+## GitHub ActionsでLOFI動画を生成する
 
-Google Driveの `Tokyo ChillMatic FM / Videos / video_001 / tracks` にある `track01.mp3`〜`track20.mp3` を使い、GitHub Actions上のFFmpegで60分MP4を生成できます。
+Google Driveの `Tokyo ChillMatic FM / Videos / video_001 / tracks` にある `track01.mp3`〜`track20.mp3` を使い、GitHub Actions上のFFmpegで連結した音源の合計時間に合わせたMP4を生成できます。
 
 ### Drive側に置く素材
 
@@ -664,33 +664,34 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 
 `.github/workflows/generate_lofi_video.yml` は手動実行（`workflow_dispatch`）で、MP4生成、Artifact保存、YouTube非公開アップロードを順に検証できます。Google Driveアップロードは `upload_to_drive=true` の場合だけ実行されます。
 
-### 推奨実行手順（まず3分）
+### 推奨実行手順
 1. GitHub の **Actions** タブを開きます。
 2. **Generate LOFI video** workflow を選びます。
 3. **Run workflow** を押します。
-4. `duration_minutes` はデフォルトの `3` のまま実行します。
+4. 動画の長さはダウンロードしたSuno音源を連結した合計再生時間から自動計算されます。
 5. `upload_to_drive` はデフォルトの `false` のままにします（Service Account の Drive 保存容量制限を避け、YouTube非公開アップロード検証を優先します）。
 6. 成功したら artifact と YouTube Studio の非公開動画を確認します。
 7. Google Driveへの保存も検証したい場合だけ、`upload_to_drive` を `true` にして再実行します。
 
-### 本番用に60分で実行する場合
-- 3分検証で MP4生成、artifact保存、YouTube非公開アップロードまで通ることを確認してから、`duration_minutes` を `60` に変更して実行してください。
+### 動画尺
+- `TARGET_SECONDS` や `duration_minutes` で固定尺を指定せず、連結したSuno音源の合計時間を動画長として使用します。
+- Suno音源はループせず、曲が終わったら動画も終了します。
+- `background_loop.mp4` はSuno音源の合計時間までループします。
 - Google Driveアップロードは `upload_to_drive=true` の場合のみ実行されます。
-- 入力値は `1`〜`60` 分のみ許可しています。
 
 ### FFmpeg高速化設定
-GitHub Actions では長時間エンコードの検証前にアップロード経路を確認するため、以下の高速化設定で実行します。
+GitHub Actions では長時間エンコードの検証前にアップロード経路を確認するため、必要に応じて以下の高速化設定で実行します。
 
 - `FFMPEG_PRESET=ultrafast`
 - `FFMPEG_CRF=30`
 - `ENABLE_FILM_GRAIN=0`
 - `ENABLE_FILM_DUST=0`
 
-これにより、まず短い3分MP4で GitHub Actions 上の処理時間を抑え、Drive/YouTube連携の検証を優先します。
+これにより、GitHub Actions 上の処理時間を抑え、Drive/YouTube連携の検証を優先できます。
 
 ## Google Drive incoming 自動処理（main merge後に初回テスト）
 
-既存の手動 `Run workflow` は残したまま、`.github/workflows/generate_lofi_video.yml` に30分ごとの `schedule` 実行を追加しています。手動実行時は従来どおり `video_number` / `output_file` / `duration_minutes` を入力して、3分テスト動画または60分本番動画を生成・YouTubeアップロードできます。
+既存の手動 `Run workflow` は残したまま、`.github/workflows/generate_lofi_video.yml` に30分ごとの `schedule` 実行を追加しています。手動実行時は `video_number` / `output_file` を入力し、連結したSuno音源の合計時間に合わせた動画を生成・YouTubeアップロードできます。
 
 ### Driveフォルダ構成
 
@@ -721,7 +722,7 @@ Google Drive/
 1. GitHub Actionsが30分ごとに `Tokyo ChillMatic FM/incoming` を確認します。
 2. 条件を満たす未処理の作品フォルダを1件だけ検出します。
 3. 作品フォルダから `background.*` と `.mp3` を `video_assets/` にダウンロードします。
-4. 既存の `scripts/generate_lofi_video.sh` で60分MP4を生成します。
+4. 既存の `scripts/generate_lofi_video.sh` で、連結したSuno音源の合計時間に合わせたMP4を生成します。
 5. 既存の `scripts/upload_youtube_video.py` でYouTubeへ非公開アップロードします。
 6. 成功した作品フォルダは `processed/` へ移動します。
 7. 生成またはアップロードに失敗した作品フォルダは `failed/` へ移動します。原因は該当Actions runのログで確認します。
@@ -732,12 +733,11 @@ Google Drive/
 
 ### 初回テスト手順（mainへmerge後）
 
-1. `main` へmerge後、GitHub Actionsの `Generate LOFI video` を手動実行し、`duration_minutes=3` で既存の3分テスト動画が生成・YouTubeアップロードできることを確認します。
-2. 同じ手動workflowで `duration_minutes=60` を指定し、既存の60分本番動画が生成・YouTubeアップロードできることを確認します。
-3. Google Driveの `Tokyo ChillMatic FM/incoming/work_001/` に `background.png` とmp3素材を配置します。
-4. 次のスケジュール実行を待つか、必要に応じて `Generate LOFI video` のスケジュール相当のrunを確認します。
-5. Actionsログで検出・生成・YouTubeアップロードの完了を確認します。
-6. 成功後、`work_001` が `processed/` に移動していることを確認します。失敗した場合は `failed/` に移動していることと、Actionsログのエラー内容を確認します。
+1. `main` へmerge後、GitHub Actionsの `Generate LOFI video` を手動実行し、Suno音源の合計時間に合わせた動画が生成・YouTubeアップロードできることを確認します。
+2. Google Driveの `Tokyo ChillMatic FM/incoming/work_001/` に `background.png` とmp3素材を配置します。
+3. 次のスケジュール実行を待つか、必要に応じて `Generate LOFI video` のスケジュール相当のrunを確認します。
+4. Actionsログで検出・生成・YouTubeアップロードの完了を確認します。
+5. 成功後、`work_001` が `processed/` に移動していることを確認します。失敗した場合は `failed/` に移動していることと、Actionsログのエラー内容を確認します。
 
 ### 認証情報
 

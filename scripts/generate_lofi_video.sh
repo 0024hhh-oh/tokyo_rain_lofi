@@ -5,7 +5,6 @@ ASSET_DIR="${ASSET_DIR:-video_assets}"
 TRACK_DIR="$ASSET_DIR/tracks"
 OUTPUT_DIR="${OUTPUT_DIR:-dist}"
 OUTPUT_FILE="${OUTPUT_FILE:-Tokyo_Memory_Archive_001.mp4}"
-TARGET_SECONDS="${TARGET_SECONDS:-3600}"
 BGM_VOLUME="${BGM_VOLUME:-1.0}"
 BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"
 AUDIO_LIMIT="${AUDIO_LIMIT:-0.98}"
@@ -57,6 +56,44 @@ for track in "${TRACKS[@]}"; do
   printf "file '%s'\n" "$(realpath "$track")" >> "$CONCAT_FILE"
 done
 
+TOTAL_SECONDS="$(python - "${TRACKS[@]}" <<'PY_DURATION'
+import subprocess
+import sys
+from decimal import Decimal, InvalidOperation
+
+total = Decimal("0")
+for path in sys.argv[1:]:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            path,
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    value = result.stdout.strip()
+    try:
+        duration = Decimal(value)
+    except InvalidOperation as exc:
+        raise SystemExit(f"Invalid duration from ffprobe for {path}: {value}") from exc
+    if duration <= 0:
+        raise SystemExit(f"Track duration must be positive for {path}: {value}")
+    total += duration
+
+if total <= 0:
+    raise SystemExit("Total Suno track duration must be positive.")
+
+print(format(total, "f"))
+PY_DURATION
+)"
+
 log_media_metadata() {
   local label="$1"
   local path="$2"
@@ -76,7 +113,7 @@ cat <<EOF_STATUS
 Minimal video generation mode:
   background_loop=$BACKGROUND_FILE
   output=$OUTPUT_PATH
-  target_seconds=$TARGET_SECONDS
+  video_seconds=$TOTAL_SECONDS
   suno_track_count=${#TRACKS[@]}
   background_audio_volume=$BACKGROUND_AUDIO_VOLUME
   bgm_volume=$BGM_VOLUME
@@ -93,7 +130,7 @@ Visual processing intentionally disabled:
 
 CapCut background_loop.mp4 is treated as the completed video source.
 The video stream is looped and copied without FFmpeg video filters or re-encoding.
-Its audio is looped, kept at the configured volume, and mixed with concatenated Suno BGM.
+Its audio is looped to the total Suno track duration and mixed with the non-looped concatenated Suno BGM.
 EOF_STATUS
 
 log_media_metadata "Selected background loop video" "$BACKGROUND_FILE"
@@ -101,10 +138,10 @@ log_media_metadata "Selected background loop video" "$BACKGROUND_FILE"
 ffmpeg_cmd=(
   ffmpeg -y
   -stream_loop -1 -i "$BACKGROUND_FILE"
-  -stream_loop -1 -f concat -safe 0 -i "$CONCAT_FILE"
-  -filter_complex "[0:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  -f concat -safe 0 -i "$CONCAT_FILE"
+  -filter_complex "[0:a]atrim=0:${TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]asetpts=N/SR/TB,volume=${BGM_VOLUME}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
   -map 0:v:0 -map "[audio_out]"
-  -t "$TARGET_SECONDS"
+  -t "$TOTAL_SECONDS"
   -c:v copy
   -c:a aac -b:a 192k -ar 48000
   -movflags +faststart
