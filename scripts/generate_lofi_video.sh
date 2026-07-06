@@ -8,6 +8,7 @@ OUTPUT_FILE="${OUTPUT_FILE:-Tokyo_Memory_Archive_001.mp4}"
 BGM_VOLUME="${BGM_VOLUME:-1.0}"
 BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"
 AUDIO_LIMIT="${AUDIO_LIMIT:-0.98}"
+RAIN_OUTRO_SECONDS="${RAIN_OUTRO_SECONDS:-5}"
 
 BACKGROUND_FILE=""
 CONCAT_FILE="$OUTPUT_DIR/suno_tracks_concat.txt"
@@ -56,7 +57,7 @@ for track in "${TRACKS[@]}"; do
   printf "file '%s'\n" "$(realpath "$track")" >> "$CONCAT_FILE"
 done
 
-TOTAL_SECONDS="$(python - "${TRACKS[@]}" <<'PY_DURATION'
+SUNO_TOTAL_SECONDS="$(python - "${TRACKS[@]}" <<'PY_DURATION'
 import subprocess
 import sys
 from decimal import Decimal, InvalidOperation
@@ -94,6 +95,23 @@ print(format(total, "f"))
 PY_DURATION
 )"
 
+VIDEO_TOTAL_SECONDS="$(python - "$SUNO_TOTAL_SECONDS" "$RAIN_OUTRO_SECONDS" <<'PY_VIDEO_DURATION'
+import sys
+from decimal import Decimal, InvalidOperation
+
+try:
+    suno_total = Decimal(sys.argv[1])
+    rain_outro = Decimal(sys.argv[2])
+except InvalidOperation as exc:
+    raise SystemExit(f"Invalid duration value: {exc}") from exc
+
+if rain_outro < 0:
+    raise SystemExit(f"Rain outro duration must be non-negative: {rain_outro}")
+
+print(format(suno_total + rain_outro, "f"))
+PY_VIDEO_DURATION
+)"
+
 log_media_metadata() {
   local label="$1"
   local path="$2"
@@ -113,7 +131,9 @@ cat <<EOF_STATUS
 Minimal video generation mode:
   background_loop=$BACKGROUND_FILE
   output=$OUTPUT_PATH
-  video_seconds=$TOTAL_SECONDS
+  suno_seconds=$SUNO_TOTAL_SECONDS
+  rain_outro_seconds=$RAIN_OUTRO_SECONDS
+  video_seconds=$VIDEO_TOTAL_SECONDS
   suno_track_count=${#TRACKS[@]}
   background_audio_volume=$BACKGROUND_AUDIO_VOLUME
   bgm_volume=$BGM_VOLUME
@@ -130,7 +150,7 @@ Visual processing intentionally disabled:
 
 CapCut background_loop.mp4 is treated as the completed video source.
 The video stream is looped and copied without FFmpeg video filters or re-encoding.
-Its audio is looped to the total Suno track duration and mixed with the non-looped concatenated Suno BGM.
+Its audio is looped to the total video duration and mixed with the non-looped concatenated Suno BGM. After the Suno BGM ends, only the original background rain audio continues for the configured outro duration.
 EOF_STATUS
 
 log_media_metadata "Selected background loop video" "$BACKGROUND_FILE"
@@ -139,9 +159,9 @@ ffmpeg_cmd=(
   ffmpeg -y
   -stream_loop -1 -i "$BACKGROUND_FILE"
   -f concat -safe 0 -i "$CONCAT_FILE"
-  -filter_complex "[0:a]atrim=0:${TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]asetpts=N/SR/TB,volume=${BGM_VOLUME}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  -filter_complex "[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
   -map 0:v:0 -map "[audio_out]"
-  -t "$TOTAL_SECONDS"
+  -t "$VIDEO_TOTAL_SECONDS"
   -c:v copy
   -c:a aac -b:a 192k -ar 48000
   -movflags +faststart
