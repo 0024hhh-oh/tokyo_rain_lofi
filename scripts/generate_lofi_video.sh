@@ -10,16 +10,41 @@ BGM_VOLUME="${BGM_VOLUME:-1.0}"
 BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"
 AUDIO_LIMIT="${AUDIO_LIMIT:-0.98}"
 
-BACKGROUND_FILE="$ASSET_DIR/background_loop.mp4"
+BACKGROUND_FILE=""
 CONCAT_FILE="$OUTPUT_DIR/suno_tracks_concat.txt"
 OUTPUT_PATH="$OUTPUT_DIR/$OUTPUT_FILE"
 
 mkdir -p "$OUTPUT_DIR"
 
-if [[ ! -f "$BACKGROUND_FILE" ]]; then
-  echo "Missing required CapCut background loop: $BACKGROUND_FILE" >&2
-  exit 1
-fi
+select_background_file() {
+  local -a exact_mp4 exact_mov videos
+  mapfile -t exact_mp4 < <(find "$ASSET_DIR" -maxdepth 1 -type f -name 'background_loop.mp4' | sort)
+  if [[ "${#exact_mp4[@]}" -gt 0 ]]; then
+    printf '%s\n' "${exact_mp4[0]}"
+    return 0
+  fi
+
+  mapfile -t exact_mov < <(find "$ASSET_DIR" -maxdepth 1 -type f \( -name 'background_loop.mov' -o -name 'background_loop.MOV' \) | sort)
+  if [[ "${#exact_mov[@]}" -gt 0 ]]; then
+    printf '%s\n' "${exact_mov[0]}"
+    return 0
+  fi
+
+  mapfile -t videos < <(find "$ASSET_DIR" -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mov' \) | sort)
+  if [[ "${#videos[@]}" -eq 1 ]]; then
+    printf '%s\n' "${videos[0]}"
+    return 0
+  fi
+
+  if [[ "${#videos[@]}" -gt 1 ]]; then
+    echo "Multiple background video candidates found. Rename the intended file to background_loop.mp4 or background_loop.mov." >&2
+  else
+    echo "Missing background video in $ASSET_DIR (expected background_loop.mp4, background_loop.mov, or exactly one .mp4/.mov file)." >&2
+  fi
+  return 1
+}
+
+BACKGROUND_FILE="$(select_background_file)"
 
 mapfile -t TRACKS < <(find "$TRACK_DIR" -maxdepth 1 -type f -iname '*.mp3' | sort)
 if [[ "${#TRACKS[@]}" -eq 0 ]]; then
@@ -71,7 +96,7 @@ The video stream is looped and copied without FFmpeg video filters or re-encodin
 Its audio is looped, kept at the configured volume, and mixed with concatenated Suno BGM.
 EOF_STATUS
 
-log_media_metadata "Selected CapCut background_loop.mp4" "$BACKGROUND_FILE"
+log_media_metadata "Selected background loop video" "$BACKGROUND_FILE"
 
 ffmpeg_cmd=(
   ffmpeg -y

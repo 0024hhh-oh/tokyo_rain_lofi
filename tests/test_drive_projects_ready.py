@@ -21,12 +21,17 @@ import drive_projects_ready
 
 
 def make_tracks(count):
-    return [{"id": f"t{i}", "name": f"track{i:02}.mp3", "mimeType": "audio/mpeg"} for i in range(1, count + 1)]
+    return [
+        {"id": f"t{i}", "name": f"track{i:02}.mp3", "mimeType": "audio/mpeg"}
+        for i in range(1, count + 1)
+    ]
 
 
 def inspect_with_children(children):
     with patch.object(drive_projects_ready, "list_files", return_value=children):
-        return drive_projects_ready.inspect_project_folder(None, {"id": "folder-id", "name": "YOYOGI"})
+        return drive_projects_ready.inspect_project_folder(
+            None, {"id": "folder-id", "name": "YOYOGI"}
+        )
 
 
 def test_background_loop_mp4_is_accepted_and_prioritized_over_background_png():
@@ -44,7 +49,23 @@ def test_background_loop_mp4_is_accepted_and_prioritized_over_background_png():
 
 def test_background_loop_name_is_normalized_before_matching():
     children = [
-        {"id": "loop", "name": " background_loop.mp4 ", "mimeType": "application/octet-stream"},
+        {
+            "id": "loop",
+            "name": " background_loop.mp4 ",
+            "mimeType": "application/octet-stream",
+        },
+        *make_tracks(20),
+    ]
+
+    ok, reason = inspect_with_children(children)
+
+    assert ok is True
+    assert "background_loop.mp4優先" in reason
+
+
+def test_single_video_file_with_quicktime_mime_is_ready():
+    children = [
+        {"id": "video", "name": "capcut export", "mimeType": "video/quicktime"},
         *make_tracks(20),
     ]
 

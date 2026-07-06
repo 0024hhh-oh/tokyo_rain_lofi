@@ -69,6 +69,20 @@ def test_validate_work_folder_logs_counts_and_accepts_normalized_names(capsys):
     assert "有効判定の理由: mp3音源は1曲" in output
 
 
+def test_validate_work_folder_accepts_single_arbitrary_video(capsys):
+    children = [
+        {"id": "video", "name": "finished cut.mov", "mimeType": "video/quicktime"},
+        *make_tracks(2),
+    ]
+
+    (ok, reason, track_count), output = validate_with_children(children, capsys)
+
+    assert ok is True
+    assert track_count == 2
+    assert "mp3音源は2曲" in reason
+    assert "background_loop.mp4 があるか: yes" in output
+
+
 def test_validate_work_folder_reports_actual_skip_condition(capsys):
     children = [
         {
