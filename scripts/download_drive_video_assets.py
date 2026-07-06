@@ -149,6 +149,23 @@ def list_files(service, parent_id: str) -> list[dict]:
             return files
 
 
+def format_drive_item(item: dict) -> str:
+    return (
+        f"name={item.get('name', '<missing>')} "
+        f"id={item.get('id', '<missing>')} "
+        f"mimeType={item.get('mimeType', '<missing>')}"
+    )
+
+
+def log_drive_items(label: str, items: list[dict]) -> None:
+    print(f"{label}: count={len(items)}")
+    if not items:
+        print(f"{label}: <none>")
+        return
+    for index, item in enumerate(items, start=1):
+        print(f"{label}[{index}]: {format_drive_item(item)}")
+
+
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -307,14 +324,19 @@ def download_legacy_video_folder(
 
 
 def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> None:
+    print(f"Starting download_incoming_work_folder: work_folder_id={folder_id}")
     remove_stale_background_assets(output_dir)
     tracks_dir = output_dir / "tracks"
     children = list_files(service, folder_id)
+    log_drive_items("Incoming work folder items", children)
     mp3_files = [item for item in children if item["name"].lower().endswith(".mp3")]
     background_loop_files = [
         item for item in children if item["name"].lower() == BACKGROUND_LOOP_NAME
     ]
     image_files = [item for item in children if is_background_image_file(item)]
+    log_drive_items("background_loop.mp4 candidates", background_loop_files)
+    log_drive_items("background image candidates", image_files)
+    log_drive_items("track audio candidates", mp3_files)
     if len(background_loop_files) > 1:
         raise FileNotFoundError(
             f"background_loop.mp4 は1つだけ必要です。検出数: {len(background_loop_files)}"
@@ -324,6 +346,13 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
             f"background画像は1枚だけ必要です。検出数: {len(image_files)}"
         )
     if not background_loop_files and not image_files:
+        print(
+            "No usable background asset detected before FileNotFoundError: "
+            f"background_loop.mp4 candidates={len(background_loop_files)} "
+            f"because no item name matched {BACKGROUND_LOOP_NAME!r}; "
+            f"background image candidates={len(image_files)} because no item matched "
+            f"names={sorted(BACKGROUND_IMAGE_NAMES)} and mimeTypes={sorted(IMAGE_MIME_TYPES)}"
+        )
         raise FileNotFoundError("background_loop.mp4 または background画像が必要です")
     if len(mp3_files) < 1:
         raise FileNotFoundError(
