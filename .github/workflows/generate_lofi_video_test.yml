@@ -15,10 +15,6 @@ on:
         description: "テスト生成秒数"
         required: true
         default: "180"
-      enable_waveform:
-        description: "波形表示を有効化する場合は1"
-        required: true
-        default: "1"
       enable_logo:
         description: "ロゴ表示を有効化する場合は1"
         required: true
@@ -67,7 +63,6 @@ jobs:
           OUTPUT_DIR: dist
           OUTPUT_FILE: ${{ inputs.output_file }}
           TARGET_SECONDS: ${{ inputs.target_seconds }}
-          ENABLE_WAVEFORM: ${{ inputs.enable_waveform }}
           ENABLE_LOGO: ${{ inputs.enable_logo }}
           ENABLE_RAIN_OVERLAY: "0"
           ENABLE_FILM_GRAIN: ${{ inputs.enable_film_grain }}

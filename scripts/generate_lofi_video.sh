@@ -8,7 +8,6 @@ OUTPUT_FILE="${OUTPUT_FILE:-Tokyo_Memory_Archive_001.mp4}"
 TARGET_SECONDS="${TARGET_SECONDS:-3600}"
 FFMPEG_PRESET="${FFMPEG_PRESET:-ultrafast}"
 FFMPEG_CRF="${FFMPEG_CRF:-30}"
-ENABLE_WAVEFORM="${ENABLE_WAVEFORM:-0}"
 ENABLE_LOGO="${ENABLE_LOGO:-1}"
 ENABLE_RAIN_OVERLAY="${ENABLE_RAIN_OVERLAY:-0}"
 ENABLE_FILM_GRAIN="${ENABLE_FILM_GRAIN:-0}"
@@ -125,17 +124,7 @@ else
   echo "Logo overlay disabled by ENABLE_LOGO=$ENABLE_LOGO"
 fi
 
-HAS_WAVEFORM=0
-if [[ "$ENABLE_WAVEFORM" == "1" ]]; then
-  if ffmpeg -hide_banner -filters 2>/dev/null | grep -q '[[:space:]]showwaves[[:space:]]'; then
-    HAS_WAVEFORM=1
-    echo "Audio waveform visualizer enabled: showwaves, 720x64, centered near the bottom, white/gray, subtle."
-  else
-    echo "FFmpeg showwaves filter not available; continuing without waveform."
-  fi
-else
-  echo "Audio waveform visualizer disabled by ENABLE_WAVEFORM=$ENABLE_WAVEFORM"
-fi
+echo "No audio-reactive overlay is added: CapCut background_loop.mp4 already contains rain and film noise."
 
 HAS_FILM_GRAIN=0
 if [[ "$ENABLE_FILM_GRAIN" == "1" ]]; then
@@ -157,10 +146,6 @@ else
 fi
 
 if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
-  if [[ "$ENABLE_WAVEFORM" == "1" && "$HAS_WAVEFORM" -ne 1 ]]; then
-    echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required showwaves waveform is unavailable." >&2
-    exit 1
-  fi
   if [[ "$ENABLE_FILM_GRAIN" == "1" && "$HAS_FILM_GRAIN" -ne 1 ]]; then
     echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; required noise film grain is unavailable." >&2
     exit 1
@@ -234,13 +219,14 @@ run_ffmpeg() {
     filter_complex="[0:a]atrim=0:${TARGET_SECONDS},asetpts=N/SR/TB,volume=0.92,alimiter=limit=0.95[audio_mix];"
   fi
 
-  if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[audio_mix]asplit=2[aout][wave_audio];[wave_audio]showwaves=s=720x64:mode=line:rate=30:colors=white@0.70,format=rgba[wave];"
-  else
-    filter_complex+="[audio_mix]anull[aout];"
-  fi
+  filter_complex+="[audio_mix]anull[aout];"
 
-  filter_complex+="[${background_index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30,format=rgba[bg];"
+  if [[ "$BACKGROUND_TYPE" == "video" ]]; then
+    # CapCut-rendered loops already contain the intended rain/film-noise look; keep frames visually unchanged.
+    filter_complex+="[${background_index}:v]fps=30,format=rgba[bg];"
+  else
+    filter_complex+="[${background_index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30,format=rgba[bg];"
+  fi
   local current_video="bg"
 
   if [[ "$include_optional_visuals" == "1" && "$HAS_RAIN_OVERLAY" -eq 1 ]]; then
@@ -253,11 +239,6 @@ run_ffmpeg() {
     current_video="tmp_logo"
   fi
 
-  if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    filter_complex+="[${current_video}][wave]overlay=(W-w)/2:H-h-64:shortest=0[tmp_wave];"
-    current_video="tmp_wave"
-  fi
-
   if [[ "$include_optional_visuals" == "1" && "$HAS_FILM_GRAIN" -eq 1 ]]; then
     filter_complex+="[${current_video}]format=yuv420p,noise=alls=24:allf=t+u[vout]"
   else
@@ -265,13 +246,7 @@ run_ffmpeg() {
   fi
 
   echo "Optional visual filter status:"
-  if [[ "$include_optional_visuals" == "1" && "$HAS_WAVEFORM" -eq 1 ]]; then
-    echo "  showwaves: APPLIED (720x64, line, 30fps, subtle line)"
-    echo "  waveform overlay: APPLIED ((W-w)/2:H-h-64)"
-  else
-    echo "  showwaves: NOT APPLIED"
-    echo "  waveform overlay: NOT APPLIED"
-  fi
+  echo "  audio-reactive overlay: REMOVED"
   if [[ "$include_optional_visuals" == "1" && "$HAS_RAIN_OVERLAY" -eq 1 ]]; then
     echo "  rain overlay: APPLIED"
   else
@@ -302,7 +277,7 @@ run_ffmpeg() {
 }
 
 if ! run_ffmpeg 1; then
-  echo "Optional visual generation failed; retrying without waveform, logo, rain overlay, film grain, or dust to prioritize MP4 output. Check the FFmpeg command above for the failing filter graph." >&2
+  echo "Optional visual generation failed; retrying without logo, rain overlay, film grain, or dust to prioritize MP4 output. Check the FFmpeg command above for the failing filter graph." >&2
   if [[ "$FAIL_ON_OPTIONAL_VISUAL_FALLBACK" == "1" ]]; then
     echo "FAIL_ON_OPTIONAL_VISUAL_FALLBACK=1; failing instead of generating a fallback video without optional visuals." >&2
     exit 1
