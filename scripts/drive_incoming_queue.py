@@ -294,21 +294,33 @@ def safe_file_stem(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-") or "incoming_work"
 
 
+def list_incoming_items(service, incoming: dict) -> list[dict]:
+    """Return every non-trashed item directly under incoming."""
+    incoming_items_query = (
+        f"'{quote_drive_query(incoming['id'])}' in parents and trashed = false"
+    )
+    return list_files(
+        service,
+        incoming_items_query,
+        fields="files(id,name,mimeType,createdTime,modifiedTime,parents,shortcutDetails)",
+    )
+
+
+def list_incoming_work_folders(
+    service, incoming: dict
+) -> tuple[list[dict], list[dict]]:
+    """Return all direct incoming items and direct child folders as work candidates."""
+    incoming_items = list_incoming_items(service, incoming)
+    return incoming_items, [item for item in incoming_items if is_folder(item)]
+
+
 def detect(args: argparse.Namespace) -> None:
     service = get_drive_service()
     root = resolve_root_folder(service, args.root_folder, args.root_folder_id)
     incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
     ensure_child_folder(service, root["id"], args.completed_folder)
     ensure_child_folder(service, root["id"], args.failed_folder)
-    incoming_items_query = (
-        f"'{quote_drive_query(incoming['id'])}' in parents and trashed = false"
-    )
-    incoming_items = list_files(
-        service,
-        incoming_items_query,
-        fields="files(id,name,mimeType,createdTime,modifiedTime,parents,shortcutDetails)",
-    )
-    work_folders = [item for item in incoming_items if is_folder(item)]
+    incoming_items, work_folders = list_incoming_work_folders(service, incoming)
     log_incoming_items(incoming, incoming_items)
     log_incoming_work_folders(incoming, work_folders)
     print(f"incoming内の作品フォルダ数: {len(work_folders)}")
