@@ -108,12 +108,9 @@ jobs:
           OUTPUT_DIR: dist
           OUTPUT_FILE: ${{ inputs.output_file || steps.incoming.outputs.output_file }}
           DURATION_MINUTES: ${{ inputs.duration_minutes || '60' }}
-          FFMPEG_PRESET: ultrafast
-          FFMPEG_CRF: "30"
-          ENABLE_RAIN_OVERLAY: "0"
-          ENABLE_FILM_GRAIN: "0"
-          ENABLE_FILM_DUST: "0"
-          FAIL_ON_OPTIONAL_VISUAL_FALLBACK: "1"
+          BGM_VOLUME: "1.0"
+          BACKGROUND_AUDIO_VOLUME: "1.0"
+          AUDIO_LIMIT: "0.98"
         run: |
           if ! [[ "${DURATION_MINUTES}" =~ ^[0-9]+$ ]]; then
             echo "duration_minutes must be a positive integer: ${DURATION_MINUTES}" >&2
@@ -125,7 +122,8 @@ jobs:
           fi
           export TARGET_SECONDS=$((DURATION_MINUTES * 60))
           echo "Output file: dist/${OUTPUT_FILE}"
-          echo "No audio-reactive overlay is added; using CapCut background loop as source video."
+          echo "Using minimal CapCut background_loop.mp4 loop generation."
+          echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
           echo "Generating ${DURATION_MINUTES} minute MP4 (${TARGET_SECONDS} seconds)."
           scripts/generate_lofi_video.sh
 
