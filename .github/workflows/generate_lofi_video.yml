@@ -69,8 +69,120 @@ jobs:
         run: |
           echo "No valid incoming work folder found. Exiting without generation."
 
+      - name: Process all incoming work folders
+        if: ${{ inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+          DURATION_MINUTES: ${{ inputs.duration_minutes || '60' }}
+          BGM_VOLUME: "1.0"
+          BACKGROUND_AUDIO_VOLUME: "1.0"
+          AUDIO_LIMIT: "0.98"
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
+          YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
+        run: |
+          if ! [[ "${DURATION_MINUTES}" =~ ^[0-9]+$ ]]; then
+            echo "duration_minutes must be a positive integer: ${DURATION_MINUTES}" >&2
+            exit 1
+          fi
+          if (( DURATION_MINUTES < 1 || DURATION_MINUTES > 60 )); then
+            echo "duration_minutes must be between 1 and 60: ${DURATION_MINUTES}" >&2
+            exit 1
+          fi
+
+          processed_count=0
+          failed_count=0
+          while true; do
+            incoming_output="$(mktemp)"
+            GITHUB_OUTPUT="${incoming_output}" python scripts/drive_incoming_queue.py detect
+            found="false"
+            work_folder_id=""
+            work_folder_name=""
+            track_count=""
+            output_file=""
+            youtube_title=""
+            while IFS='=' read -r key value; do
+              case "${key}" in
+                found) found="${value}" ;;
+                work_folder_id) work_folder_id="${value}" ;;
+                work_folder_name) work_folder_name="${value}" ;;
+                track_count) track_count="${value}" ;;
+                output_file) output_file="${value}" ;;
+                youtube_title) youtube_title="${value}" ;;
+              esac
+            done < "${incoming_output}"
+            rm -f "${incoming_output}"
+
+            if [[ "${found:-false}" != "true" ]]; then
+              echo "No valid incoming work folder found. Incoming queue is empty or has no valid work left."
+              break
+            fi
+
+            echo "incoming selected work_folder_id=${work_folder_id}"
+            echo "incoming selected work_folder_name=${work_folder_name}"
+            echo "asset acquisition method=incoming-queue"
+
+            rm -rf video_assets dist
+            mkdir -p dist_all
+            set +e
+            (
+              set -euo pipefail
+              python scripts/download_drive_video_assets.py \
+                --drive-folder-id "${work_folder_id}" \
+                --output-dir video_assets
+              export ASSET_DIR=video_assets
+              export OUTPUT_DIR=dist
+              export OUTPUT_FILE="${output_file}"
+              export TARGET_SECONDS=$((DURATION_MINUTES * 60))
+              echo "Output file: dist/${OUTPUT_FILE}"
+              echo "Using minimal CapCut background_loop.mp4 loop generation."
+              echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
+              echo "Generating ${DURATION_MINUTES} minute MP4 (${TARGET_SECONDS} seconds)."
+              scripts/generate_lofi_video.sh
+              echo "YouTube upload starting: dist/${OUTPUT_FILE}"
+              python scripts/upload_youtube_video.py \
+                --file "dist/${OUTPUT_FILE}" \
+                --title "${youtube_title}" \
+                --description "${YOUTUBE_DESCRIPTION}" \
+                --tags "${YOUTUBE_TAGS}"
+              cp "dist/${OUTPUT_FILE}" "dist_all/${OUTPUT_FILE}"
+            )
+            status=$?
+            set -e
+
+            if [[ ${status} -eq 0 ]]; then
+              python scripts/drive_incoming_queue.py move \
+                --folder-id "${work_folder_id}" \
+                --destination completed
+              processed_count=$((processed_count + 1))
+            else
+              python scripts/drive_incoming_queue.py move \
+                --folder-id "${work_folder_id}" \
+                --destination failed
+              failed_count=$((failed_count + 1))
+            fi
+
+            unset found work_folder_id work_folder_name track_count output_file youtube_title
+          done
+
+          echo "incoming processing summary: completed=${processed_count} failed=${failed_count}"
+          if (( failed_count > 0 )); then
+            exit 1
+          fi
+
+      - name: Upload incoming MP4 artifacts
+        if: ${{ inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: incoming-generated-mp4
+          path: dist_all/*.mp4
+          if-no-files-found: ignore
+
       - name: Download assets from Google Drive
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
@@ -102,7 +214,7 @@ jobs:
           fi
 
       - name: Generate MP4
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
         env:
           ASSET_DIR: video_assets
           OUTPUT_DIR: dist
@@ -128,7 +240,7 @@ jobs:
           scripts/generate_lofi_video.sh
 
       - name: Upload MP4 artifact
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.output_file || steps.incoming.outputs.output_file }}
@@ -147,7 +259,7 @@ jobs:
             --output-name "${{ inputs.output_file }}"
 
       - name: Upload private video to YouTube
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}
+        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -163,23 +275,3 @@ jobs:
             --title "${YOUTUBE_TITLE}" \
             --description "${YOUTUBE_DESCRIPTION}" \
             --tags "${YOUTUBE_TAGS}"
-
-      - name: Move incoming work to completed
-        if: ${{ success() && inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
-        run: |
-          python scripts/drive_incoming_queue.py move \
-            --folder-id "${{ steps.incoming.outputs.work_folder_id }}" \
-            --destination completed
-
-      - name: Move incoming work to failed
-        if: ${{ failure() && inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
-        run: |
-          python scripts/drive_incoming_queue.py move \
-            --folder-id "${{ steps.incoming.outputs.work_folder_id }}" \
-            --destination failed

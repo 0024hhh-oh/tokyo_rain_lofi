@@ -34,11 +34,13 @@ def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
 
     detect_condition = "if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}"
     stop_condition = "if: ${{ (github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '') && steps.incoming.outputs.found != 'true' }}"
-    runnable_condition = "if: ${{ inputs.DRIVE_FOLDER_ID != '' || steps.incoming.outputs.found == 'true' }}"
+    incoming_loop_condition = "if: ${{ inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}"
+    debug_only_condition = "if: ${{ inputs.DRIVE_FOLDER_ID != '' }}"
 
     assert detect_condition in text
     assert stop_condition in text
-    assert text.count(runnable_condition) >= 4
+    assert incoming_loop_condition in text
+    assert text.count(debug_only_condition) >= 4
 
 
 def test_workflow_resolves_drive_folder_id_only_from_explicit_debug_input():
@@ -63,7 +65,7 @@ def test_workflow_logs_debug_inputs_and_selected_acquisition_method_before_downl
     log_video_number = 'echo "VIDEO_NUMBER=${VIDEO_NUMBER}"'
     log_drive_method = 'echo "asset acquisition method=drive-folder-id"'
     log_incoming_method = 'echo "asset acquisition method=incoming-queue"'
-    first_download = text.index("--drive-folder-id")
+    debug_branch = text.split('if [[ -n "${RESOLVED_DRIVE_FOLDER_ID}" ]]; then', 1)[1].split("elif", 1)[0]
 
     for log_line in [
         log_workflow_dispatch_drive_folder_id,
@@ -72,12 +74,11 @@ def test_workflow_logs_debug_inputs_and_selected_acquisition_method_before_downl
         log_video_number,
     ]:
         assert log_line in text
-        assert text.index(log_line) < first_download
+        assert text.index(log_line) < text.index('--drive-folder-id "${RESOLVED_DRIVE_FOLDER_ID}"')
 
-    assert log_drive_method in text
-    assert text.index(log_drive_method) < first_download
+    assert log_drive_method in debug_branch
     assert log_incoming_method in text
-    assert text.index(log_incoming_method) < text.rindex("--drive-folder-id")
+    assert text.index(log_incoming_method) < text.index('--drive-folder-id "${work_folder_id}"')
 
 
 def test_drive_folder_id_branch_does_not_use_video_number_argument():
@@ -105,10 +106,31 @@ def test_blank_workflow_dispatch_drive_folder_id_does_not_enter_drive_folder_id_
     assert '--drive-folder-id "${INCOMING_WORK_FOLDER_ID}"' in incoming_branch
 
 
-def test_workflow_moves_successful_incoming_work_to_completed():
+def test_workflow_moves_successful_incoming_work_to_completed_inside_loop():
     text = workflow_text()
 
-    assert "Move incoming work to completed" in text
+    assert "Process all incoming work folders" in text
     assert "--destination completed" in text
     assert "Move incoming work to processed" not in text
     assert "--destination processed" not in text
+
+
+def test_workflow_loops_until_incoming_queue_is_empty():
+    text = workflow_text()
+
+    assert "Process all incoming work folders" in text
+    assert "while true; do" in text
+    assert "GITHUB_OUTPUT=\"${incoming_output}\" python scripts/drive_incoming_queue.py detect" in text
+    assert "No valid incoming work folder found. Incoming queue is empty or has no valid work left." in text
+    assert "--destination completed" in text
+    assert "--destination failed" in text
+    assert "processed_count=$((processed_count + 1))" in text
+
+
+def test_incoming_loop_processes_folders_sequentially_before_redetecting():
+    text = workflow_text()
+    loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
+
+    assert loop.index("python scripts/download_drive_video_assets.py") < loop.index("scripts/generate_lofi_video.sh")
+    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("python scripts/upload_youtube_video.py")
+    assert loop.index("--destination completed") < loop.index("unset found work_folder_id")
