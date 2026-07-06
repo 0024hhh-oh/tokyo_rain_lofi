@@ -55,22 +55,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth
 
-      - name: Check Google Drive incoming queue
-        id: incoming
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
-        run: |
-          python scripts/drive_incoming_queue.py detect
-
-      - name: Stop when no incoming work is ready
-        if: ${{ (github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '') && steps.incoming.outputs.found != 'true' }}
-        run: |
-          echo "No valid incoming work folder found. Exiting without generation."
-
       - name: Process all incoming work folders
-        if: ${{ inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
@@ -117,7 +103,7 @@ jobs:
             rm -f "${incoming_output}"
 
             if [[ "${found:-false}" != "true" ]]; then
-              echo "No valid incoming work folder found. Incoming queue is empty or has no valid work left."
+              echo "No valid incoming work folder found. Exiting without generation."
               break
             fi
 
@@ -174,7 +160,7 @@ jobs:
           fi
 
       - name: Upload incoming MP4 artifacts
-        if: ${{ inputs.DRIVE_FOLDER_ID == '' && steps.incoming.outputs.found == 'true' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: incoming-generated-mp4
@@ -182,20 +168,18 @@ jobs:
           if-no-files-found: ignore
 
       - name: Download assets from Google Drive
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
           WORKFLOW_DISPATCH_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
           WORKFLOW_DISPATCH_VIDEO_NUMBER: ${{ inputs.video_number || '' }}
           RESOLVED_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
-          INCOMING_WORK_FOLDER_ID: ${{ steps.incoming.outputs.work_folder_id || '' }}
           VIDEO_NUMBER: ${{ inputs.video_number || '001' }}
         run: |
           rm -rf video_assets dist
           echo "workflow_dispatch DRIVE_FOLDER_ID=${WORKFLOW_DISPATCH_DRIVE_FOLDER_ID}"
           echo "resolved DRIVE_FOLDER_ID=${RESOLVED_DRIVE_FOLDER_ID}"
-          echo "incoming selected work_folder_id=${INCOMING_WORK_FOLDER_ID}"
           echo "workflow_dispatch debug inputs: video_number=${WORKFLOW_DISPATCH_VIDEO_NUMBER}"
           echo "VIDEO_NUMBER=${VIDEO_NUMBER}"
           if [[ -n "${RESOLVED_DRIVE_FOLDER_ID}" ]]; then
@@ -203,22 +187,17 @@ jobs:
             python scripts/download_drive_video_assets.py \
               --drive-folder-id "${RESOLVED_DRIVE_FOLDER_ID}" \
               --output-dir video_assets
-          elif [[ -n "${INCOMING_WORK_FOLDER_ID}" ]]; then
-            echo "asset acquisition method=incoming-queue"
-            python scripts/download_drive_video_assets.py \
-              --drive-folder-id "${INCOMING_WORK_FOLDER_ID}" \
-              --output-dir video_assets
           else
-            echo "No incoming work folder found and no debug DRIVE_FOLDER_ID was provided." >&2
+            echo "No debug DRIVE_FOLDER_ID was provided." >&2
             exit 1
           fi
 
       - name: Generate MP4
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
         env:
           ASSET_DIR: video_assets
           OUTPUT_DIR: dist
-          OUTPUT_FILE: ${{ inputs.output_file || steps.incoming.outputs.output_file }}
+          OUTPUT_FILE: ${{ inputs.output_file }}
           DURATION_MINUTES: ${{ inputs.duration_minutes || '60' }}
           BGM_VOLUME: "1.0"
           BACKGROUND_AUDIO_VOLUME: "1.0"
@@ -240,11 +219,11 @@ jobs:
           scripts/generate_lofi_video.sh
 
       - name: Upload MP4 artifact
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.output_file || steps.incoming.outputs.output_file }}
-          path: dist/${{ inputs.output_file || steps.incoming.outputs.output_file }}
+          name: ${{ inputs.output_file }}
+          path: dist/${{ inputs.output_file }}
           if-no-files-found: error
 
       - name: Upload MP4 to Google Drive
@@ -259,13 +238,13 @@ jobs:
             --output-name "${{ inputs.output_file }}"
 
       - name: Upload private video to YouTube
-        if: ${{ inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          OUTPUT_FILE: ${{ inputs.output_file || steps.incoming.outputs.output_file }}
-          YOUTUBE_TITLE: ${{ inputs.youtube_title || steps.incoming.outputs.youtube_title }}
+          OUTPUT_FILE: ${{ inputs.output_file }}
+          YOUTUBE_TITLE: ${{ inputs.youtube_title }}
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
         run: |
