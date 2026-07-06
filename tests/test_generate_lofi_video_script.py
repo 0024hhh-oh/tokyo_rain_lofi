@@ -28,7 +28,8 @@ def test_script_loops_background_but_not_suno_concat_input():
     assert '-f concat -safe 0 -i "$CONCAT_FILE"' in text
     assert "[1:a]atrim=0:${SUNO_TOTAL_SECONDS}" in text
     assert "volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm]" in text
-    assert "[0:a]atrim=0:${VIDEO_TOTAL_SECONDS}" in text
+    assert "[0:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS}" in text
+    assert "BACKGROUND_AUDIO_LOOP_SAMPLES" in text
     assert "amix=inputs=2:duration=first" in text
     assert "amix=inputs=2:duration=shortest" not in text
 
@@ -37,7 +38,8 @@ def test_script_keeps_background_rain_audio_through_outro_without_fade():
     text = script_text()
 
     assert 'BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"' in text
-    assert "[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio]" in text
+    assert "[0:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio]" in text
+    assert "math.ceil(float(duration) * 48000)" in text
     assert "dropout_transition=0" in text
     assert "afade" not in text
     assert "fade=t=out" not in text

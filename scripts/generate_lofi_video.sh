@@ -112,6 +112,50 @@ print(format(suno_total + rain_outro, "f"))
 PY_VIDEO_DURATION
 )"
 
+BACKGROUND_AUDIO_LOOP_SAMPLES="$(python - "$BACKGROUND_FILE" <<'PY_BACKGROUND_AUDIO_LOOP'
+import math
+import subprocess
+import sys
+from decimal import Decimal, InvalidOperation
+
+path = sys.argv[1]
+
+
+def ffprobe_duration(args):
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            *args,
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            path,
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+
+value = ffprobe_duration(["-select_streams", "a:0", "-show_entries", "stream=duration"])
+if value in {"", "N/A"}:
+    value = ffprobe_duration(["-show_entries", "format=duration"])
+
+try:
+    duration = Decimal(value)
+except InvalidOperation as exc:
+    raise SystemExit(f"Invalid background audio duration from ffprobe for {path}: {value}") from exc
+
+if duration <= 0:
+    raise SystemExit(f"Background audio duration must be positive for {path}: {value}")
+
+# The filtergraph resamples background audio to 48 kHz before aloop, so aloop's
+# size must be expressed in 48 kHz samples. Round up to preserve the full loop.
+print(math.ceil(float(duration) * 48000))
+PY_BACKGROUND_AUDIO_LOOP
+)"
+
 log_media_metadata() {
   local label="$1"
   local path="$2"
@@ -138,6 +182,7 @@ Minimal video generation mode:
   background_audio_volume=$BACKGROUND_AUDIO_VOLUME
   bgm_volume=$BGM_VOLUME
   audio_limit=$AUDIO_LIMIT
+  background_audio_loop_samples=$BACKGROUND_AUDIO_LOOP_SAMPLES
 
 Visual processing intentionally disabled:
   waveform=disabled
@@ -159,7 +204,7 @@ ffmpeg_cmd=(
   ffmpeg -y
   -stream_loop -1 -i "$BACKGROUND_FILE"
   -f concat -safe 0 -i "$CONCAT_FILE"
-  -filter_complex "[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  -filter_complex "[0:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
   -map 0:v:0 -map "[audio_out]"
   -t "$VIDEO_TOTAL_SECONDS"
   -c:v copy
