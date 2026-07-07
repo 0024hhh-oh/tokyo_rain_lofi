@@ -110,33 +110,11 @@ def test_missing_background_message_includes_google_drive_file_list():
     assert "track01.mp3 [audio/mpeg]" in reason
 
 
-def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
+def test_projects_root_assets_are_skipped_without_drive_copy_or_upload(capsys):
     direct_files = [
         {"id": f"song-{i:02}", "name": f"song{i:02}.mp3", "mimeType": "audio/mpeg"}
         for i in range(1, 21)
     ] + [{"id": "bg", "name": "background.mp4", "mimeType": "video/mp4"}]
-    downloaded = []
-    uploaded = []
-    created = []
-
-    class FakeFiles:
-        def get_media(self, fileId, supportsAllDrives):
-            downloaded.append(fileId)
-            return fileId
-
-        def create(self, body, fields, supportsAllDrives, media_body=None):
-            class Request:
-                def execute(self_inner):
-                    created.append(body)
-                    if media_body is not None:
-                        uploaded.append((body["parents"][0], body["name"], media_body))
-                    return {"id": f"created-{body['name']}", "name": body["name"]}
-
-            return Request()
-
-    class FakeService:
-        def files(self):
-            return FakeFiles()
 
     def fake_list_files(
         _service,
@@ -146,12 +124,6 @@ def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
         if "'projects-id' in parents" in query and "mimeType =" not in query:
             return direct_files
         return []
-
-    ensured = []
-
-    def fake_ensure(_service, parent_id, name):
-        ensured.append((parent_id, name))
-        return {"id": f"{name}-id", "name": name}
 
     args = types.SimpleNamespace(
         root_folder="Tokyo ChillMatic FM",
@@ -165,17 +137,7 @@ def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
     )
 
     with patch.object(
-        drive_projects_ready, "MediaIoBaseDownload", FakeMediaIoBaseDownload
-    ), patch.object(
-        drive_projects_ready,
-        "MediaFileUpload",
-        lambda filename, mimetype=None, resumable=False: {
-            "filename": filename,
-            "mimetype": mimetype,
-            "resumable": resumable,
-        },
-    ), patch.object(
-        drive_projects_ready, "get_drive_service", return_value=FakeService()
+        drive_projects_ready, "get_drive_service", return_value=object()
     ), patch.object(
         drive_projects_ready,
         "resolve_root_folder",
@@ -185,31 +147,17 @@ def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
         "find_single_folder",
         return_value={"id": "projects-id", "name": "Projects"},
     ), patch.object(
-        drive_projects_ready, "ensure_child_folder", side_effect=fake_ensure
+        drive_projects_ready,
+        "ensure_child_folder",
+        side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
     ), patch.object(
         drive_projects_ready, "list_files", side_effect=fake_list_files
-    ), patch.object(
-        drive_projects_ready,
-        "read_project_names",
-        return_value=["KINSHICHO", "SUNAMACHI"],
     ):
         drive_projects_ready.check_projects(args)
 
     output = capsys.readouterr().out
-    assert "READY: KINSHICHO" in output
-    assert ("incoming-id", "KINSHICHO") in ensured
-    assert downloaded == [*[f"song-{i:02}" for i in range(1, 21)], "bg"]
-    assert len(uploaded) == 21
-    assert uploaded[0][0:2] == ("KINSHICHO-id", "track01.mp3")
-    assert uploaded[0][2]["mimetype"] == "audio/mpeg"
-    assert uploaded[19][0:2] == ("KINSHICHO-id", "track20.mp3")
-    assert uploaded[20][0:2] == ("KINSHICHO-id", "background.mp4")
-    assert uploaded[20][2]["mimetype"] == "video/mp4"
-    marker_body = created[-1]
-    assert marker_body["name"].startswith(
-        drive_projects_ready.PROJECTS_BATCH_MARKER_PREFIX
-    )
-    assert marker_body["parents"] == ["processed-id"]
+    assert "Projects直下ファイル方式は読み取り専用扱い" in output
+    assert "Drive上ではcopy/create/uploadを行わない" in output
 
 
 def test_projects_root_batch_marker_prevents_duplicate_copy(capsys):
@@ -259,10 +207,9 @@ def test_projects_root_batch_marker_prevents_duplicate_copy(capsys):
         side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
     ), patch.object(
         drive_projects_ready, "list_files", side_effect=fake_list_files
-    ), patch.object(
-        drive_projects_ready, "copy_projects_root_batch"
-    ) as copy_batch:
+    ):
         drive_projects_ready.check_projects(args)
 
-    assert not copy_batch.called
-    assert "二重処理防止" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Projects直下ファイル方式は読み取り専用扱い" in output
+    assert "Drive上ではcopy/create/uploadを行わない" in output

@@ -6,11 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 from drive_incoming_queue import (
     FOLDER_MIME,
@@ -198,92 +196,9 @@ def select_unused_project_name(
     return None
 
 
-def download_file_to_path(service, file_id: str, destination: Path) -> None:
-    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
-    with destination.open("wb") as handle:
-        downloader = MediaIoBaseDownload(handle, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
 
-
-def upload_file_from_path(
-    service, source_path: Path, destination_folder_id: str, name: str, mime_type: str
-) -> None:
-    media = MediaFileUpload(str(source_path), mimetype=mime_type or None, resumable=True)
-    service.files().create(
-        body={"name": name, "parents": [destination_folder_id]},
-        media_body=media,
-        fields="id,name,parents",
-        supportsAllDrives=True,
-    ).execute()
-
-
-def transfer_file_via_download_upload(
-    service, item: dict, destination_folder_id: str, name: str, dry_run: bool
-) -> None:
-    if dry_run:
-        print(f"DRY RUN: download/upload {item['id']} -> {name}")
-        return
-    suffix = Path(name).suffix or Path(item.get("name", "")).suffix
-    with tempfile.TemporaryDirectory(prefix="drive-projects-") as temp_dir:
-        temp_path = Path(temp_dir) / f"source{suffix}"
-        download_file_to_path(service, item["id"], temp_path)
-        upload_file_from_path(
-            service, temp_path, destination_folder_id, name, item.get("mimeType", "")
-        )
-
-
-def create_marker_folder(
-    service, processed_id: str, marker_name: str, dry_run: bool
-) -> None:
-    if dry_run:
-        print(f"DRY RUN: create processed marker {marker_name}")
-        return
-    service.files().create(
-        body={
-            "name": marker_name,
-            "mimeType": FOLDER_MIME,
-            "parents": [processed_id],
-            "description": "TokyoChillMatic Projects root batch copied to incoming "
-            f"at {datetime.now(timezone.utc).isoformat()}",
-        },
-        fields="id,name",
-        supportsAllDrives=True,
-    ).execute()
-
-
-def copy_projects_root_batch(
-    service,
-    incoming_id: str,
-    processed_id: str,
-    project_name: str,
-    mp3s: list[dict],
-    background: dict,
-    marker_name: str,
-    dry_run: bool,
-) -> None:
-    if dry_run:
-        work_folder = {"id": f"dry-run-{project_name}", "name": project_name}
-        print(f"DRY RUN: create incoming/{project_name}")
-    else:
-        work_folder = ensure_child_folder(service, incoming_id, project_name)
-    for index, item in enumerate(
-        sorted(mp3s, key=lambda entry: normalized_drive_name(entry)), start=1
-    ):
-        transfer_file_via_download_upload(
-            service, item, work_folder["id"], f"track{index:02d}.mp3", dry_run
-        )
-    background_name = (
-        "background.mp4"
-        if normalized_drive_name(background).endswith(".mp4")
-        else "background.jpg"
-    )
-    transfer_file_via_download_upload(
-        service, background, work_folder["id"], background_name, dry_run
-    )
-    create_marker_folder(service, processed_id, marker_name, dry_run)
-    print(f"COPIED: Projects直下素材 -> incoming/{project_name}")
+def skip_projects_root_batch(reason: str) -> None:
+    print(f"SKIP: Projects直下素材 - {reason}。Drive上ではcopy/create/uploadを行わないため、作品フォルダ方式を使用してください")
 
 
 def inspect_project_folder(service, folder: dict) -> tuple[bool, str]:
@@ -367,37 +282,11 @@ def check_projects(args: argparse.Namespace) -> None:
     copied_count = 0
     skipped_count = 0
     if ok and background:
-        marker_name = project_batch_marker_name(mp3s, background)
-        if folder_exists(service, processed["id"], marker_name):
-            skipped_count += 1
-            print(
-                f"SKIP: Projects直下素材 - processed marker {marker_name} があるため二重処理防止"
-            )
-        else:
-            project_name = select_unused_project_name(
-                service,
-                read_project_names(),
-                [incoming["id"], completed["id"], processed["id"], failed["id"]],
-            )
-            if not project_name:
-                skipped_count += 1
-                print("SKIP: project_names.txt に未使用の作品名がありません")
-            else:
-                print(f"READY: {project_name} - {reason}")
-                copy_projects_root_batch(
-                    service,
-                    incoming["id"],
-                    processed["id"],
-                    project_name,
-                    mp3s,
-                    background,
-                    marker_name,
-                    args.dry_run,
-                )
-                copied_count += 1
+        skipped_count += 1
+        skip_projects_root_batch("Projects直下ファイル方式は読み取り専用扱い")
     else:
         skipped_count += 1
-        print(f"SKIP: Projects直下素材 - {reason}")
+        skip_projects_root_batch(reason)
 
     project_folders = list_files(service, child_folders_query(projects["id"]))
     moved_count = 0
@@ -424,12 +313,10 @@ def check_projects(args: argparse.Namespace) -> None:
                 f"SKIP: {name} - {duplicate_parent} に同名フォルダがあるため二重処理防止"
             )
             continue
-        print(f"READY: {name} - {reason}")
-        move_folder(service, folder, incoming["id"], args.dry_run)
-        moved_count += 1
+        print(f"READY: {name} - {reason}。generate_lofi_video.yml が Projects から直接処理します")
 
     print(
-        f"Summary: copied={copied_count}, moved={moved_count}, skipped={skipped_count}, inspected_folders={len(project_folders)}"
+        f"Summary: copied=0, moved=0, skipped={skipped_count}, inspected_folders={len(project_folders)}"
     )
 
 

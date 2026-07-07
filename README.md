@@ -756,62 +756,58 @@ Google Drive/
 
 ## iPhone中心のGoogle Drive Projects運用
 
-PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。ユーザーは作品フォルダを作らず、作品名や曲名も手入力しません。
+PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。現在の本運用は、`Projects` 配下に作品フォルダを作り、その中にSuno元タイトルのままMP3 20曲と背景素材1つを置く方式です。Drive上ではファイルのリネーム・コピー・アップロードを行いません。
 
 ### Driveフォルダ構成
 
 ```text
 Tokyo ChillMatic FM/
   Projects/
-    song1.mp3
-    song2.mp3
-    ...
-    song20.mp3
-    background.mp4   # または background.jpg
-  incoming/
+    SHINBASHI/
+      Suno元タイトル01.mp3
+      Suno元タイトル02.mp3
+      ...
+      Suno元タイトル20.mp3
+      background.mp4   # または background.jpg
   completed/
-  processed/
   failed/
 ```
 
 ### iPhoneでの手順
 
-1. Sunoから `.mp3` 音源を20曲ダウンロードします（曲名の変更は不要です）。
-2. 背景素材 `background.jpg` または `background.mp4` を1つ用意します。
-3. Google Driveの `Tokyo ChillMatic FM/Projects/` 直下へ、20曲のMP3と背景素材1つを置きます。
-4. ProjectsチェックWorkflowが `project_names.txt` の先頭から未使用の作品名を1つ選び、`incoming/<作品名>/` を自動作成します。
-5. Workflowは元ファイルを変更せず、MP3を `track01.mp3`〜`track20.mp3`、背景素材を `background.jpg` または `background.mp4` として `incoming/<作品名>/` にコピーします。
-6. `incoming` に入った作品フォルダは、既存のスケジュール実行Workflowが検知し、動画生成とYouTubeアップロードの対象になります。
+1. `Tokyo ChillMatic FM/Projects/` の下に作品フォルダを1つ作ります（例: `SHINBASHI`）。
+2. Sunoからダウンロードした `.mp3` 音源20曲を、Suno元タイトルのまま作品フォルダへ入れます。
+3. 背景素材 `background.jpg` または `background.mp4` を1つだけ同じ作品フォルダへ入れます。
+4. `Generate LOFI video` Workflowが `Projects/<作品フォルダ>/` を検出し、GitHub Actionsのローカル作業ディレクトリへ素材をダウンロードします。
+5. ローカル側だけでMP3を `video_assets/tracks/track01.mp3`〜`track20.mp3` に正規化し、背景素材を `video_assets/background.mp4` または `video_assets/background.jpg` として既存の動画生成・YouTubeアップロード処理へ渡します。
+6. 動画生成とYouTubeアップロードが成功したら、Drive上の作品フォルダを親フォルダ変更で `completed/<作品フォルダ>/` へ移動します。失敗時は `failed/<作品フォルダ>/` へ移動します。
 
 ### 自動チェックの動き
 
-- `.github/workflows/check_drive_projects.yml` は手動実行（`workflow_dispatch`）できます。
-- 同Workflowはスケジュールでも30分ごとに `Tokyo ChillMatic FM/Projects` を確認します。
-- `Projects` 直下に `.mp3` がちょうど20曲、かつ `background.jpg` または `background.mp4` がちょうど1つある場合だけ `incoming/<作品名>/` へコピーします。
-- コピー後、元の `Projects` 直下ファイルはそのまま残します。
-- 二重処理防止のため、コピー済み素材セットのマーカーを `processed/` に作成します。
-- `incoming` への投入後は既存の `Generate LOFI video` Workflowが従来通り処理します。
-- 既存のProjects配下の作品フォルダ運用も互換性維持のため最小限残していますが、新運用では作品フォルダを作成しません。
-- 既存の手動Run Workflowは残しているため、これまで通りDrive番号指定での手動生成も可能です。
+- `.github/workflows/generate_lofi_video.yml` はスケジュール実行で `Tokyo ChillMatic FM/Projects` 配下の作品フォルダを確認します。
+- 作品フォルダ内に `.mp3` がちょうど20曲、かつ背景素材がちょうど1つある場合だけ処理対象にします。
+- Drive上の元ファイル名は変更せず、Suno元タイトルを保持します。`track01.mp3`〜`track20.mp3` への正規化はGitHub Actionsローカル作業時だけです。
+- Drive上では `files.copy` や `files.create/upload` による素材作成・複製を行いません。完了・失敗時の移動は既存フォルダの親フォルダ変更だけで行います。
+- `Projects` 直下ファイル方式は読み取り専用扱いでスキップし、失敗しないようにしています。
+- `.github/workflows/check_drive_projects.yml` は互換用の通知Workflowとして残し、`incoming` へのコピーや事前移動は行いません。
+- 既存の手動Run Workflowは残しているため、これまで通りDriveフォルダID指定での手動生成も可能です。
 
-### コピーされる条件
+### 処理対象になる条件
 
-- `Projects` 直下に `.mp3` ファイルがちょうど20曲あること。
-- `Projects` 直下に `background.jpg` または `background.mp4` がちょうど1つあること。
-- `project_names.txt` に未使用の作品名が残っていること。
-- `incoming` / `completed` / `processed` / `failed` のいずれにも同名作品フォルダが存在しないこと。
-- 同じ素材セットの processed マーカーがまだ存在しないこと。
+- `Projects` 配下に作品フォルダがあること。
+- 作品フォルダ内に `.mp3` ファイルがちょうど20曲あること。
+- 作品フォルダ内に `background.jpg` または `background.mp4` がちょうど1つあること。
+- `completed` に同名作品フォルダが存在しないこと。
 
 ### スキップされる条件
 
-- `Projects` 直下の対象背景素材が0個、または2個以上。
-- `Projects` 直下の `.mp3` ファイルが20曲未満、または20曲超。
-- `project_names.txt` に未使用の作品名がない。
-- `incoming` / `completed` / `processed` / `failed` のいずれかに同名作品フォルダがある。
-- 同じ素材セットの processed マーカーがすでにある。
+- `Projects` 直下にファイルだけが置かれている。
+- 作品フォルダ内の対象背景素材が0個、または2個以上。
+- 作品フォルダ内の `.mp3` ファイルが20曲未満、または20曲超。
+- `completed` に同名作品フォルダがある。
 
 ### `processed` / `failed` の意味
 
-- `incoming`: 実行キュー専用です。ここに入った作品フォルダは動画生成・YouTubeアップロード対象になります。
-- `processed`: 自動生成とアップロードが成功した作品フォルダの移動先です。同名作品の二重処理防止にも使います。
-- `failed`: 自動生成またはアップロードが失敗した作品フォルダの移動先です。同名作品の再投入防止にも使います。
+- `completed`: 自動生成とYouTubeアップロードが成功した作品フォルダの移動先です。同名作品の二重処理防止にも使います。
+- `failed`: 自動生成またはYouTubeアップロードが失敗した作品フォルダの移動先です。同名作品の再投入防止にも使います。
+- `incoming` / `processed`: 旧運用互換で残っている場合がありますが、Projects作品フォルダ本運用では素材コピー先やマーカー作成先として使いません。
