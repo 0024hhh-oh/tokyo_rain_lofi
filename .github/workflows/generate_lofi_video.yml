@@ -29,11 +29,6 @@ on:
         description: "YouTubeタグ（カンマ区切り）"
         required: false
         default: "lofi, chill, tokyo, rain, study music"
-      upload_to_drive:
-        description: "生成したMP4をGoogle Driveへアップロードする"
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   generate:
@@ -56,6 +51,7 @@ jobs:
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+          TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
           BGM_VOLUME: "1.0"
           BACKGROUND_AUDIO_VOLUME: "1.0"
           AUDIO_LIMIT: "0.98"
@@ -101,7 +97,6 @@ jobs:
             echo "asset acquisition method=incoming-queue"
 
             rm -rf video_assets dist
-            mkdir -p dist_all
             set +e
             (
               set -euo pipefail
@@ -125,7 +120,11 @@ jobs:
               else
                 echo "YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}"
               fi
-              cp "dist/${OUTPUT_FILE}" "dist_all/${OUTPUT_FILE}"
+              echo "Google Drive upload starting: dist/${OUTPUT_FILE}"
+              python scripts/upload_drive_output.py \
+                --file "dist/${OUTPUT_FILE}" \
+                --output-name "${OUTPUT_FILE}" \
+                --output-folder-id "${TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID}"
             )
             status=$?
             set -e
@@ -150,13 +149,6 @@ jobs:
             exit 1
           fi
 
-      - name: Upload incoming MP4 artifacts
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: incoming-generated-mp4
-          path: dist_all/*.mp4
-          if-no-files-found: ignore
 
       - name: Download assets from Google Drive
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
@@ -198,24 +190,16 @@ jobs:
           echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
           scripts/generate_lofi_video.sh
 
-      - name: Upload MP4 artifact
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.output_file }}
-          path: dist/${{ inputs.output_file }}
-          if-no-files-found: error
-
       - name: Upload MP4 to Google Drive
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_drive }}
-        continue-on-error: true
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+          TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
         run: |
           python scripts/upload_drive_output.py \
             --file "dist/${{ inputs.output_file }}" \
-            --output-name "${{ inputs.output_file }}"
+            --output-name "${{ inputs.output_file }}" \
+            --output-folder-id "${TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID}"
 
       - name: Upload private video to YouTube
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
