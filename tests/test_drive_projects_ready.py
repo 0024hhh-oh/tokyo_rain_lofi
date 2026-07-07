@@ -83,3 +83,148 @@ def test_missing_background_message_includes_google_drive_file_list():
     assert ok is False
     assert "取得一覧:" in reason
     assert "track01.mp3 [audio/mpeg]" in reason
+
+
+def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
+    direct_files = [
+        {"id": f"song-{i:02}", "name": f"song{i:02}.mp3", "mimeType": "audio/mpeg"}
+        for i in range(1, 21)
+    ] + [{"id": "bg", "name": "background.mp4", "mimeType": "video/mp4"}]
+    copied = []
+    created = []
+
+    class FakeFiles:
+        def copy(self, fileId, body, fields, supportsAllDrives):
+            class Request:
+                def execute(self_inner):
+                    copied.append((fileId, body["parents"][0], body["name"]))
+                    return {"id": f"copy-{fileId}", "name": body["name"]}
+
+            return Request()
+
+        def create(self, body, fields, supportsAllDrives):
+            class Request:
+                def execute(self_inner):
+                    created.append(body)
+                    return {"id": f"created-{body['name']}", "name": body["name"]}
+
+            return Request()
+
+    class FakeService:
+        def files(self):
+            return FakeFiles()
+
+    def fake_list_files(
+        _service,
+        query,
+        fields="files(id,name,mimeType,createdTime,modifiedTime,parents)",
+    ):
+        if "'projects-id' in parents" in query and "mimeType =" not in query:
+            return direct_files
+        return []
+
+    ensured = []
+
+    def fake_ensure(_service, parent_id, name):
+        ensured.append((parent_id, name))
+        return {"id": f"{name}-id", "name": name}
+
+    args = types.SimpleNamespace(
+        root_folder="Tokyo ChillMatic FM",
+        root_folder_id=None,
+        projects_folder="Projects",
+        incoming_folder="incoming",
+        processed_folder="processed",
+        completed_folder="completed",
+        failed_folder="failed",
+        dry_run=False,
+    )
+
+    with patch.object(
+        drive_projects_ready, "get_drive_service", return_value=FakeService()
+    ), patch.object(
+        drive_projects_ready,
+        "resolve_root_folder",
+        return_value={"id": "root-id", "name": "root"},
+    ), patch.object(
+        drive_projects_ready,
+        "find_single_folder",
+        return_value={"id": "projects-id", "name": "Projects"},
+    ), patch.object(
+        drive_projects_ready, "ensure_child_folder", side_effect=fake_ensure
+    ), patch.object(
+        drive_projects_ready, "list_files", side_effect=fake_list_files
+    ), patch.object(
+        drive_projects_ready,
+        "read_project_names",
+        return_value=["KINSHICHO", "SUNAMACHI"],
+    ):
+        drive_projects_ready.check_projects(args)
+
+    output = capsys.readouterr().out
+    assert "READY: KINSHICHO" in output
+    assert ("incoming-id", "KINSHICHO") in ensured
+    assert len(copied) == 21
+    assert copied[0] == ("song-01", "KINSHICHO-id", "track01.mp3")
+    assert copied[19] == ("song-20", "KINSHICHO-id", "track20.mp3")
+    assert copied[20] == ("bg", "KINSHICHO-id", "background.mp4")
+    assert created[0]["name"].startswith(
+        drive_projects_ready.PROJECTS_BATCH_MARKER_PREFIX
+    )
+    assert created[0]["parents"] == ["processed-id"]
+
+
+def test_projects_root_batch_marker_prevents_duplicate_copy(capsys):
+    mp3s = [
+        {"id": f"song-{i:02}", "name": f"song{i:02}.mp3", "mimeType": "audio/mpeg"}
+        for i in range(1, 21)
+    ]
+    background = {"id": "bg", "name": "background.jpg", "mimeType": "image/jpeg"}
+    direct_files = [*mp3s, background]
+    marker = drive_projects_ready.project_batch_marker_name(mp3s, background)
+
+    def fake_list_files(
+        _service,
+        query,
+        fields="files(id,name,mimeType,createdTime,modifiedTime,parents)",
+    ):
+        if "'projects-id' in parents" in query and "mimeType =" not in query:
+            return direct_files
+        if f"name = '{marker}'" in query and "'processed-id' in parents" in query:
+            return [{"id": "marker-id", "name": marker}]
+        return []
+
+    args = types.SimpleNamespace(
+        root_folder="Tokyo ChillMatic FM",
+        root_folder_id=None,
+        projects_folder="Projects",
+        incoming_folder="incoming",
+        processed_folder="processed",
+        completed_folder="completed",
+        failed_folder="failed",
+        dry_run=False,
+    )
+
+    with patch.object(
+        drive_projects_ready, "get_drive_service", return_value=object()
+    ), patch.object(
+        drive_projects_ready,
+        "resolve_root_folder",
+        return_value={"id": "root-id", "name": "root"},
+    ), patch.object(
+        drive_projects_ready,
+        "find_single_folder",
+        return_value={"id": "projects-id", "name": "Projects"},
+    ), patch.object(
+        drive_projects_ready,
+        "ensure_child_folder",
+        side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
+    ), patch.object(
+        drive_projects_ready, "list_files", side_effect=fake_list_files
+    ), patch.object(
+        drive_projects_ready, "copy_projects_root_batch"
+    ) as copy_batch:
+        drive_projects_ready.check_projects(args)
+
+    assert not copy_batch.called
+    assert "二重処理防止" in capsys.readouterr().out
