@@ -449,251 +449,58 @@ BGM_VOLUME=1.0 BACKGROUND_AUDIO_VOLUME=1.0 AUDIO_LIMIT=0.98 scripts/generate_lof
 ENABLE_LOGO=0 scripts/generate_lofi_video.sh
 ```
 
-## GitHub ActionsでMP4をGoogle Driveへ自動アップロードする
+## GitHub Actionsで生成MP4をArtifactへ保存する
 
-`Generate LOFI video` workflowは、生成したMP4を従来通りGitHub Actions Artifactへ保存します。`upload_to_drive=true` を指定した場合だけ、Google Driveの `Tokyo ChillMatic FM / Outputs` にもアップロードします。
+`Generate LOFI video` workflowは、生成したMP4をGitHub Actions Artifactへ保存します。サービスアカウントのstorage quotaエラーを避けるため、生成済みMP4のGoogle Drive `Outputs` への新規アップロードは停止しています。
 
-### 前提
-- GitHub repository secret `GOOGLE_SERVICE_ACCOUNT_JSON` にGoogleサービスアカウントJSONを登録しておきます。
-- Google Drive上の `Tokyo ChillMatic FM` フォルダを、サービスアカウントのメールアドレスに共有します。
-- サービスアカウントには、`Tokyo ChillMatic FM` 配下でファイル作成・更新できる権限を付与します。
+### 現在の保存先
+- incoming作品フォルダから生成したMP4は、`incoming-generated-mp4` Artifactに保存します。
+- デバッグ用に `DRIVE_FOLDER_ID` を指定して生成したMP4は、`output_file` と同名のArtifactに保存します。
+- Google Driveへの完成MP4アップロードは実行しません。
 
-### 実行手順
-1. GitHubの **Actions** タブを開きます。
-2. **Generate LOFI video** workflowを選びます。
-3. **Run workflow** を押します。
-4. `video_number` に素材フォルダ番号（例: `001`）を入力します。
-5. `output_file` に完成MP4ファイル名（例: `Tokyo_Memory_Archive_001.mp4`）を入力します。
-6. Driveにも保存したい場合は `upload_to_drive=true` を指定します。
-7. 実行完了後、以下を確認します。
-   - GitHub ActionsのArtifactに `output_file` と同名のMP4が保存されていること。
-   - `upload_to_drive=true` の場合だけ、Google Driveの `Tokyo ChillMatic FM / Outputs` に同名MP4がアップロードされていること。
+### incoming処理の成功条件
+1. Google Driveのincoming作品フォルダから素材を取得します。
+2. `scripts/generate_lofi_video.sh` でMP4生成が成功します。
+3. 生成済みMP4をGitHub Actions Artifactとして保存できる場所へコピーします。
+4. incoming作品フォルダをGoogle Drive上の `completed` へ移動します。
 
-### Outputsフォルダについて
-- `Tokyo ChillMatic FM` 直下に `Outputs` フォルダが無い場合、workflowが自動作成します。
-- `Outputs` 内に同名MP4が既に存在する場合は、新しい生成結果で上書き更新します。
+## GitHub ActionsでMP4をYouTubeへ非公開アップロードする（一時停止中）
 
-### 失敗時の挙動
-- Artifact保存はGoogle Driveアップロードより先に実行されます。
-- `upload_to_drive=false` の場合、Google Driveアップロードステップはスキップされます。
-- `upload_to_drive=true` の場合でも、Google Driveアップロードステップは `continue-on-error: true` のため、Driveアップロードに失敗してもArtifact保存済みのMP4は維持されます。
-- Driveアップロードに失敗した場合は、Actionsログの **Upload MP4 to Google Drive** ステップでエラー内容を確認してください。
+`Generate LOFI video` workflowのYouTubeアップロードは一時停止中です。workflowはYouTube Data APIアップロードを実行せず、生成済みMP4をGitHub Actions Artifactとして保存します。
 
-## GitHub ActionsでMP4をYouTubeへ非公開アップロードする
+YouTube API認証情報は、アップロード再開時までworkflowでは使用しません。
 
-`Generate LOFI video` workflowは、生成したMP4をGitHub Actions ArtifactとGoogle Drive `Tokyo ChillMatic FM / Outputs` に保存したあと、YouTubeにも自動アップロードできます。YouTube側の公開設定はworkflow内で固定しており、必ず **非公開（private）** としてアップロードします。サムネイルの自動設定は行いません。
-`Generate LOFI video` workflowは、生成したMP4をGitHub Actions Artifactに保存したあと、YouTubeにも自動アップロードできます。Google Drive `Tokyo ChillMatic FM / Outputs` への保存は `upload_to_drive=true` の場合だけ実行されます。YouTube側の公開設定はworkflow内で固定しており、必ず **非公開（private）** としてアップロードします。サムネイルの自動設定は行いません。
+## GitHub Actions: 検証用LOFI動画生成とArtifact保存
 
-### YouTube APIの認証方式
-
-YouTube Data APIの動画アップロードには、YouTubeチャンネルへの操作権限を持つユーザーのOAuth 2.0認可が必要です。Google Drive連携で使っているサービスアカウント方式では、通常のYouTubeチャンネルへ動画をアップロードできません。
-
-このリポジトリでは、GitHub Actions上で次の流れを使います。
-
-1. Google CloudでOAuthクライアントを作成します。
-2. 対象YouTubeチャンネルを操作できるGoogleアカウントで、`https://www.googleapis.com/auth/youtube.upload` スコープを許可します。
-3. 取得したrefresh tokenをGitHub Secretsへ保存します。
-4. workflow実行時にrefresh tokenからaccess tokenを取得し、YouTube Data API `videos.insert` でMP4をアップロードします。
-
-### スマホだけでYouTube API認証情報を取得する手順
-
-以下はスマホのブラウザだけで `YOUTUBE_CLIENT_ID`、`YOUTUBE_CLIENT_SECRET`、`YOUTUBE_REFRESH_TOKEN` を取得するための手順です。Google Cloud Consoleはスマホ表示だとメニューが隠れることがあるため、見つからない場合はブラウザの **デスクトップ用Webサイトを表示** をONにしてください。
-
-#### 事前確認
-
-1. スマホのブラウザで、YouTubeへアップロードしたいチャンネルを管理しているGoogleアカウントにログインします。
-2. ブランドアカウントのチャンネルを使っている場合は、YouTubeアプリまたはYouTube Studioで、そのGoogleアカウントが対象チャンネルを操作できることを確認します。
-3. 取得した値はあとでGitHub Secretsへ貼り付けるため、スマホのメモアプリなどに一時的に控えます。作業後はメモから削除してください。
-
-#### 1. Google Cloudプロジェクトを作る
-
-1. ブラウザで `https://console.cloud.google.com/` を開きます。
-2. 右上のアカウントアイコンを押し、YouTubeチャンネルを操作するGoogleアカウントになっていることを確認します。
-3. 画面上部のプロジェクト名、または **プロジェクトを選択** を押します。
-4. **新しいプロジェクト** を押します。
-5. **プロジェクト名** に `Tokyo ChillMatic FM Uploader` など分かりやすい名前を入力します。
-6. **作成** を押します。
-7. 作成後、画面上部のプロジェクト選択から、いま作ったプロジェクトを選びます。
-
-#### 2. YouTube Data API v3を有効化する
-
-1. 左上の三本線メニューを押します。
-2. **APIとサービス** → **ライブラリ** を押します。
-3. 検索欄に `YouTube Data API v3` と入力します。
-4. 検索結果の **YouTube Data API v3** を押します。
-5. **有効にする** を押します。
-
-#### 3. OAuth同意画面を設定する
-
-1. 左上の三本線メニューを押します。
-2. **APIとサービス** → **OAuth 同意画面** を押します。
-3. **User Type** が表示された場合は、個人のGoogleアカウントでは通常 **外部** を選び、**作成** を押します。
-4. **アプリ名** に `Tokyo ChillMatic FM Uploader` と入力します。
-5. **ユーザーサポートメール** で自分のGoogleアカウントを選びます。
-6. **デベロッパーの連絡先情報** のメールアドレスに自分のメールアドレスを入力します。
-7. **保存して次へ** を押します。
-8. **スコープ** 画面では、ここでは追加せず **保存して次へ** を押します。
-9. **テストユーザー** 画面で **ユーザーを追加** を押します。
-10. YouTubeチャンネルを操作するGoogleアカウントのメールアドレスを入力し、**追加** を押します。
-11. **保存して次へ** を押します。
-12. 内容確認画面で **ダッシュボードに戻る** を押します。
-
-#### 4. OAuthクライアントを作成してClient ID / Client Secretを取得する
-
-1. 左上の三本線メニューを押します。
-2. **APIとサービス** → **認証情報** を押します。
-3. 画面上部の **認証情報を作成** を押します。
-4. **OAuth クライアント ID** を押します。
-5. **アプリケーションの種類** で **ウェブ アプリケーション** を選びます。
-6. **名前** に `GitHub Actions YouTube Uploader` と入力します。
-7. **承認済みのリダイレクト URI** の **URIを追加** を押します。
-8. 次のURLを入力します。
-
-   ```text
-   https://developers.google.com/oauthplayground
-   ```
-
-9. **作成** を押します。
-10. 表示された **クライアント ID** をコピーします。これがGitHub Secret `YOUTUBE_CLIENT_ID` の値です。
-11. 表示された **クライアント シークレット** をコピーします。これがGitHub Secret `YOUTUBE_CLIENT_SECRET` の値です。
-12. 画面を閉じてしまった場合は、**APIとサービス** → **認証情報** → 作成したOAuthクライアント名を押すと、Client ID / Client Secretを再確認できます。
-
-#### 5. OAuth PlaygroundでRefresh Tokenを取得する
-
-1. 同じスマホのブラウザで `https://developers.google.com/oauthplayground` を開きます。
-2. 右上の歯車アイコンを押します。
-3. **Use your own OAuth credentials** にチェックを入れます。
-4. **OAuth Client ID** に、先ほど取得した `YOUTUBE_CLIENT_ID` を貼り付けます。
-5. **OAuth Client secret** に、先ほど取得した `YOUTUBE_CLIENT_SECRET` を貼り付けます。
-6. 設定パネルを閉じます。
-7. 左側のスコープ一覧で **YouTube Data API v3** を探して開きます。見つからない場合は、スコープ入力欄に次を直接貼り付けます。
-
-   ```text
-   https://www.googleapis.com/auth/youtube.upload
-   ```
-
-8. `https://www.googleapis.com/auth/youtube.upload` にチェックが入っていることを確認します。
-9. **Authorize APIs** を押します。
-10. Googleのログイン画面が出たら、YouTubeへアップロードしたいチャンネルを操作できるGoogleアカウントを選びます。
-11. **このアプリはGoogleで確認されていません** と表示された場合は、**詳細** → **Tokyo ChillMatic FM Uploader（安全ではないページ）に移動** を押します。自分だけで使うテストアプリなので、この表示は想定内です。
-12. 権限確認画面で、YouTubeへのアップロード権限を確認し、**許可** を押します。
-13. OAuth Playgroundへ戻ったら、**Step 2 Exchange authorization code for tokens** の **Exchange authorization code for tokens** を押します。
-14. 表示された `Refresh token` の値をコピーします。これがGitHub Secret `YOUTUBE_REFRESH_TOKEN` の値です。
-15. `Access token` ではなく、必ず `Refresh token` をコピーしてください。GitHub Actionsで長期的に使うのはrefresh tokenです。
-
-#### 6. GitHub Secretsへ登録する
-
-1. スマホのブラウザでGitHubの対象リポジトリ `tokyo_rain_lofi` を開きます。
-2. **Settings** を押します。スマホで見えない場合は、横スクロールするか、ブラウザの **デスクトップ用Webサイトを表示** をONにします。
-3. **Secrets and variables** → **Actions** を押します。
-4. **New repository secret** を押します。
-5. **Name** に `YOUTUBE_CLIENT_ID` と入力し、**Secret** にClient IDを貼り付け、**Add secret** を押します。
-6. 同じ手順で `YOUTUBE_CLIENT_SECRET` にClient Secretを登録します。
-7. 同じ手順で `YOUTUBE_REFRESH_TOKEN` にRefresh Tokenを登録します。
-8. 既存のGoogle Drive保存も使うため、`GOOGLE_SERVICE_ACCOUNT_JSON` も登録済みであることを確認します。
-
-#### 取得できる値の対応表
-
-| GitHub Secret名 | 取得する画面 | 入れる値 |
-| --- | --- | --- |
-| `YOUTUBE_CLIENT_ID` | Google Cloud Console → APIとサービス → 認証情報 → OAuthクライアント | クライアント ID |
-| `YOUTUBE_CLIENT_SECRET` | Google Cloud Console → APIとサービス → 認証情報 → OAuthクライアント | クライアント シークレット |
-| `YOUTUBE_REFRESH_TOKEN` | OAuth Playground → Step 2 | Refresh token |
-### Google Cloud / YouTube API設定
-
-1. Google Cloud Consoleでプロジェクトを開きます。
-2. **YouTube Data API v3** を有効化します。
-3. **OAuth consent screen** を設定します。
-   - 外部公開しない個人運用の場合でも、テストユーザーに対象Googleアカウントを追加してください。
-   - スコープは `https://www.googleapis.com/auth/youtube.upload` を使います。
-4. **Credentials** でOAuthクライアントIDを作成します。
-   - 種類は、手元でrefresh tokenを取得しやすい方式（Desktop appなど）で構いません。
-5. 対象YouTubeチャンネルを操作できるGoogleアカウントでOAuth認可を行い、refresh tokenを取得します。
-
-### GitHub Secrets
-
-リポジトリの **Settings → Secrets and variables → Actions → Repository secrets** に次を登録してください。
-
-```text
-YOUTUBE_CLIENT_ID
-YOUTUBE_CLIENT_SECRET
-YOUTUBE_REFRESH_TOKEN
-```
-
-既存のGoogle Drive連携用secretも引き続き必要です。
-Google Driveから素材をダウンロードするため、既存のGoogle Drive連携用secretも引き続き必要です。なお、生成MP4のDrive保存は `upload_to_drive=true` の場合だけ実行されます。
-
-```text
-GOOGLE_SERVICE_ACCOUNT_JSON
-```
-
-### workflow入力
-
-**Generate LOFI video** の **Run workflow** で、YouTube用に次の入力を指定できます。
-
-- `youtube_title` — YouTube動画タイトル。
-- `youtube_description` — YouTube動画説明文。
-- `youtube_tags` — カンマ区切りタグ。例: `lofi, chill, tokyo, rain, study music`
-
-### 実行手順
-
-1. GitHubの **Actions** タブを開きます。
-2. **Generate LOFI video** workflowを選びます。
-3. **Run workflow** を押します。
-4. `video_number` と `output_file` を指定します。
-5. `youtube_title`、`youtube_description`、`youtube_tags` を指定します。
-6. workflowを実行します。
-7. 完了後、以下を確認します。
-   - GitHub Actions ArtifactにMP4が保存されていること。
-   - Google Driveの `Tokyo ChillMatic FM / Outputs` にMP4が保存されていること。
-   - YouTube Studioに非公開動画としてアップロードされていること。
-   - YouTube Studioに非公開動画としてアップロードされていること。
-   - `upload_to_drive=true` で実行した場合だけ、Google Driveの `Tokyo ChillMatic FM / Outputs` にMP4が保存されていること。
-
-### 失敗時の挙動
-
-- MP4生成とArtifact保存はYouTubeアップロードより先に実行されます。
-- Google Drive保存もYouTubeアップロードより先に実行されます。
-- YouTubeアップロードステップは `continue-on-error: true` のため、YouTube API認証・クォータ・通信などが原因で失敗しても、MP4生成、Artifact保存、Google Drive保存は失敗扱いになりません。
-- YouTubeアップロードに失敗した場合は、Actionsログの **Upload private video to YouTube** ステップでエラー内容を確認してください。
-- `upload_to_drive=true` の場合だけ、Google Drive保存もYouTubeアップロードより先に実行されます。
-- `upload_to_drive=false` の場合はGoogle Drive保存をスキップし、YouTube非公開アップロードの検証を優先します。
-- YouTubeアップロードステップは `continue-on-error: true` のため、YouTube API認証・クォータ・通信などが原因で失敗しても、MP4生成とArtifact保存は失敗扱いになりません。
-- YouTubeアップロードに失敗した場合は、Actionsログの **Upload private video to YouTube** ステップでエラー内容を確認してください。
-
-## GitHub Actions: 検証用LOFI動画生成とアップロード
-
-`.github/workflows/generate_lofi_video.yml` は手動実行（`workflow_dispatch`）で、MP4生成、Artifact保存、YouTube非公開アップロードを順に検証できます。Google Driveアップロードは `upload_to_drive=true` の場合だけ実行されます。
+`.github/workflows/generate_lofi_video.yml` は手動実行（`workflow_dispatch`）で、MP4生成とArtifact保存を検証できます。Google Driveへの完成MP4アップロードとYouTube非公開アップロードは現在実行しません。
 
 ### 推奨実行手順
 1. GitHub の **Actions** タブを開きます。
 2. **Generate LOFI video** workflow を選びます。
 3. **Run workflow** を押します。
 4. 動画の長さは、ダウンロードしたSuno音源を連結した合計再生時間に雨音アウトロ5秒を足して自動計算されます。
-5. `upload_to_drive` はデフォルトの `false` のままにします（Service Account の Drive 保存容量制限を避け、YouTube非公開アップロード検証を優先します）。
-6. 成功したら artifact と YouTube Studio の非公開動画を確認します。
-7. Google Driveへの保存も検証したい場合だけ、`upload_to_drive` を `true` にして再実行します。
+5. 成功したらGitHub Actions Artifactに保存されたMP4を確認します。
 
 ### 動画尺
 - `TARGET_SECONDS` や `duration_minutes` で固定尺を指定せず、連結したSuno音源の合計時間に `RAIN_OUTRO_SECONDS`（既定5秒）を足した長さを動画長として使用します。
 - Suno音源はループせず最後まで再生し、終了後は無音としてパディングするためBGMは鳴りません。
 - `background_loop.mp4` の雨映像と雨音は動画全体（Suno合計尺＋アウトロ）までループし、アウトロ終了時に同時停止します。
 - 雨音アウトロにフェードアウトはかけず、雨音の音量は本編中の`background_loop.mp4`音声と同じです。
-- Google Driveアップロードは `upload_to_drive=true` の場合のみ実行されます。
+- 生成済みMP4はGoogle Driveへアップロードせず、GitHub Actions Artifactとして保存します。
 
 ### FFmpeg高速化設定
-GitHub Actions では長時間エンコードの検証前にアップロード経路を確認するため、必要に応じて以下の高速化設定で実行します。
+GitHub Actions では長時間エンコードの検証前に生成・Artifact保存経路を確認するため、必要に応じて以下の高速化設定で実行します。
 
 - `FFMPEG_PRESET=ultrafast`
 - `FFMPEG_CRF=30`
 - `ENABLE_FILM_GRAIN=0`
 - `ENABLE_FILM_DUST=0`
 
-これにより、GitHub Actions 上の処理時間を抑え、Drive/YouTube連携の検証を優先できます。
+これにより、GitHub Actions 上の処理時間を抑えられます。
 
 ## Google Drive incoming 自動処理（main merge後に初回テスト）
 
-既存の手動 `Run workflow` は残したまま、`.github/workflows/generate_lofi_video.yml` に30分ごとの `schedule` 実行を追加しています。手動実行時は `video_number` / `output_file` を入力し、連結したSuno音源の合計時間に合わせた動画を生成・YouTubeアップロードできます。
+既存の手動 `Run workflow` は残したまま、`.github/workflows/generate_lofi_video.yml` に30分ごとの `schedule` 実行を追加しています。手動実行時は `video_number` / `output_file` を入力し、連結したSuno音源の合計時間に合わせた動画を生成してArtifactへ保存できます。
 
 ### Driveフォルダ構成
 
@@ -708,7 +515,7 @@ Google Drive/
         track01.mp3
         track02.mp3
         ...
-    processed/
+    completed/
     failed/
 ```
 
@@ -725,21 +532,21 @@ Google Drive/
 2. 条件を満たす未処理の作品フォルダを1件だけ検出します。
 3. 作品フォルダから `background.*` と `.mp3` を `video_assets/` にダウンロードします。
 4. 既存の `scripts/generate_lofi_video.sh` で、連結したSuno音源の合計時間に合わせたMP4を生成します。
-5. 既存の `scripts/upload_youtube_video.py` でYouTubeへ非公開アップロードします。
-6. 成功した作品フォルダは `processed/` へ移動します。
-7. 生成またはアップロードに失敗した作品フォルダは `failed/` へ移動します。原因は該当Actions runのログで確認します。
+5. 生成したMP4をGitHub Actions Artifact保存用ディレクトリへコピーします。
+6. 成功した作品フォルダは `completed/` へ移動します。
+7. 生成に失敗した作品フォルダは `failed/` へ移動します。原因は該当Actions runのログで確認します。
 
 ### 二重実行防止
 
-処理成功後は作品フォルダ自体を `incoming/` から `processed/` に移動します。失敗時も `failed/` に移動するため、同じ作品フォルダが `incoming/` に残らず、次回スケジュールで二重実行されません。
+処理成功後は作品フォルダ自体を `incoming/` から `completed/` に移動します。失敗時も `failed/` に移動するため、同じ作品フォルダが `incoming/` に残らず、次回スケジュールで二重実行されません。
 
 ### 初回テスト手順（mainへmerge後）
 
-1. `main` へmerge後、GitHub Actionsの `Generate LOFI video` を手動実行し、Suno音源の合計時間に合わせた動画が生成・YouTubeアップロードできることを確認します。
+1. `main` へmerge後、GitHub Actionsの `Generate LOFI video` を手動実行し、Suno音源の合計時間に合わせた動画が生成され、Artifactに保存されることを確認します。
 2. Google Driveの `Tokyo ChillMatic FM/incoming/work_001/` に `background.png` とmp3素材を配置します。
 3. 次のスケジュール実行を待つか、必要に応じて `Generate LOFI video` のスケジュール相当のrunを確認します。
-4. Actionsログで検出・生成・YouTubeアップロードの完了を確認します。
-5. 成功後、`work_001` が `processed/` に移動していることを確認します。失敗した場合は `failed/` に移動していることと、Actionsログのエラー内容を確認します。
+4. Actionsログで検出・生成・Artifact保存の完了を確認します。
+5. 成功後、`work_001` が `completed/` に移動していることを確認します。失敗した場合は `failed/` に移動していることと、Actionsログのエラー内容を確認します。
 
 ### 認証情報
 
@@ -770,7 +577,7 @@ Tokyo ChillMatic FM/
       ...
       SHINBASHI 20.mp3
   incoming/
-  processed/
+  completed/
   failed/
 ```
 
@@ -780,7 +587,7 @@ Tokyo ChillMatic FM/
 2. iPhoneで音源を手動ダウンロードし、Google Driveの `Tokyo ChillMatic FM/Projects/<作品名>/` に保存します。
 3. 背景画像を `background.png` / `background.jpg` / `background.jpeg` のいずれかの名前で同じ作品フォルダに保存します。
 4. 作品フォルダ内が `background.*` 画像1枚 + `.mp3` 音源20曲になったら、ProjectsチェックWorkflowが `incoming` へ移動します。
-5. `incoming` に入った作品フォルダは、既存のスケジュール実行Workflowが検知し、動画生成とYouTubeアップロードの対象になります。
+5. `incoming` に入った作品フォルダは、既存のスケジュール実行Workflowが検知し、動画生成とArtifact保存の対象になります。
 
 ### 自動チェックの動き
 
@@ -795,7 +602,7 @@ Tokyo ChillMatic FM/
 - `background.*` 画像がちょうど1枚あること。
 - `.mp3` ファイルがちょうど20曲あること。
 - `incoming` に同名フォルダが存在しないこと。
-- `processed` に同名フォルダが存在しないこと。
+- `completed` に同名フォルダが存在しないこと。
 - `failed` に同名フォルダが存在しないこと。
 
 ### スキップされる条件
@@ -804,10 +611,10 @@ Tokyo ChillMatic FM/
 - `background.*` 画像が2枚以上。
 - `.mp3` ファイルが20曲未満。
 - `.mp3` ファイルが20曲超。
-- `incoming` / `processed` / `failed` のいずれかに同名フォルダがある。
+- `incoming` / `completed` / `failed` のいずれかに同名フォルダがある。
 
-### `processed` / `failed` の意味
+### `completed` / `failed` の意味
 
-- `incoming`: 実行キュー専用です。ここに入った作品フォルダは動画生成・YouTubeアップロード対象になります。
-- `processed`: 自動生成とアップロードが成功した作品フォルダの移動先です。同名作品の二重処理防止にも使います。
-- `failed`: 自動生成またはアップロードが失敗した作品フォルダの移動先です。同名作品の再投入防止にも使います。
+- `incoming`: 実行キュー専用です。ここに入った作品フォルダは動画生成・Artifact保存対象になります。
+- `completed`: 自動生成とArtifact保存準備が成功した作品フォルダの移動先です。同名作品の二重処理防止にも使います。
+- `failed`: 自動生成またはArtifact保存準備が失敗した作品フォルダの移動先です。同名作品の再投入防止にも使います。
