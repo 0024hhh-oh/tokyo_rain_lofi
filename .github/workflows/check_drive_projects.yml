@@ -23,9 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth
 
-      - name: Move ready Projects folders to incoming
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+      - name: Projects direct-folder mode notice
         run: |
-          python scripts/drive_projects_ready.py
+          echo "Projects folders are now processed directly by generate_lofi_video.yml."
+          echo "No Drive copy/create/upload or pre-move staging is performed in this workflow."
