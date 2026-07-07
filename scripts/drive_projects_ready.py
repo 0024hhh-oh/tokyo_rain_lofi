@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Move complete Google Drive Projects folders into incoming for processing."""
+"""Copy complete Google Drive Projects root assets into incoming for processing."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from drive_incoming_queue import (
-    BACKGROUND_LOOP_NAME,
     FOLDER_MIME,
     IMAGE_EXTENSIONS,
     ROOT_FOLDER,
@@ -28,6 +29,9 @@ MP4_MIME_TYPES = {"video/mp4", "application/octet-stream"}
 VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
 VIDEO_EXTENSIONS = (".mp4", ".mov")
 BACKGROUND_LOOP_MOV_NAME = "background_loop.mov"
+BACKGROUND_LOOP_NAME = "background_loop.mp4"
+PROJECT_NAMES_FILE = Path(__file__).resolve().parents[1] / "project_names.txt"
+PROJECTS_BATCH_MARKER_PREFIX = "projects_batch_"
 
 
 def normalized_drive_name(item: dict) -> str:
@@ -78,6 +82,22 @@ def is_background_image(item: dict) -> bool:
     )
 
 
+def is_projects_root_background(item: dict) -> bool:
+    name = normalized_drive_name(item)
+    mime_type = item.get("mimeType", "")
+    return (
+        name == "background.jpg"
+        and (mime_type.startswith("image/") or mime_type == "application/octet-stream")
+    ) or (
+        name == "background.mp4"
+        and (mime_type in MP4_MIME_TYPES or mime_type.startswith(VIDEO_MIME_PREFIX))
+    )
+
+
+def is_mp3(item: dict) -> bool:
+    return normalized_drive_name(item).endswith(".mp3")
+
+
 def describe_children(children: list[dict]) -> str:
     if not children:
         return "取得ファイルなし"
@@ -97,6 +117,146 @@ def folder_exists(service, parent_id: str, name: str) -> bool:
         f"and '{quote_drive_query(parent_id)}' in parents and trashed = false"
     )
     return bool(list_files(service, query, fields="files(id,name)"))
+
+
+def direct_children_query(parent_id: str) -> str:
+    return f"'{quote_drive_query(parent_id)}' in parents and trashed = false"
+
+
+def direct_project_files(service, projects_id: str) -> list[dict]:
+    return [
+        item
+        for item in list_files(
+            service,
+            direct_children_query(projects_id),
+            fields="files(id,name,mimeType,createdTime,modifiedTime,shortcutDetails)",
+        )
+        if item.get("mimeType") != FOLDER_MIME
+    ]
+
+
+def inspect_projects_root_assets(
+    children: list[dict],
+) -> tuple[bool, str, list[dict], dict | None]:
+    mp3s = [item for item in children if is_mp3(item)]
+    backgrounds = [item for item in children if is_projects_root_background(item)]
+    print(f"INSPECT: Projects直下 - Google Drive files: {describe_children(children)}")
+    if len(backgrounds) < REQUIRED_BACKGROUND_COUNT:
+        return (
+            False,
+            "Projects直下に background.jpg または background.mp4 が必要です",
+            mp3s,
+            None,
+        )
+    if len(backgrounds) > REQUIRED_BACKGROUND_COUNT:
+        return (
+            False,
+            f"Projects直下の背景素材が複数あります（検出数: {len(backgrounds)}）",
+            mp3s,
+            None,
+        )
+    if len(mp3s) < REQUIRED_MP3_COUNT:
+        return (
+            False,
+            f"Projects直下のmp3音源が不足しています（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）",
+            mp3s,
+            backgrounds[0],
+        )
+    if len(mp3s) > REQUIRED_MP3_COUNT:
+        return (
+            False,
+            f"Projects直下のmp3音源が多すぎます（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）",
+            mp3s,
+            backgrounds[0],
+        )
+    return True, "Projects直下の素材OK（mp3 20曲、背景素材1つ）", mp3s, backgrounds[0]
+
+
+def project_batch_marker_name(mp3s: list[dict], background: dict) -> str:
+    source_ids = sorted(item["id"] for item in [*mp3s, background])
+    digest = hashlib.sha256("\n".join(source_ids).encode("utf-8")).hexdigest()[:16]
+    return f"{PROJECTS_BATCH_MARKER_PREFIX}{digest}"
+
+
+def read_project_names(path: Path = PROJECT_NAMES_FILE) -> list[str]:
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def select_unused_project_name(
+    service, names: list[str], parent_ids: list[str]
+) -> str | None:
+    for name in names:
+        if not any(folder_exists(service, parent_id, name) for parent_id in parent_ids):
+            return name
+    return None
+
+
+def copy_file(
+    service, file_id: str, destination_folder_id: str, name: str, dry_run: bool
+) -> None:
+    if dry_run:
+        print(f"DRY RUN: copy {file_id} -> {name}")
+        return
+    service.files().copy(
+        fileId=file_id,
+        body={"name": name, "parents": [destination_folder_id]},
+        fields="id,name,parents",
+        supportsAllDrives=True,
+    ).execute()
+
+
+def create_marker_folder(
+    service, processed_id: str, marker_name: str, dry_run: bool
+) -> None:
+    if dry_run:
+        print(f"DRY RUN: create processed marker {marker_name}")
+        return
+    service.files().create(
+        body={
+            "name": marker_name,
+            "mimeType": FOLDER_MIME,
+            "parents": [processed_id],
+            "description": "TokyoChillMatic Projects root batch copied to incoming "
+            f"at {datetime.now(timezone.utc).isoformat()}",
+        },
+        fields="id,name",
+        supportsAllDrives=True,
+    ).execute()
+
+
+def copy_projects_root_batch(
+    service,
+    incoming_id: str,
+    processed_id: str,
+    project_name: str,
+    mp3s: list[dict],
+    background: dict,
+    marker_name: str,
+    dry_run: bool,
+) -> None:
+    if dry_run:
+        work_folder = {"id": f"dry-run-{project_name}", "name": project_name}
+        print(f"DRY RUN: create incoming/{project_name}")
+    else:
+        work_folder = ensure_child_folder(service, incoming_id, project_name)
+    for index, item in enumerate(
+        sorted(mp3s, key=lambda entry: normalized_drive_name(entry)), start=1
+    ):
+        copy_file(
+            service, item["id"], work_folder["id"], f"track{index:02d}.mp3", dry_run
+        )
+    background_name = (
+        "background.mp4"
+        if normalized_drive_name(background).endswith(".mp4")
+        else "background.jpg"
+    )
+    copy_file(service, background["id"], work_folder["id"], background_name, dry_run)
+    create_marker_folder(service, processed_id, marker_name, dry_run)
+    print(f"COPIED: Projects直下素材 -> incoming/{project_name}")
 
 
 def inspect_project_folder(service, folder: dict) -> tuple[bool, str]:
@@ -172,15 +332,48 @@ def check_projects(args: argparse.Namespace) -> None:
     projects = find_single_folder(service, args.projects_folder, root["id"])
     incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
     processed = ensure_child_folder(service, root["id"], args.processed_folder)
+    completed = ensure_child_folder(service, root["id"], args.completed_folder)
     failed = ensure_child_folder(service, root["id"], args.failed_folder)
 
-    project_folders = list_files(service, child_folders_query(projects["id"]))
-    if not project_folders:
-        print(f"Projects folder is empty: {args.root_folder}/{args.projects_folder}")
-        return
-
-    moved_count = 0
+    direct_files = direct_project_files(service, projects["id"])
+    ok, reason, mp3s, background = inspect_projects_root_assets(direct_files)
+    copied_count = 0
     skipped_count = 0
+    if ok and background:
+        marker_name = project_batch_marker_name(mp3s, background)
+        if folder_exists(service, processed["id"], marker_name):
+            skipped_count += 1
+            print(
+                f"SKIP: Projects直下素材 - processed marker {marker_name} があるため二重処理防止"
+            )
+        else:
+            project_name = select_unused_project_name(
+                service,
+                read_project_names(),
+                [incoming["id"], completed["id"], processed["id"], failed["id"]],
+            )
+            if not project_name:
+                skipped_count += 1
+                print("SKIP: project_names.txt に未使用の作品名がありません")
+            else:
+                print(f"READY: {project_name} - {reason}")
+                copy_projects_root_batch(
+                    service,
+                    incoming["id"],
+                    processed["id"],
+                    project_name,
+                    mp3s,
+                    background,
+                    marker_name,
+                    args.dry_run,
+                )
+                copied_count += 1
+    else:
+        skipped_count += 1
+        print(f"SKIP: Projects直下素材 - {reason}")
+
+    project_folders = list_files(service, child_folders_query(projects["id"]))
+    moved_count = 0
     for folder in project_folders:
         name = folder["name"]
         ok, reason = inspect_project_folder(service, folder)
@@ -188,10 +381,10 @@ def check_projects(args: argparse.Namespace) -> None:
             skipped_count += 1
             print(f"SKIP: {name} - {reason}")
             continue
-
         duplicate_parent = None
         for label, parent_id in (
             ("incoming", incoming["id"]),
+            ("completed", completed["id"]),
             ("processed", processed["id"]),
             ("failed", failed["id"]),
         ):
@@ -204,19 +397,18 @@ def check_projects(args: argparse.Namespace) -> None:
                 f"SKIP: {name} - {duplicate_parent} に同名フォルダがあるため二重処理防止"
             )
             continue
-
         print(f"READY: {name} - {reason}")
         move_folder(service, folder, incoming["id"], args.dry_run)
         moved_count += 1
 
     print(
-        f"Summary: moved={moved_count}, skipped={skipped_count}, inspected={len(project_folders)}"
+        f"Summary: copied={copied_count}, moved={moved_count}, skipped={skipped_count}, inspected_folders={len(project_folders)}"
     )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Move complete Projects folders into incoming."
+        description="Copy complete Projects root assets into incoming."
     )
     parser.add_argument("--root-folder", default=ROOT_FOLDER)
     parser.add_argument(
@@ -227,6 +419,7 @@ def main() -> None:
     parser.add_argument("--projects-folder", default="Projects")
     parser.add_argument("--incoming-folder", default="incoming")
     parser.add_argument("--processed-folder", default="processed")
+    parser.add_argument("--completed-folder", default="completed")
     parser.add_argument("--failed-folder", default="failed")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

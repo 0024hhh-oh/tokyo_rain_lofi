@@ -756,55 +756,59 @@ Google Drive/
 
 ## iPhone中心のGoogle Drive Projects運用
 
-PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。
+PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。ユーザーは作品フォルダを作らず、作品名や曲名も手入力しません。
 
 ### Driveフォルダ構成
 
 ```text
 Tokyo ChillMatic FM/
   Projects/
-    SHINBASHI/
-      background.png
-      SHINBASHI 01.mp3
-      SHINBASHI 02.mp3
-      ...
-      SHINBASHI 20.mp3
+    song1.mp3
+    song2.mp3
+    ...
+    song20.mp3
+    background.mp4   # または background.jpg
   incoming/
+  completed/
   processed/
   failed/
 ```
 
 ### iPhoneでの手順
 
-1. Suno上で曲名を手動で整えます。
-2. iPhoneで音源を手動ダウンロードし、Google Driveの `Tokyo ChillMatic FM/Projects/<作品名>/` に保存します。
-3. 背景画像を `background.png` / `background.jpg` / `background.jpeg` のいずれかの名前で同じ作品フォルダに保存します。
-4. 作品フォルダ内が `background.*` 画像1枚 + `.mp3` 音源20曲になったら、ProjectsチェックWorkflowが `incoming` へ移動します。
-5. `incoming` に入った作品フォルダは、既存のスケジュール実行Workflowが検知し、動画生成とYouTubeアップロードの対象になります。
+1. Sunoから `.mp3` 音源を20曲ダウンロードします（曲名の変更は不要です）。
+2. 背景素材 `background.jpg` または `background.mp4` を1つ用意します。
+3. Google Driveの `Tokyo ChillMatic FM/Projects/` 直下へ、20曲のMP3と背景素材1つを置きます。
+4. ProjectsチェックWorkflowが `project_names.txt` の先頭から未使用の作品名を1つ選び、`incoming/<作品名>/` を自動作成します。
+5. Workflowは元ファイルを変更せず、MP3を `track01.mp3`〜`track20.mp3`、背景素材を `background.jpg` または `background.mp4` として `incoming/<作品名>/` にコピーします。
+6. `incoming` に入った作品フォルダは、既存のスケジュール実行Workflowが検知し、動画生成とYouTubeアップロードの対象になります。
 
 ### 自動チェックの動き
 
 - `.github/workflows/check_drive_projects.yml` は手動実行（`workflow_dispatch`）できます。
 - 同Workflowはスケジュールでも30分ごとに `Tokyo ChillMatic FM/Projects` を確認します。
-- 完成条件を満たした作品フォルダだけを `incoming` へ移動します。
+- `Projects` 直下に `.mp3` がちょうど20曲、かつ `background.jpg` または `background.mp4` がちょうど1つある場合だけ `incoming/<作品名>/` へコピーします。
+- コピー後、元の `Projects` 直下ファイルはそのまま残します。
+- 二重処理防止のため、コピー済み素材セットのマーカーを `processed/` に作成します。
 - `incoming` への投入後は既存の `Generate LOFI video` Workflowが従来通り処理します。
+- 既存のProjects配下の作品フォルダ運用も互換性維持のため最小限残していますが、新運用では作品フォルダを作成しません。
 - 既存の手動Run Workflowは残しているため、これまで通りDrive番号指定での手動生成も可能です。
 
-### 移動される条件
+### コピーされる条件
 
-- `background.*` 画像がちょうど1枚あること。
-- `.mp3` ファイルがちょうど20曲あること。
-- `incoming` に同名フォルダが存在しないこと。
-- `processed` に同名フォルダが存在しないこと。
-- `failed` に同名フォルダが存在しないこと。
+- `Projects` 直下に `.mp3` ファイルがちょうど20曲あること。
+- `Projects` 直下に `background.jpg` または `background.mp4` がちょうど1つあること。
+- `project_names.txt` に未使用の作品名が残っていること。
+- `incoming` / `completed` / `processed` / `failed` のいずれにも同名作品フォルダが存在しないこと。
+- 同じ素材セットの processed マーカーがまだ存在しないこと。
 
 ### スキップされる条件
 
-- `background.*` 画像が0枚。
-- `background.*` 画像が2枚以上。
-- `.mp3` ファイルが20曲未満。
-- `.mp3` ファイルが20曲超。
-- `incoming` / `processed` / `failed` のいずれかに同名フォルダがある。
+- `Projects` 直下の対象背景素材が0個、または2個以上。
+- `Projects` 直下の `.mp3` ファイルが20曲未満、または20曲超。
+- `project_names.txt` に未使用の作品名がない。
+- `incoming` / `completed` / `processed` / `failed` のいずれかに同名作品フォルダがある。
+- 同じ素材セットの processed マーカーがすでにある。
 
 ### `processed` / `failed` の意味
 
