@@ -29,11 +29,6 @@ on:
         description: "YouTubeタグ（カンマ区切り）"
         required: false
         default: "lofi, chill, tokyo, rain, study music"
-      upload_to_drive:
-        description: "生成したMP4をGoogle Driveへアップロードする"
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   generate:
@@ -59,11 +54,6 @@ jobs:
           BGM_VOLUME: "1.0"
           BACKGROUND_AUDIO_VOLUME: "1.0"
           AUDIO_LIMIT: "0.98"
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
-          YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
         run: |
           processed_count=0
           failed_count=0
@@ -112,12 +102,7 @@ jobs:
               echo "Using minimal CapCut background_loop.mp4 generation matched to concatenated Suno track duration."
               echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
               scripts/generate_lofi_video.sh
-              echo "YouTube upload starting: dist/${OUTPUT_FILE}"
-              python scripts/upload_youtube_video.py \
-                --file "dist/${OUTPUT_FILE}" \
-                --title "${youtube_title}" \
-                --description "${YOUTUBE_DESCRIPTION}" \
-                --tags "${YOUTUBE_TAGS}"
+              echo "YouTube upload is paused; keeping generated MP4 as a GitHub Actions artifact only."
               cp "dist/${OUTPUT_FILE}" "dist_all/${OUTPUT_FILE}"
             )
             status=$?
@@ -198,32 +183,3 @@ jobs:
           name: ${{ inputs.output_file }}
           path: dist/${{ inputs.output_file }}
           if-no-files-found: error
-
-      - name: Upload MP4 to Google Drive
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_drive }}
-        continue-on-error: true
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
-        run: |
-          python scripts/upload_drive_output.py \
-            --file "dist/${{ inputs.output_file }}" \
-            --output-name "${{ inputs.output_file }}"
-
-      - name: Upload private video to YouTube
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
-        env:
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          OUTPUT_FILE: ${{ inputs.output_file }}
-          YOUTUBE_TITLE: ${{ inputs.youtube_title }}
-          YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
-          YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
-        run: |
-          echo "YouTube upload starting: dist/${OUTPUT_FILE}"
-          python scripts/upload_youtube_video.py \
-            --file "dist/${OUTPUT_FILE}" \
-            --title "${YOUTUBE_TITLE}" \
-            --description "${YOUTUBE_DESCRIPTION}" \
-            --tags "${YOUTUBE_TAGS}"
