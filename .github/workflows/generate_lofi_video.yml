@@ -64,6 +64,9 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
+          # Temporarily disable only the YouTube upload while authentication is completed.
+          # Set to "true" to restore the existing upload behavior.
+          ENABLE_YOUTUBE_UPLOAD: "false"
         run: |
           processed_count=0
           failed_count=0
@@ -112,12 +115,16 @@ jobs:
               echo "Using minimal CapCut background_loop.mp4 generation matched to concatenated Suno track duration."
               echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
               scripts/generate_lofi_video.sh
-              echo "YouTube upload starting: dist/${OUTPUT_FILE}"
-              python scripts/upload_youtube_video.py \
-                --file "dist/${OUTPUT_FILE}" \
-                --title "${youtube_title}" \
-                --description "${YOUTUBE_DESCRIPTION}" \
-                --tags "${YOUTUBE_TAGS}"
+              if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then
+                echo "YouTube upload starting: dist/${OUTPUT_FILE}"
+                python scripts/upload_youtube_video.py \
+                  --file "dist/${OUTPUT_FILE}" \
+                  --title "${youtube_title}" \
+                  --description "${YOUTUBE_DESCRIPTION}" \
+                  --tags "${YOUTUBE_TAGS}"
+              else
+                echo "YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}"
+              fi
               cp "dist/${OUTPUT_FILE}" "dist_all/${OUTPUT_FILE}"
             )
             status=$?
@@ -220,10 +227,17 @@ jobs:
           YOUTUBE_TITLE: ${{ inputs.youtube_title }}
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
+          # Temporarily disable only the YouTube upload while authentication is completed.
+          # Set to "true" to restore the existing upload behavior.
+          ENABLE_YOUTUBE_UPLOAD: "false"
         run: |
-          echo "YouTube upload starting: dist/${OUTPUT_FILE}"
-          python scripts/upload_youtube_video.py \
-            --file "dist/${OUTPUT_FILE}" \
-            --title "${YOUTUBE_TITLE}" \
-            --description "${YOUTUBE_DESCRIPTION}" \
-            --tags "${YOUTUBE_TAGS}"
+          if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then
+            echo "YouTube upload starting: dist/${OUTPUT_FILE}"
+            python scripts/upload_youtube_video.py \
+              --file "dist/${OUTPUT_FILE}" \
+              --title "${YOUTUBE_TITLE}" \
+              --description "${YOUTUBE_DESCRIPTION}" \
+              --tags "${YOUTUBE_TAGS}"
+          else
+            echo "YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}"
+          fi
