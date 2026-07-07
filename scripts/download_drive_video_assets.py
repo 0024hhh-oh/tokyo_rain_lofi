@@ -21,7 +21,6 @@ BACKGROUND_IMAGE_NAMES = {
     "background.jpeg",
 }
 BACKGROUND_LOOP_NAME = "background_loop.mp4"
-BACKGROUND_MP4_NAME = "background.mp4"
 BACKGROUND_LOOP_MOV_NAMES = {"background_loop.mov"}
 VIDEO_EXTENSIONS = (".mp4", ".mov")
 VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
@@ -211,10 +210,10 @@ def select_background_loop_file(
     exact_mp4 = [
         item
         for item in video_files
-        if normalized_drive_name(item) in {BACKGROUND_MP4_NAME, BACKGROUND_LOOP_NAME}
+        if normalized_drive_name(item) == BACKGROUND_LOOP_NAME
     ]
     if exact_mp4:
-        return exact_mp4[0], video_files, normalized_drive_name(exact_mp4[0])
+        return exact_mp4[0], video_files, BACKGROUND_LOOP_NAME
 
     exact_mov = [
         item
@@ -329,7 +328,7 @@ def download_legacy_video_folder(
         service, "background.png", video["id"]
     ) or find_optional_file(service, "background.png", videos["id"])
     if background_loop:
-        destination = output_dir / BACKGROUND_MP4_NAME
+        destination = output_dir / BACKGROUND_LOOP_NAME
         download_file(service, background_loop["id"], destination)
         source_path = drive_source_path(
             ROOT_FOLDER, "Videos", video_folder_name, background_loop["name"]
@@ -407,7 +406,7 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
 
     if background_loop_files:
         background_loop = background_loop_files[0]
-        destination = output_dir / BACKGROUND_MP4_NAME
+        destination = output_dir / BACKGROUND_LOOP_NAME
         download_file(service, background_loop["id"], destination)
         source_path = drive_source_path(f"folder:{folder_id}", background_loop["name"])
         log_drive_download(background_loop, destination, source_path)

@@ -19,7 +19,6 @@ ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 BACKGROUND_LOOP_NAME = "background_loop.mp4"
-BACKGROUND_MP4_NAME = "background.mp4"
 VIDEO_MIME_PREFIX = "video/"
 MP4_MIME_TYPES = {"video/mp4", "application/octet-stream"}
 VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
@@ -135,9 +134,7 @@ def is_video_file(item: dict) -> bool:
 def select_background_loop_file(items: list[dict]) -> tuple[dict | None, list[dict]]:
     videos = [item for item in items if is_video_file(item)]
     exact_mp4 = [
-        item
-        for item in videos
-        if normalized_drive_name(item) in {BACKGROUND_MP4_NAME, BACKGROUND_LOOP_NAME}
+        item for item in videos if normalized_drive_name(item) == BACKGROUND_LOOP_NAME
     ]
     if exact_mp4:
         return exact_mp4[0], videos
@@ -219,27 +216,23 @@ def log_incoming_work_folders(incoming: dict, work_folders: list[dict]) -> None:
         print(f"incoming直下フォルダ[{index}]: {description}")
 
 
-
-def folder_exists(service, parent_id: str, name: str) -> bool:
-    query = (
-        f"mimeType = '{FOLDER_MIME}' and name = '{quote_drive_query(name)}' "
-        f"and '{quote_drive_query(parent_id)}' in parents and trashed = false"
-    )
-    return bool(list_files(service, query, fields="files(id,name)"))
-
 def ensure_child_folder(service, parent_id: str, name: str) -> dict:
     query = f"mimeType = '{FOLDER_MIME}' and name = '{quote_drive_query(name)}' and '{quote_drive_query(parent_id)}' in parents and trashed = false"
     folders = list_files(service, query, fields="files(id,name)")
     if folders:
         return folders[0]
-    raise FileNotFoundError(
-        f"必須Driveフォルダが見つかりません: {name}。Drive上に新規フォルダは作成しません"
+    return (
+        service.files()
+        .create(
+            body={"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]},
+            fields="id,name",
+            supportsAllDrives=True,
+        )
+        .execute()
     )
 
 
-def validate_work_folder(
-    service, folder: dict, *, require_exactly_20_tracks: bool = False
-) -> tuple[bool, str, int]:
+def validate_work_folder(service, folder: dict) -> tuple[bool, str, int]:
     folder_id = folder["id"]
     children = list_files(
         service,
@@ -297,13 +290,6 @@ def validate_work_folder(
     if not background_loops and not backgrounds:
         print("無効判定の理由: background_loop.mp4 または background.png が必要です")
         return False, "background_loop.mp4 または background.png が必要です", len(mp3s)
-    if require_exactly_20_tracks and len(mp3s) != 20:
-        print(f"無効判定の理由: mp3音源は20曲ちょうど必要です（検出数: {len(mp3s)} / 20）")
-        return (
-            False,
-            f"mp3音源は20曲ちょうど必要です（検出数: {len(mp3s)} / 20）",
-            len(mp3s),
-        )
     if len(mp3s) < 1:
         print("無効判定の理由: mp3音源がありません（理想は20曲）")
         return False, "mp3音源がありません（理想は20曲）", 0
@@ -358,35 +344,20 @@ def list_incoming_work_folders(
 def detect(args: argparse.Namespace) -> None:
     service = get_drive_service()
     root = resolve_root_folder(service, args.root_folder, args.root_folder_id)
-    completed = ensure_child_folder(service, root["id"], args.completed_folder)
+    incoming = ensure_child_folder(service, root["id"], args.incoming_folder)
+    ensure_child_folder(service, root["id"], args.completed_folder)
     ensure_child_folder(service, root["id"], args.failed_folder)
-    projects = find_single_folder(service, args.projects_folder, root["id"])
-    project_items = list_files(
-        service,
-        f"'{quote_drive_query(projects['id'])}' in parents and trashed = false",
-        fields="files(id,name,mimeType,createdTime,modifiedTime,parents,shortcutDetails)",
-    )
-    project_folders = [item for item in project_items if is_folder(item)]
-    print(f"Projects folder id: {projects['id']}")
-    print(f"Projects内の作品フォルダ数: {len(project_folders)}")
-    for item in project_items:
-        if not is_folder(item):
-            print(f"Projects直下ファイルは読み取り専用扱いでスキップ: {describe_drive_item(item)}")
+    incoming_items, work_folders = list_incoming_work_folders(service, incoming)
+    log_incoming_items(incoming, incoming_items)
+    log_incoming_work_folders(incoming, work_folders)
+    print(f"incoming内の作品フォルダ数: {len(work_folders)}")
     found_false_reasons: list[str] = []
-    work_folders = project_folders
     if not work_folders:
-        reason = "Projects内に作品フォルダがありません"
+        reason = "incoming内に作品フォルダがありません"
         found_false_reasons.append(reason)
         print(f"スキップ理由: {reason}")
     for folder in work_folders:
-        if folder_exists(service, completed["id"], folder["name"]):
-            reason = f"{folder['name']} - completed に同名フォルダがあるためスキップ"
-            found_false_reasons.append(reason)
-            print(f"スキップ理由: {reason}")
-            continue
-        ok, message, track_count = validate_work_folder(
-            service, folder, require_exactly_20_tracks=True
-        )
+        ok, message, track_count = validate_work_folder(service, folder)
         if not ok:
             reason = f"{folder['name']} - {message}"
             found_false_reasons.append(reason)
@@ -403,7 +374,6 @@ def detect(args: argparse.Namespace) -> None:
                 "track_count": str(track_count),
                 "output_file": f"{stem}.mp4",
                 "youtube_title": folder["name"].replace("_", " "),
-                "source_queue": "projects",
             }
         )
         return
@@ -452,7 +422,6 @@ def main() -> None:
         default=os.environ.get(ROOT_FOLDER_ID_ENV),
         help=f"DriveルートフォルダID（{ROOT_FOLDER_ID_ENV} が指定されていればID優先）",
     )
-    parser.add_argument("--projects-folder", default="Projects")
     parser.add_argument("--incoming-folder", default="incoming")
     parser.add_argument("--completed-folder", default="completed")
     parser.add_argument("--failed-folder", default="failed")
