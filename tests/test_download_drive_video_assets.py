@@ -14,6 +14,7 @@ googleapiclient.discovery = types.ModuleType("googleapiclient.discovery")
 googleapiclient.discovery.build = lambda *args, **kwargs: None
 googleapiclient.http = types.ModuleType("googleapiclient.http")
 googleapiclient.http.MediaIoBaseDownload = object
+googleapiclient.http.MediaFileUpload = object
 sys.modules.setdefault("google", google)
 sys.modules.setdefault("google.oauth2", google.oauth2)
 sys.modules.setdefault("google.oauth2.service_account", google.oauth2.service_account)
