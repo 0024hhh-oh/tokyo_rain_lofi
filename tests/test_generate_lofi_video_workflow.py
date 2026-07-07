@@ -132,8 +132,21 @@ def test_incoming_loop_processes_folders_sequentially_before_redetecting():
     loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
 
     assert loop.index("python scripts/download_drive_video_assets.py") < loop.index("scripts/generate_lofi_video.sh")
-    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("python scripts/upload_youtube_video.py")
+    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("cp \"dist/${OUTPUT_FILE}\"")
     assert loop.index("--destination completed") < loop.index("unset found work_folder_id")
+
+
+def test_youtube_upload_is_temporarily_disabled_behind_restore_flag():
+    text = workflow_text()
+
+    assert text.count('ENABLE_YOUTUBE_UPLOAD: "false"') == 2
+    assert 'Set to "true" to restore the existing upload behavior.' in text
+    assert 'if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then' in text
+    assert 'python scripts/upload_youtube_video.py' in text
+    assert 'YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}' in text
+    assert 'Upload MP4 artifact' in text
+    assert 'Upload MP4 to Google Drive' in text
+    assert '--destination completed' in text
 
 
 def test_workflow_no_longer_exports_fixed_target_seconds():
