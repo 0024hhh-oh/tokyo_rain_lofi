@@ -178,11 +178,11 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
     children_by_folder = {
         "work-024": [
             {"id": "bg-024", "name": "background_loop.mp4", "mimeType": "video/mp4"},
-            {"id": "tr-024", "name": "track024.mp3", "mimeType": "audio/mpeg"},
+            *make_tracks(20),
         ],
         "work-025": [
             {"id": "bg-025", "name": "background_loop.mp4", "mimeType": "video/mp4"},
-            {"id": "tr-025", "name": "track025.mp3", "mimeType": "audio/mpeg"},
+            *make_tracks(20),
         ],
     }
     incoming_ids = ["work-024", "work-025"]
@@ -195,7 +195,7 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
                     return {
                         "id": fileId,
                         "name": next(f["name"] for f in folders if f["id"] == fileId),
-                        "parents": ["incoming-id"],
+                        "parents": ["projects-id"],
                     }
 
             return Request()
@@ -220,7 +220,9 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
         query,
         fields="files(id,name,mimeType,createdTime,modifiedTime,parents)",
     ):
-        if "'incoming-id' in parents" in query:
+        if "name = 'Projects'" in query:
+            return [{"id": "projects-id", "name": "Projects"}]
+        if "'projects-id' in parents" in query:
             return [folder for folder in folders if folder["id"] in incoming_ids]
         for folder_id, children in children_by_folder.items():
             if f"'{folder_id}' in parents" in query:
@@ -230,6 +232,7 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
     args = types.SimpleNamespace(
         root_folder="Tokyo ChillMatic FM",
         root_folder_id=None,
+        projects_folder="Projects",
         incoming_folder="incoming",
         completed_folder="completed",
         failed_folder="failed",
