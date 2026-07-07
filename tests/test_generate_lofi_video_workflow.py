@@ -16,6 +16,7 @@ def test_workflow_dispatch_keeps_drive_folder_id_as_debug_only_input():
     assert 'default: ""' in text
     assert 'description: "デバッグ用: Driveの video_XXX 番号（DRIVE_FOLDER_IDもincomingも未使用時のみ）"' in text
     assert 'description: "デバッグ用: 完成MP4ファイル名（通常はincomingフォルダ名から自動設定）"' in text
+    assert 'description: "デバッグ用: YouTube動画タイトル（通常はincomingフォルダ名から自動設定）"' in text
     assert "required: false" in text
 
 
@@ -27,7 +28,7 @@ def test_debug_metadata_defaults_are_blank_so_incoming_outputs_are_used():
     assert 'output_file=""' in text
     assert 'youtube_title=""' in text
     assert 'export OUTPUT_FILE="${output_file}"' in text
-    assert 'python scripts/upload_youtube_video.py' not in text
+    assert '--title "${youtube_title}"' in text
 
 
 def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
@@ -38,7 +39,7 @@ def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
 
     assert detect_condition in text
     assert "while true; do" in text
-    assert text.count(debug_only_condition) >= 3
+    assert text.count(debug_only_condition) >= 4
 
 
 def test_workflow_resolves_drive_folder_id_only_from_explicit_debug_input():
@@ -131,8 +132,7 @@ def test_incoming_loop_processes_folders_sequentially_before_redetecting():
     loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
 
     assert loop.index("python scripts/download_drive_video_assets.py") < loop.index("scripts/generate_lofi_video.sh")
-    assert loop.index("scripts/generate_lofi_video.sh") < loop.index('cp "dist/${OUTPUT_FILE}" "dist_all/${OUTPUT_FILE}"')
-    assert loop.index('cp "dist/${OUTPUT_FILE}" "dist_all/${OUTPUT_FILE}"') < loop.index("--destination completed")
+    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("python scripts/upload_youtube_video.py")
     assert loop.index("--destination completed") < loop.index("unset found work_folder_id")
 
 
@@ -143,14 +143,3 @@ def test_workflow_no_longer_exports_fixed_target_seconds():
     assert "duration_minutes" not in text
     assert "DURATION_MINUTES" not in text
     assert "matched to concatenated Suno track duration" in text
-
-
-def test_workflow_pauses_youtube_and_drive_uploads_while_preserving_artifacts():
-    text = workflow_text()
-
-    assert "python scripts/upload_youtube_video.py" not in text
-    assert "python scripts/upload_drive_output.py" not in text
-    assert "Upload private video to YouTube" not in text
-    assert "Upload MP4 to Google Drive" not in text
-    assert "actions/upload-artifact@v4" in text
-    assert "YouTube upload is paused; keeping generated MP4 as a GitHub Actions artifact only." in text
