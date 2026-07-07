@@ -14,6 +14,7 @@ googleapiclient.discovery = types.ModuleType("googleapiclient.discovery")
 googleapiclient.discovery.build = lambda *args, **kwargs: None
 googleapiclient.http = types.ModuleType("googleapiclient.http")
 googleapiclient.http.MediaIoBaseDownload = object
+googleapiclient.http.MediaFileUpload = object
 sys.modules.setdefault("google", google)
 sys.modules.setdefault("google.oauth2", google.oauth2)
 sys.modules.setdefault("google.oauth2.service_account", google.oauth2.service_account)
@@ -187,7 +188,7 @@ def test_incoming_download_accepts_single_nonstandard_video_name(tmp_path):
             None, "folder-id", tmp_path / "video_assets"
         )
 
-    assert (tmp_path / "video_assets/background_loop.mp4").read_bytes() == b"video-id"
+    assert (tmp_path / "video_assets/background.mp4").read_bytes() == b"video-id"
 
 
 def test_background_loop_mov_is_prioritized_over_other_video():
