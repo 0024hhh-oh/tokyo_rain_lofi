@@ -10,12 +10,37 @@ google.oauth2 = types.ModuleType("google.oauth2")
 google.oauth2.service_account = types.ModuleType("google.oauth2.service_account")
 googleapiclient = types.ModuleType("googleapiclient")
 googleapiclient.discovery = types.ModuleType("googleapiclient.discovery")
+googleapiclient.http = types.ModuleType("googleapiclient.http")
+
+
+class FakeMediaIoBaseDownload:
+    def __init__(self, handle, request):
+        self.handle = handle
+        self.request = request
+        self.done = False
+
+    def next_chunk(self):
+        if not self.done:
+            self.handle.write(f"downloaded:{self.request}".encode("utf-8"))
+            self.done = True
+        return None, True
+
+
+googleapiclient.http.MediaIoBaseDownload = FakeMediaIoBaseDownload
+googleapiclient.http.MediaFileUpload = (
+    lambda filename, mimetype=None, resumable=False: {
+        "filename": filename,
+        "mimetype": mimetype,
+        "resumable": resumable,
+    }
+)
 googleapiclient.discovery.build = lambda *args, **kwargs: None
 sys.modules.setdefault("google", google)
 sys.modules.setdefault("google.oauth2", google.oauth2)
 sys.modules.setdefault("google.oauth2.service_account", google.oauth2.service_account)
 sys.modules.setdefault("googleapiclient", googleapiclient)
 sys.modules.setdefault("googleapiclient.discovery", googleapiclient.discovery)
+sys.modules.setdefault("googleapiclient.http", googleapiclient.http)
 
 import drive_projects_ready
 
@@ -90,22 +115,21 @@ def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
         {"id": f"song-{i:02}", "name": f"song{i:02}.mp3", "mimeType": "audio/mpeg"}
         for i in range(1, 21)
     ] + [{"id": "bg", "name": "background.mp4", "mimeType": "video/mp4"}]
-    copied = []
+    downloaded = []
+    uploaded = []
     created = []
 
     class FakeFiles:
-        def copy(self, fileId, body, fields, supportsAllDrives):
-            class Request:
-                def execute(self_inner):
-                    copied.append((fileId, body["parents"][0], body["name"]))
-                    return {"id": f"copy-{fileId}", "name": body["name"]}
+        def get_media(self, fileId, supportsAllDrives):
+            downloaded.append(fileId)
+            return fileId
 
-            return Request()
-
-        def create(self, body, fields, supportsAllDrives):
+        def create(self, body, fields, supportsAllDrives, media_body=None):
             class Request:
                 def execute(self_inner):
                     created.append(body)
+                    if media_body is not None:
+                        uploaded.append((body["parents"][0], body["name"], media_body))
                     return {"id": f"created-{body['name']}", "name": body["name"]}
 
             return Request()
@@ -141,6 +165,16 @@ def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
     )
 
     with patch.object(
+        drive_projects_ready, "MediaIoBaseDownload", FakeMediaIoBaseDownload
+    ), patch.object(
+        drive_projects_ready,
+        "MediaFileUpload",
+        lambda filename, mimetype=None, resumable=False: {
+            "filename": filename,
+            "mimetype": mimetype,
+            "resumable": resumable,
+        },
+    ), patch.object(
         drive_projects_ready, "get_drive_service", return_value=FakeService()
     ), patch.object(
         drive_projects_ready,
@@ -164,14 +198,18 @@ def test_projects_root_assets_are_copied_to_incoming_with_unused_name(capsys):
     output = capsys.readouterr().out
     assert "READY: KINSHICHO" in output
     assert ("incoming-id", "KINSHICHO") in ensured
-    assert len(copied) == 21
-    assert copied[0] == ("song-01", "KINSHICHO-id", "track01.mp3")
-    assert copied[19] == ("song-20", "KINSHICHO-id", "track20.mp3")
-    assert copied[20] == ("bg", "KINSHICHO-id", "background.mp4")
-    assert created[0]["name"].startswith(
+    assert downloaded == [*[f"song-{i:02}" for i in range(1, 21)], "bg"]
+    assert len(uploaded) == 21
+    assert uploaded[0][0:2] == ("KINSHICHO-id", "track01.mp3")
+    assert uploaded[0][2]["mimetype"] == "audio/mpeg"
+    assert uploaded[19][0:2] == ("KINSHICHO-id", "track20.mp3")
+    assert uploaded[20][0:2] == ("KINSHICHO-id", "background.mp4")
+    assert uploaded[20][2]["mimetype"] == "video/mp4"
+    marker_body = created[-1]
+    assert marker_body["name"].startswith(
         drive_projects_ready.PROJECTS_BATCH_MARKER_PREFIX
     )
-    assert created[0]["parents"] == ["processed-id"]
+    assert marker_body["parents"] == ["processed-id"]
 
 
 def test_projects_root_batch_marker_prevents_duplicate_copy(capsys):

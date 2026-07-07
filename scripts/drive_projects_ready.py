@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Copy complete Google Drive Projects root assets into incoming for processing."""
+"""Stage complete Google Drive Projects assets into incoming for processing."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 from drive_incoming_queue import (
     FOLDER_MIME,
@@ -195,18 +198,40 @@ def select_unused_project_name(
     return None
 
 
-def copy_file(
-    service, file_id: str, destination_folder_id: str, name: str, dry_run: bool
+def download_file_to_path(service, file_id: str, destination: Path) -> None:
+    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
+    with destination.open("wb") as handle:
+        downloader = MediaIoBaseDownload(handle, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+
+
+def upload_file_from_path(
+    service, source_path: Path, destination_folder_id: str, name: str, mime_type: str
 ) -> None:
-    if dry_run:
-        print(f"DRY RUN: copy {file_id} -> {name}")
-        return
-    service.files().copy(
-        fileId=file_id,
+    media = MediaFileUpload(str(source_path), mimetype=mime_type or None, resumable=True)
+    service.files().create(
         body={"name": name, "parents": [destination_folder_id]},
+        media_body=media,
         fields="id,name,parents",
         supportsAllDrives=True,
     ).execute()
+
+
+def transfer_file_via_download_upload(
+    service, item: dict, destination_folder_id: str, name: str, dry_run: bool
+) -> None:
+    if dry_run:
+        print(f"DRY RUN: download/upload {item['id']} -> {name}")
+        return
+    suffix = Path(name).suffix or Path(item.get("name", "")).suffix
+    with tempfile.TemporaryDirectory(prefix="drive-projects-") as temp_dir:
+        temp_path = Path(temp_dir) / f"source{suffix}"
+        download_file_to_path(service, item["id"], temp_path)
+        upload_file_from_path(
+            service, temp_path, destination_folder_id, name, item.get("mimeType", "")
+        )
 
 
 def create_marker_folder(
@@ -246,15 +271,17 @@ def copy_projects_root_batch(
     for index, item in enumerate(
         sorted(mp3s, key=lambda entry: normalized_drive_name(entry)), start=1
     ):
-        copy_file(
-            service, item["id"], work_folder["id"], f"track{index:02d}.mp3", dry_run
+        transfer_file_via_download_upload(
+            service, item, work_folder["id"], f"track{index:02d}.mp3", dry_run
         )
     background_name = (
         "background.mp4"
         if normalized_drive_name(background).endswith(".mp4")
         else "background.jpg"
     )
-    copy_file(service, background["id"], work_folder["id"], background_name, dry_run)
+    transfer_file_via_download_upload(
+        service, background, work_folder["id"], background_name, dry_run
+    )
     create_marker_folder(service, processed_id, marker_name, dry_run)
     print(f"COPIED: Projects直下素材 -> incoming/{project_name}")
 
@@ -408,7 +435,7 @@ def check_projects(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Copy complete Projects root assets into incoming."
+        description="Stage complete Projects root assets into incoming."
     )
     parser.add_argument("--root-folder", default=ROOT_FOLDER)
     parser.add_argument(
