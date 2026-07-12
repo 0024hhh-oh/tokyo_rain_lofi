@@ -177,3 +177,23 @@ def test_youtube_secrets_are_passed_to_all_upload_paths():
     assert text.count("YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}") == 2
     assert '--file "dist/${OUTPUT_FILE}"' in text
     assert '--file "dist/${{ inputs.output_file }}"' not in text
+
+
+def test_incoming_loop_does_not_upload_when_generation_fails_and_moves_failed():
+    text = workflow_text()
+    loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
+    subshell = loop.split("(", 1)[1].split(")\n            status=$?", 1)[0]
+    failure_branch = loop.split("else", 1)[1]
+
+    assert subshell.index("scripts/generate_lofi_video.sh") < subshell.index("python scripts/upload_youtube_video.py")
+    assert "set -euo pipefail" in subshell
+    assert "--destination failed" in failure_branch
+
+
+def test_workflow_successful_youtube_upload_still_moves_completed():
+    text = workflow_text()
+    loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
+    success_branch = loop.split("if [[ ${status} -eq 0 ]]; then", 1)[1].split("else", 1)[0]
+
+    assert "python scripts/upload_youtube_video.py" in loop
+    assert "--destination completed" in success_branch
