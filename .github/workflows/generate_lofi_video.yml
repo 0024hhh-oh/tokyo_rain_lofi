@@ -51,7 +51,6 @@ jobs:
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
-          TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
           BGM_VOLUME: "1.0"
           BACKGROUND_AUDIO_VOLUME: "1.0"
           AUDIO_LIMIT: "0.98"
@@ -60,9 +59,6 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
-          # Temporarily disable only the YouTube upload while authentication is completed.
-          # Set to "true" to restore the existing upload behavior.
-          ENABLE_YOUTUBE_UPLOAD: "false"
         run: |
           processed_count=0
           failed_count=0
@@ -110,21 +106,12 @@ jobs:
               echo "Using minimal CapCut background_loop.mp4 generation matched to concatenated Suno track duration."
               echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
               scripts/generate_lofi_video.sh
-              if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then
-                echo "YouTube upload starting: dist/${OUTPUT_FILE}"
-                python scripts/upload_youtube_video.py \
-                  --file "dist/${OUTPUT_FILE}" \
-                  --title "${youtube_title}" \
-                  --description "${YOUTUBE_DESCRIPTION}" \
-                  --tags "${YOUTUBE_TAGS}"
-              else
-                echo "YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}"
-              fi
-              echo "Google Drive upload starting: dist/${OUTPUT_FILE}"
-              python scripts/upload_drive_output.py \
+              echo "YouTube upload starting: dist/${OUTPUT_FILE}"
+              python scripts/upload_youtube_video.py \
                 --file "dist/${OUTPUT_FILE}" \
-                --output-name "${OUTPUT_FILE}" \
-                --output-folder-id "${TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID}"
+                --title "${youtube_title}" \
+                --description "${YOUTUBE_DESCRIPTION}" \
+                --tags "${YOUTUBE_TAGS}"
             )
             status=$?
             set -e
@@ -190,17 +177,6 @@ jobs:
           echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
           scripts/generate_lofi_video.sh
 
-      - name: Upload MP4 to Google Drive
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
-        run: |
-          python scripts/upload_drive_output.py \
-            --file "dist/${{ inputs.output_file }}" \
-            --output-name "${{ inputs.output_file }}" \
-            --output-folder-id "${TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID}"
-
       - name: Upload private video to YouTube
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
         env:
@@ -211,17 +187,10 @@ jobs:
           YOUTUBE_TITLE: ${{ inputs.youtube_title }}
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
-          # Temporarily disable only the YouTube upload while authentication is completed.
-          # Set to "true" to restore the existing upload behavior.
-          ENABLE_YOUTUBE_UPLOAD: "false"
         run: |
-          if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then
-            echo "YouTube upload starting: dist/${OUTPUT_FILE}"
-            python scripts/upload_youtube_video.py \
-              --file "dist/${OUTPUT_FILE}" \
-              --title "${YOUTUBE_TITLE}" \
-              --description "${YOUTUBE_DESCRIPTION}" \
-              --tags "${YOUTUBE_TAGS}"
-          else
-            echo "YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}"
-          fi
+          echo "YouTube upload starting: dist/${OUTPUT_FILE}"
+          python scripts/upload_youtube_video.py \
+            --file "dist/${OUTPUT_FILE}" \
+            --title "${YOUTUBE_TITLE}" \
+            --description "${YOUTUBE_DESCRIPTION}" \
+            --tags "${YOUTUBE_TAGS}"

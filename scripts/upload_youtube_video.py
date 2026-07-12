@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 from typing import Iterable
@@ -16,6 +17,7 @@ from googleapiclient.http import MediaFileUpload
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
+YOUTUBE_SECRET_NAMES = ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
 
 
 def parse_tags(raw_tags: str) -> list[str]:
@@ -32,12 +34,12 @@ def required_env(names: Iterable[str]) -> dict[str, str]:
         else:
             missing.append(name)
     if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+        raise RuntimeError(f"Missing required YouTube GitHub Secrets: {', '.join(missing)}")
     return values
 
 
 def get_youtube_service():
-    env = required_env(("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"))
+    env = required_env(YOUTUBE_SECRET_NAMES)
     credentials = Credentials(
         token=None,
         refresh_token=env["YOUTUBE_REFRESH_TOKEN"],
@@ -76,6 +78,34 @@ def upload_video(file_path: Path, title: str, description: str, tags: list[str])
     return response
 
 
+def google_api_error_reason(exc: HttpError) -> str:
+    try:
+        payload = json.loads(exc.content.decode("utf-8"))
+    except Exception:
+        return "unparseable_error_response"
+
+    error = payload.get("error", {})
+    errors = error.get("errors") or []
+    reasons = [str(item.get("reason")) for item in errors if item.get("reason")]
+    if reasons:
+        return ", ".join(reasons)
+    if error.get("status"):
+        return str(error["status"])
+    if error.get("message"):
+        return str(error["message"])
+    return "unknown"
+
+
+def log_http_error(exc: HttpError) -> None:
+    status = getattr(exc.resp, "status", "unknown")
+    reason = google_api_error_reason(exc)
+    print("YouTube API upload failed.")
+    print(f"HTTP status: {status}")
+    print(f"Google API error reason: {reason}")
+    print(f"Exception type: {type(exc).__name__}")
+    print(f"Exception detail: {exc}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Upload an MP4 to YouTube as private.")
     parser.add_argument("--file", required=True, help="Path to the generated MP4 file.")
@@ -91,13 +121,22 @@ def main() -> None:
     try:
         uploaded = upload_video(file_path, args.title, args.description, parse_tags(args.tags))
     except HttpError as exc:
-        print(f"YouTube API upload failed: {exc}")
+        log_http_error(exc)
+        raise
+    except Exception as exc:
+        print("YouTube upload failed.")
+        print("HTTP status: not_available")
+        print("Google API error reason: not_available")
+        print(f"Exception type: {type(exc).__name__}")
+        print(f"Exception detail: {exc}")
         raise
 
     video_id = uploaded.get("id")
-    print(f"Uploaded private YouTube video: {video_id}")
+    print("アップロード成功")
+    print(f"video ID: {video_id}")
     if video_id:
         print(f"YouTube Studio URL: https://studio.youtube.com/video/{video_id}/edit")
+        print(f"Video URL: https://www.youtube.com/watch?v={video_id}")
 
 
 if __name__ == "__main__":

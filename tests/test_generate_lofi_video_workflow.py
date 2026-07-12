@@ -39,7 +39,7 @@ def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
 
     assert detect_condition in text
     assert "while true; do" in text
-    assert text.count(debug_only_condition) >= 4
+    assert text.count(debug_only_condition) >= 3
 
 
 def test_workflow_resolves_drive_folder_id_only_from_explicit_debug_input():
@@ -132,22 +132,21 @@ def test_incoming_loop_processes_folders_sequentially_before_redetecting():
     loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
 
     assert loop.index("python scripts/download_drive_video_assets.py") < loop.index("scripts/generate_lofi_video.sh")
-    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("python scripts/upload_drive_output.py")
+    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("python scripts/upload_youtube_video.py")
     assert loop.index("--destination completed") < loop.index("unset found work_folder_id")
 
 
-def test_youtube_upload_is_temporarily_disabled_behind_restore_flag():
+def test_youtube_upload_is_enabled_and_not_behind_restore_flag():
     text = workflow_text()
 
-    assert text.count('ENABLE_YOUTUBE_UPLOAD: "false"') == 2
-    assert 'Set to "true" to restore the existing upload behavior.' in text
-    assert 'if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then' in text
+    assert 'ENABLE_YOUTUBE_UPLOAD' not in text
+    assert 'Set to "true" to restore the existing upload behavior.' not in text
+    assert 'if [[ "${ENABLE_YOUTUBE_UPLOAD}" == "true" ]]; then' not in text
     assert 'python scripts/upload_youtube_video.py' in text
-    assert 'YouTube upload temporarily disabled; skipping upload for dist/${OUTPUT_FILE}' in text
+    assert 'YouTube upload temporarily disabled; skipping upload' not in text
     assert 'Upload MP4 artifact' not in text
     assert 'Upload incoming MP4 artifacts' not in text
     assert 'actions/upload-artifact' not in text
-    assert 'Upload MP4 to Google Drive' in text
     assert '--destination completed' in text
 
 
@@ -160,25 +159,21 @@ def test_workflow_no_longer_exports_fixed_target_seconds():
     assert "matched to concatenated Suno track duration" in text
 
 
-def test_workflow_uploads_completed_mp4s_to_configured_drive_folder_without_artifacts():
+def test_workflow_does_not_run_google_drive_upload_after_youtube_success():
     text = workflow_text()
 
     assert "upload_to_drive" not in text
     assert "actions/upload-artifact" not in text
-    assert "TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}" in text
-    assert "Google Drive upload starting: dist/${OUTPUT_FILE}" in text
-    assert "python scripts/upload_drive_output.py" in text
-    assert '--file "dist/${OUTPUT_FILE}"' in text
-    assert '--output-name "${OUTPUT_FILE}"' in text
-    assert '--output-folder-id "${TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID}"' in text
+    assert "Upload MP4 to Google Drive" not in text
+    assert "Google Drive upload starting" not in text
+    assert "python scripts/upload_drive_output.py" not in text
 
 
-def test_debug_workflow_uploads_mp4_to_drive_folder_and_fails_on_errors():
+def test_youtube_secrets_are_passed_to_all_upload_paths():
     text = workflow_text()
-    upload_step = text.split("- name: Upload MP4 to Google Drive", 1)[1].split("- name: Upload private video", 1)[0]
 
-    assert "continue-on-error" not in upload_step
-    assert "TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID" in upload_step
-    assert '--file "dist/${{ inputs.output_file }}"' in upload_step
-    assert '--output-name "${{ inputs.output_file }}"' in upload_step
-    assert '--output-folder-id "${TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID}"' in upload_step
+    assert text.count("YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}") == 2
+    assert text.count("YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}") == 2
+    assert text.count("YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}") == 2
+    assert '--file "dist/${OUTPUT_FILE}"' in text
+    assert '--file "dist/${{ inputs.output_file }}"' not in text
