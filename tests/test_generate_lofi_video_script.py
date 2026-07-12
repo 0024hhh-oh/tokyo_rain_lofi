@@ -26,9 +26,9 @@ def test_script_loops_background_but_not_suno_concat_input():
     assert '-stream_loop -1 -i "$BACKGROUND_FILE"' in text
     assert '-stream_loop -1 -f concat' not in text
     assert '-f concat -safe 0 -i "$CONCAT_FILE"' in text
-    assert "[1:a]atrim=0:${SUNO_TOTAL_SECONDS}" in text
+    assert "[2:a]atrim=0:${SUNO_TOTAL_SECONDS}" in text
     assert "volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm]" in text
-    assert "[0:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS}" in text
+    assert "[1:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS}" in text
     assert "BACKGROUND_AUDIO_LOOP_SAMPLES" in text
     assert "amix=inputs=2:duration=first" in text
     assert "amix=inputs=2:duration=shortest" not in text
@@ -38,7 +38,7 @@ def test_script_keeps_background_rain_audio_through_outro_without_fade():
     text = script_text()
 
     assert 'BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"' in text
-    assert "[0:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio]" in text
+    assert "[1:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio]" in text
     assert "math.ceil(float(duration) * 48000)" in text
     assert "dropout_transition=0" in text
     assert "afade" not in text
@@ -65,30 +65,41 @@ def test_script_honors_loop_crossfade_env_and_rejects_too_short_source():
     assert "required duration >" in text
 
 
-def test_script_uses_video_and_audio_crossfade_when_background_has_audio():
+def test_script_generates_seamless_loop_as_video_only_without_audio_crossfade():
     text = script_text()
 
     assert "has_audio_stream" in text
     assert "xfade=transition=fade:duration=${crossfade_seconds}:offset=${offset}" in text
-    assert "acrossfade=d=${crossfade_seconds}:c1=tri:c2=tri" in text
-    assert "-map \"[vout]\" -map \"[aout]\"" in text
-    assert "-c:a aac -b:a 192k -ar 48000" in text
+    assert "acrossfade" not in text
+    assert "-map \"[vout]\"" in text
+    assert "-an" in text
+    assert "-map \"[aout]\"" not in text
 
 
 def test_script_supports_silent_background_during_seamless_generation():
     text = script_text()
 
     assert "Background audio stream: $has_audio" in text
-    assert "if [[ \"$has_audio\" == \"yes\" ]]; then" in text
-    assert "else\n    filter_complex=\"[0:v]trim=start=${crossfade_seconds}" in text
     assert "-map \"[vout]\"" in text
+    assert "-an" in text
     assert "BACKGROUND_HAS_AUDIO=\"no\"" in text
 
 
-def test_script_uses_seamless_background_for_long_form_copy_loop():
+def test_script_uses_seamless_video_and_original_background_audio_for_long_form_copy_loop():
     text = script_text()
 
     assert "Long-form generation background file: $BACKGROUND_FILE" in text
+    assert "Long-form rain audio file: $SOURCE_BACKGROUND_FILE" in text
     assert "-stream_loop -1 -i \"$BACKGROUND_FILE\"" in text
+    assert "-i \"$SOURCE_BACKGROUND_FILE\"" in text
     assert "-c:v copy" in text
     assert "The video stream is looped and copied without FFmpeg video filters or re-encoding." in text
+
+def test_script_logs_split_video_and_rain_audio_sources_and_volumes():
+    text = script_text()
+
+    assert "video source: background_seamless.mp4" in text
+    assert "rain audio source: background.mp4" in text
+    assert "rain audio stream detected: $BACKGROUND_HAS_AUDIO" in text
+    assert "background_audio_volume=$BACKGROUND_AUDIO_VOLUME" in text
+    assert "bgm_volume=$BGM_VOLUME" in text

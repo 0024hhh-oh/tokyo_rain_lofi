@@ -112,28 +112,16 @@ PY_LOOP_VALIDATE
 
   local filter_complex
   local -a seamless_cmd
-  if [[ "$has_audio" == "yes" ]]; then
-    filter_complex="[0:v]trim=start=${crossfade_seconds},setpts=PTS-STARTPTS[loop_main_v];[0:v]trim=start=0:duration=${crossfade_seconds},setpts=PTS-STARTPTS[loop_head_v];[loop_main_v][loop_head_v]xfade=transition=fade:duration=${crossfade_seconds}:offset=${offset},format=yuv420p[vout];[0:a]atrim=start=${crossfade_seconds},asetpts=PTS-STARTPTS[loop_main_a];[0:a]atrim=start=0:duration=${crossfade_seconds},asetpts=PTS-STARTPTS[loop_head_a];[loop_main_a][loop_head_a]acrossfade=d=${crossfade_seconds}:c1=tri:c2=tri[aout]"
-    seamless_cmd=(
-      ffmpeg -y -i "$source_path"
-      -filter_complex "$filter_complex"
-      -map "[vout]" -map "[aout]"
-      -c:v libx264 -preset "$preset" -crf "$crf" -pix_fmt yuv420p
-      -c:a aac -b:a 192k -ar 48000
-      -movflags +faststart
-      "$output_path"
-    )
-  else
-    filter_complex="[0:v]trim=start=${crossfade_seconds},setpts=PTS-STARTPTS[loop_main_v];[0:v]trim=start=0:duration=${crossfade_seconds},setpts=PTS-STARTPTS[loop_head_v];[loop_main_v][loop_head_v]xfade=transition=fade:duration=${crossfade_seconds}:offset=${offset},format=yuv420p[vout]"
-    seamless_cmd=(
-      ffmpeg -y -i "$source_path"
-      -filter_complex "$filter_complex"
-      -map "[vout]"
-      -c:v libx264 -preset "$preset" -crf "$crf" -pix_fmt yuv420p
-      -movflags +faststart
-      "$output_path"
-    )
-  fi
+  filter_complex="[0:v]trim=start=${crossfade_seconds},setpts=PTS-STARTPTS[loop_main_v];[0:v]trim=start=0:duration=${crossfade_seconds},setpts=PTS-STARTPTS[loop_head_v];[loop_main_v][loop_head_v]xfade=transition=fade:duration=${crossfade_seconds}:offset=${offset},format=yuv420p[vout]"
+  seamless_cmd=(
+    ffmpeg -y -i "$source_path"
+    -filter_complex "$filter_complex"
+    -map "[vout]"
+    -an
+    -c:v libx264 -preset "$preset" -crf "$crf" -pix_fmt yuv420p
+    -movflags +faststart
+    "$output_path"
+  )
 
   echo "Seamless FFmpeg command:"
   printf ' %q' "${seamless_cmd[@]}"
@@ -223,9 +211,9 @@ print(format(suno_total + rain_outro, "f"))
 PY_VIDEO_DURATION
 )"
 
-if has_audio_stream "$BACKGROUND_FILE"; then
+if has_audio_stream "$SOURCE_BACKGROUND_FILE"; then
   BACKGROUND_HAS_AUDIO="yes"
-  BACKGROUND_AUDIO_LOOP_SAMPLES="$(python - "$BACKGROUND_FILE" <<'PY_BACKGROUND_AUDIO_LOOP'
+  BACKGROUND_AUDIO_LOOP_SAMPLES="$(python - "$SOURCE_BACKGROUND_FILE" <<'PY_BACKGROUND_AUDIO_LOOP'
 import math
 import subprocess
 import sys
@@ -292,6 +280,9 @@ cat <<EOF_STATUS
 Minimal video generation mode:
   source_background=$SOURCE_BACKGROUND_FILE
   seamless_background=$BACKGROUND_FILE
+  video source: background_seamless.mp4
+  rain audio source: background.mp4
+  rain audio stream detected: $BACKGROUND_HAS_AUDIO
   output=$OUTPUT_PATH
   suno_seconds=$SUNO_TOTAL_SECONDS
   rain_outro_seconds=$RAIN_OUTRO_SECONDS
@@ -316,21 +307,24 @@ Visual processing intentionally disabled:
   video_filters=disabled
 
 The generated seamless background video is treated as the completed video source.
-The actual long-form background file is $BACKGROUND_FILE.
+The actual long-form video file is $BACKGROUND_FILE.
+The original background file provides the rain audio when an audio stream is present.
 The video stream is looped and copied without FFmpeg video filters or re-encoding.
-Its audio is looped to the total video duration and kept at the same volume for both the main program and the outro. The concatenated Suno BGM is not looped; it is padded with silence after its natural end so only the original background rain audio remains for the configured outro duration.
+The original background audio is looped to the total video duration and kept at the same volume for both the main program and the outro. The concatenated Suno BGM is not looped; it is padded with silence after its natural end so only the original background rain audio remains for the configured outro duration.
 EOF_STATUS
 
 log_media_metadata "Source background video" "$SOURCE_BACKGROUND_FILE"
 log_media_metadata "Selected seamless background loop video" "$BACKGROUND_FILE"
 echo "Long-form generation background file: $BACKGROUND_FILE"
+echo "Long-form rain audio file: $SOURCE_BACKGROUND_FILE"
 
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
   ffmpeg_cmd=(
     ffmpeg -y
     -stream_loop -1 -i "$BACKGROUND_FILE"
+    -i "$SOURCE_BACKGROUND_FILE"
     -f concat -safe 0 -i "$CONCAT_FILE"
-    -filter_complex "[0:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+    -filter_complex "[1:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[2:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
     -map 0:v:0 -map "[audio_out]"
     -t "$VIDEO_TOTAL_SECONDS"
     -c:v copy
