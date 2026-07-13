@@ -33,7 +33,7 @@ def test_separates_rain_audio_and_crossfades_audio_only_loop():
     assert "[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}" in text
     assert '-stream_loop -1 -i "$TRIMMED_BACKGROUND_LOOP_FILE"' in text
     assert '-stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"' not in text
-    assert '-stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"' in text
+    assert '-stream_loop -1 -i "$BACKGROUND_AUDIO_INPUT_FILE"' in text
     assert "split=61" not in text
     assert "asplit=61" not in text
 
@@ -77,9 +77,21 @@ def test_validates_source_video_and_background_audio_duration():
     assert "Background source is missing a video stream" in text
     assert "Trimmed background loop is missing a video stream" in text
     assert "has_positive_audio_duration" in text
+    assert "has_usable_audio_file" in text
     assert "audio stream has no positive duration" in text
     assert 'ffprobe -v error -select_streams v:0' in text
     assert 'ffprobe -v error -select_streams a:0' in text
+
+
+def test_falls_back_to_trimmed_background_audio_when_crossfade_file_is_unusable():
+    text = script_text()
+    assert 'BACKGROUND_AUDIO_INPUT_FILE="$TRIMMED_BACKGROUND_LOOP_FILE"' in text
+    assert '[[ -s "$file" ]] || return 1' in text
+    assert 'has_usable_audio_file "$BACKGROUND_AUDIO_LOOP_FILE"' in text
+    assert 'rm -f "$BACKGROUND_AUDIO_LOOP_FILE"' in text
+    assert 'BACKGROUND_AUDIO_LOOP_STATUS="fallback-trimmed-background-loop-audio"' in text
+    assert '-stream_loop -1 -i "$BACKGROUND_AUDIO_INPUT_FILE"' in text
+    assert '-stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"' not in text
 
 
 def test_generates_crossfaded_audio_loop_with_positive_aac_audio_duration(tmp_path):
@@ -155,3 +167,71 @@ def test_generates_crossfaded_audio_loop_with_positive_aac_audio_duration(tmp_pa
     ).stdout.strip()
     assert codec == "aac"
     assert Decimal(duration) > 0
+
+
+def test_falls_back_to_trimmed_audio_when_crossfade_generation_fails(tmp_path):
+    import os
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("ffmpeg and ffprobe are required for real media generation")
+
+    asset_dir = tmp_path / "video_assets"
+    track_dir = asset_dir / "tracks"
+    output_dir = tmp_path / "dist"
+    track_dir.mkdir(parents=True)
+    output_dir.mkdir()
+
+    background = asset_dir / "background.mp4"
+    track = track_dir / "track01.mp3"
+
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=24:duration=3",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "96k", "-shortest", str(background),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=1",
+            "-c:a", "libmp3lame", "-q:a", "7", str(track),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    env = os.environ | {
+        "ASSET_DIR": str(asset_dir),
+        "OUTPUT_DIR": str(output_dir),
+        "LOOP_CROSSFADE_SECONDS": "0.5",
+        "RAIN_OUTRO_SECONDS": "0",
+        "LOOP_PRESET": "ultrafast",
+        "LOOP_CRF": "35",
+        "BACKGROUND_LOOP_TRIM_START_SECONDS": "0.25",
+        "BACKGROUND_LOOP_TRIM_END_SECONDS": "0.25",
+        "CROSSFADED_BACKGROUND_AUDIO_CODEC": "definitely_not_a_codec",
+    }
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        check=True,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    assert "background_audio_loop_status=fallback-trimmed-background-loop-audio" in result.stdout
+    assert "Crossfaded background audio loop generation failed" in result.stderr
+    assert not (output_dir / "crossfaded_background_audio.m4a").exists()
+    assert (output_dir / "Tokyo_Memory_Archive_001.mp4").exists()

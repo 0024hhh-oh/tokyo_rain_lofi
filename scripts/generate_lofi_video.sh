@@ -13,10 +13,13 @@ LOOP_CROSSFADE_SECONDS="${LOOP_CROSSFADE_SECONDS:-1}"
 VIDEO_EDGE_FADE_SECONDS="${VIDEO_EDGE_FADE_SECONDS:-1}"
 LOOP_PRESET="${LOOP_PRESET:-veryfast}"
 LOOP_CRF="${LOOP_CRF:-22}"
+CROSSFADED_BACKGROUND_AUDIO_CODEC="${CROSSFADED_BACKGROUND_AUDIO_CODEC:-aac}"
 
 CONCAT_FILE="$OUTPUT_DIR/suno_tracks_concat.txt"
 TRIMMED_BACKGROUND_LOOP_FILE="$OUTPUT_DIR/trimmed_background_loop.mp4"
 BACKGROUND_AUDIO_LOOP_FILE="$OUTPUT_DIR/crossfaded_background_audio.m4a"
+BACKGROUND_AUDIO_INPUT_FILE="$TRIMMED_BACKGROUND_LOOP_FILE"
+BACKGROUND_AUDIO_LOOP_STATUS="not-attempted"
 BACKGROUND_LOOP_TRIM_START_SECONDS="${BACKGROUND_LOOP_TRIM_START_SECONDS:-$VIDEO_EDGE_FADE_SECONDS}"
 BACKGROUND_LOOP_TRIM_END_SECONDS="${BACKGROUND_LOOP_TRIM_END_SECONDS:-$VIDEO_EDGE_FADE_SECONDS}"
 OUTPUT_PATH="$OUTPUT_DIR/$OUTPUT_FILE"
@@ -84,6 +87,13 @@ PY_AUDIO_DURATION
 
 has_video_stream() {
   [[ -n "$(ffprobe -v error -select_streams v:0 -show_entries stream=index -of csv=p=0 "$1" | head -n 1)" ]]
+}
+
+has_usable_audio_file() {
+  local file="$1"
+  [[ -s "$file" ]] || return 1
+  has_audio_stream "$file" || return 1
+  has_positive_audio_duration "$file" || return 1
 }
 
 require_video_and_audio_streams() {
@@ -248,12 +258,20 @@ if duration <= crossfade * 2:
     )
 PY_VALIDATE_AUDIO_LOOP
   audio_loop_filter="[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
-  ffmpeg -y -i "$TRIMMED_BACKGROUND_LOOP_FILE" \
+  if ffmpeg -y -i "$TRIMMED_BACKGROUND_LOOP_FILE" \
     -filter_complex "$audio_loop_filter" \
     -map '[aloop]' -vn \
     -t "$LOOP_DURATION_SECONDS" \
-    -c:a aac -b:a 192k -ar 48000 \
-    -movflags +faststart "$BACKGROUND_AUDIO_LOOP_FILE"
+    -c:a "$CROSSFADED_BACKGROUND_AUDIO_CODEC" -b:a 192k -ar 48000 \
+    -movflags +faststart "$BACKGROUND_AUDIO_LOOP_FILE" && has_usable_audio_file "$BACKGROUND_AUDIO_LOOP_FILE"; then
+    BACKGROUND_AUDIO_INPUT_FILE="$BACKGROUND_AUDIO_LOOP_FILE"
+    BACKGROUND_AUDIO_LOOP_STATUS="generated"
+  else
+    echo "Crossfaded background audio loop generation failed or produced an unusable file; falling back to trimmed background loop audio: $TRIMMED_BACKGROUND_LOOP_FILE" >&2
+    rm -f "$BACKGROUND_AUDIO_LOOP_FILE"
+    BACKGROUND_AUDIO_INPUT_FILE="$TRIMMED_BACKGROUND_LOOP_FILE"
+    BACKGROUND_AUDIO_LOOP_STATUS="fallback-trimmed-background-loop-audio"
+  fi
 fi
 
 has_video_stream "$TRIMMED_BACKGROUND_LOOP_FILE" || { echo "Trimmed background loop is missing a video stream: $TRIMMED_BACKGROUND_LOOP_FILE" >&2; exit 1; }
@@ -277,6 +295,8 @@ Minimal video generation mode:
   source_background=$SOURCE_BACKGROUND_FILE
   trimmed_background_loop_file=$TRIMMED_BACKGROUND_LOOP_FILE
   background_audio_loop_file=$BACKGROUND_AUDIO_LOOP_FILE
+  background_audio_input_file=$BACKGROUND_AUDIO_INPUT_FILE
+  background_audio_loop_status=$BACKGROUND_AUDIO_LOOP_STATUS
   output=$OUTPUT_PATH
   suno_seconds=$SUNO_TOTAL_SECONDS
   video_seconds=$VIDEO_TOTAL_SECONDS
@@ -295,7 +315,7 @@ if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
   ffmpeg_cmd=(
     ffmpeg -y
     -stream_loop -1 -i "$TRIMMED_BACKGROUND_LOOP_FILE"
-    -stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"
+    -stream_loop -1 -i "$BACKGROUND_AUDIO_INPUT_FILE"
     -f concat -safe 0 -i "$CONCAT_FILE"
     -filter_complex "$final_filter"
     -map '[vout]' -map '[audio_out]'
