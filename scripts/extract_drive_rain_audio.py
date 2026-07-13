@@ -192,7 +192,8 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         source_path = Path(temp_dir) / SOURCE_FILE
-        output_path = Path(temp_dir) / OUTPUT_FILE
+        output_path = Path("dist") / OUTPUT_FILE
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         download_file(service, source["id"], source_path)
 
         codec = probe(
