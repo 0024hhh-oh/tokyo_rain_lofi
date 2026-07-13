@@ -60,6 +60,10 @@ def test_generates_visible_procedural_rain_overlay_by_default():
     assert "gblur=sigma=0.3:sigmaV=6" in text
     assert "scroll=horizontal=-0.003:vertical=0.04" in text
     assert "blend=all_mode=screen:all_opacity=${RAIN_OVERLAY_OPACITY}" in text
+    assert "format=gbrp[video_base_rgb]" in text
+    assert "format=gbrp[rain_layer_rgb]" in text
+    assert "[video_base_rgb][rain_layer_rgb]blend=" in text
+    assert "[video_base][rain_layer]blend=" not in text
     assert 'RAIN_OVERLAY_STATUS="generated-visible-rain"' in text
 
 

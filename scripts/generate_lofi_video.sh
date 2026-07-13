@@ -338,7 +338,7 @@ PY_FADE
 )"
 
 if [[ "$ENABLE_RAIN_OVERLAY" == "1" ]]; then
-  video_filter="[0:v]split=2[video_source][rain_seed];[video_source]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fps=30,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[video_base];[rain_seed]select='eq(n,0)',geq=lum='if(gt(random(1)\,${RAIN_DENSITY_THRESHOLD})\,255\,0)':cb=128:cr=128,gblur=sigma=0.3:sigmaV=6,lutyuv=y='min(val*5\,255)',loop=loop=-1:size=1:start=0,setpts=N/30/TB,scroll=horizontal=-0.003:vertical=0.04,trim=0:${VIDEO_TOTAL_SECONDS},format=yuv420p[rain_layer];[video_base][rain_layer]blend=all_mode=screen:all_opacity=${RAIN_OVERLAY_OPACITY},format=yuv420p[vout]"
+  video_filter="[0:v]split=2[video_source][rain_seed];[video_source]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fps=30,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=gbrp[video_base_rgb];[rain_seed]select='eq(n,0)',geq=lum='if(gt(random(1)\,${RAIN_DENSITY_THRESHOLD})\,255\,0)':cb=128:cr=128,gblur=sigma=0.3:sigmaV=6,lutyuv=y='min(val*5\,255)',loop=loop=-1:size=1:start=0,setpts=N/30/TB,scroll=horizontal=-0.003:vertical=0.04,trim=0:${VIDEO_TOTAL_SECONDS},format=gbrp[rain_layer_rgb];[video_base_rgb][rain_layer_rgb]blend=all_mode=screen:all_opacity=${RAIN_OVERLAY_OPACITY},format=yuv420p[vout]"
   RAIN_OVERLAY_STATUS="generated-visible-rain"
 else
   video_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout]"
