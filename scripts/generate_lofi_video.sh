@@ -15,7 +15,10 @@ LOOP_PRESET="${LOOP_PRESET:-veryfast}"
 LOOP_CRF="${LOOP_CRF:-22}"
 
 CONCAT_FILE="$OUTPUT_DIR/suno_tracks_concat.txt"
+TRIMMED_BACKGROUND_LOOP_FILE="$OUTPUT_DIR/trimmed_background_loop.mp4"
 BACKGROUND_AUDIO_LOOP_FILE="$OUTPUT_DIR/crossfaded_background_audio.m4a"
+BACKGROUND_LOOP_TRIM_START_SECONDS="${BACKGROUND_LOOP_TRIM_START_SECONDS:-$VIDEO_EDGE_FADE_SECONDS}"
+BACKGROUND_LOOP_TRIM_END_SECONDS="${BACKGROUND_LOOP_TRIM_END_SECONDS:-$VIDEO_EDGE_FADE_SECONDS}"
 OUTPUT_PATH="$OUTPUT_DIR/$OUTPUT_FILE"
 mkdir -p "$OUTPUT_DIR"
 
@@ -101,21 +104,45 @@ require_video_and_audio_streams() {
 }
 
 SOURCE_BACKGROUND_FILE="$(select_background_file)"
-BACKGROUND_DURATION_SECONDS="$(ffprobe_duration_seconds "$SOURCE_BACKGROUND_FILE")"
+SOURCE_BACKGROUND_DURATION_SECONDS="$(ffprobe_duration_seconds "$SOURCE_BACKGROUND_FILE")"
 
-python - "$BACKGROUND_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_VALIDATE'
+TRIMMED_BACKGROUND_DURATION_SECONDS="$(python - "$SOURCE_BACKGROUND_DURATION_SECONDS" "$BACKGROUND_LOOP_TRIM_START_SECONDS" "$BACKGROUND_LOOP_TRIM_END_SECONDS" <<'PY_TRIM_DURATION'
+import sys
+from decimal import Decimal
+
+duration = Decimal(sys.argv[1])
+trim_start = Decimal(sys.argv[2])
+trim_end = Decimal(sys.argv[3])
+if duration <= 0:
+    raise SystemExit(f"Background duration must be positive: {duration}")
+if trim_start < 0 or trim_end < 0:
+    raise SystemExit(
+        f"Background loop trim values must be non-negative: "
+        f"start={trim_start}, end={trim_end}"
+    )
+trimmed = duration - trim_start - trim_end
+if trimmed <= 0:
+    raise SystemExit(
+        f"Background loop trim removes the full source: "
+        f"duration={duration}s, start={trim_start}s, end={trim_end}s"
+    )
+print(format(trimmed, "f"))
+PY_TRIM_DURATION
+)"
+
+python - "$TRIMMED_BACKGROUND_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_VALIDATE'
 import sys
 from decimal import Decimal
 
 duration = Decimal(sys.argv[1])
 crossfade = Decimal(sys.argv[2])
 if duration <= 0:
-    raise SystemExit(f"Background duration must be positive: {duration}")
+    raise SystemExit(f"Trimmed background duration must be positive: {duration}")
 if crossfade <= 0:
     raise SystemExit(f"LOOP_CROSSFADE_SECONDS must be positive: {crossfade}")
 if duration <= crossfade * 2:
     raise SystemExit(
-        f"Background video is too short: duration={duration}s, "
+        f"Trimmed background loop is too short: duration={duration}s, "
         f"crossfade={crossfade}s; required duration > {crossfade * 2}s"
     )
 PY_VALIDATE
@@ -162,16 +189,46 @@ print(format(suno + outro, "f"))
 PY_TOTAL
 )"
 
-LOOP_DURATION_SECONDS="$(python - "$BACKGROUND_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_LOOP'
+LOOP_DURATION_SECONDS="$(python - "$TRIMMED_BACKGROUND_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_LOOP'
 import sys
 from decimal import Decimal
 print(format(Decimal(sys.argv[1]) - Decimal(sys.argv[2]), "f"))
 PY_LOOP
 )"
 
+has_video_stream "$SOURCE_BACKGROUND_FILE" || { echo "Background source is missing a video stream: $SOURCE_BACKGROUND_FILE" >&2; exit 1; }
+
+trimmed_background_cmd=(
+  ffmpeg -y
+  -ss "$BACKGROUND_LOOP_TRIM_START_SECONDS"
+  -t "$TRIMMED_BACKGROUND_DURATION_SECONDS"
+  -i "$SOURCE_BACKGROUND_FILE"
+  -map 0:v:0
+)
 if has_audio_stream "$SOURCE_BACKGROUND_FILE"; then
+  trimmed_background_cmd+=(
+    -map 0:a:0
+    -c:a aac -b:a 192k -ar 48000
+  )
+else
+  trimmed_background_cmd+=(
+    -an
+  )
+fi
+trimmed_background_cmd+=(
+  -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p
+  -movflags +faststart
+  "$TRIMMED_BACKGROUND_LOOP_FILE"
+)
+
+printf 'Trimmed background loop command:'
+printf ' %q' "${trimmed_background_cmd[@]}"
+echo
+"${trimmed_background_cmd[@]}"
+
+if has_audio_stream "$TRIMMED_BACKGROUND_LOOP_FILE"; then
   BACKGROUND_HAS_AUDIO="yes"
-  BACKGROUND_AUDIO_DURATION_SECONDS="$(audio_duration_seconds "$SOURCE_BACKGROUND_FILE")"
+  BACKGROUND_AUDIO_DURATION_SECONDS="$(audio_duration_seconds "$TRIMMED_BACKGROUND_LOOP_FILE")"
 else
   BACKGROUND_HAS_AUDIO="no"
   BACKGROUND_AUDIO_DURATION_SECONDS="0"
@@ -191,7 +248,7 @@ if duration <= crossfade * 2:
     )
 PY_VALIDATE_AUDIO_LOOP
   audio_loop_filter="[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
-  ffmpeg -y -i "$SOURCE_BACKGROUND_FILE" \
+  ffmpeg -y -i "$TRIMMED_BACKGROUND_LOOP_FILE" \
     -filter_complex "$audio_loop_filter" \
     -map '[aloop]' -vn \
     -t "$LOOP_DURATION_SECONDS" \
@@ -199,7 +256,7 @@ PY_VALIDATE_AUDIO_LOOP
     -movflags +faststart "$BACKGROUND_AUDIO_LOOP_FILE"
 fi
 
-has_video_stream "$SOURCE_BACKGROUND_FILE" || { echo "Background source is missing a video stream: $SOURCE_BACKGROUND_FILE" >&2; exit 1; }
+has_video_stream "$TRIMMED_BACKGROUND_LOOP_FILE" || { echo "Trimmed background loop is missing a video stream: $TRIMMED_BACKGROUND_LOOP_FILE" >&2; exit 1; }
 
 
 FADE_OUT_START="$(python - "$VIDEO_TOTAL_SECONDS" "$VIDEO_EDGE_FADE_SECONDS" <<'PY_FADE'
@@ -218,22 +275,26 @@ fi
 cat <<EOF_STATUS
 Minimal video generation mode:
   source_background=$SOURCE_BACKGROUND_FILE
+  trimmed_background_loop_file=$TRIMMED_BACKGROUND_LOOP_FILE
   background_audio_loop_file=$BACKGROUND_AUDIO_LOOP_FILE
   output=$OUTPUT_PATH
   suno_seconds=$SUNO_TOTAL_SECONDS
   video_seconds=$VIDEO_TOTAL_SECONDS
-  background_duration_seconds=$BACKGROUND_DURATION_SECONDS
+  source_background_duration_seconds=$SOURCE_BACKGROUND_DURATION_SECONDS
+  background_loop_trim_start_seconds=$BACKGROUND_LOOP_TRIM_START_SECONDS
+  background_loop_trim_end_seconds=$BACKGROUND_LOOP_TRIM_END_SECONDS
+  trimmed_background_duration_seconds=$TRIMMED_BACKGROUND_DURATION_SECONDS
   background_audio_duration_seconds=$BACKGROUND_AUDIO_DURATION_SECONDS
   seamless_loop_duration_seconds=$LOOP_DURATION_SECONDS
   loop_crossfade_seconds=$LOOP_CROSSFADE_SECONDS
   background_audio_stream=$BACKGROUND_HAS_AUDIO
-  loop_strategy=plain-video-loop-with-audio-only-crossfade
+  loop_strategy=trimmed-video-loop-with-audio-only-crossfade
 EOF_STATUS
 
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
   ffmpeg_cmd=(
     ffmpeg -y
-    -stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"
+    -stream_loop -1 -i "$TRIMMED_BACKGROUND_LOOP_FILE"
     -stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"
     -f concat -safe 0 -i "$CONCAT_FILE"
     -filter_complex "$final_filter"
@@ -247,7 +308,7 @@ if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
 else
   ffmpeg_cmd=(
     ffmpeg -y
-    -stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"
+    -stream_loop -1 -i "$TRIMMED_BACKGROUND_LOOP_FILE"
     -f concat -safe 0 -i "$CONCAT_FILE"
     -filter_complex "$final_filter"
     -map '[vout]' -map '[audio_out]'

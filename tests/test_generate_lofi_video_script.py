@@ -19,16 +19,20 @@ def test_uses_suno_duration_plus_rain_outro():
 
 def test_separates_rain_audio_and_crossfades_audio_only_loop():
     text = script_text()
+    assert 'TRIMMED_BACKGROUND_LOOP_FILE="$OUTPUT_DIR/trimmed_background_loop.mp4"' in text
     assert 'BACKGROUND_AUDIO_LOOP_FILE="$OUTPUT_DIR/crossfaded_background_audio.m4a"' in text
     assert "split=2[vbody][vhead]" not in text
     assert "asplit=2[abody][ahead]" in text
+    assert '-ss "$BACKGROUND_LOOP_TRIM_START_SECONDS"' in text
+    assert '-t "$TRIMMED_BACKGROUND_DURATION_SECONDS"' in text
     assert "atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS}" in text
     assert "atrim=start=0:end=${LOOP_CROSSFADE_SECONDS}" in text
     assert "asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t]" in text
     assert "asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t]" in text
     assert "xfade=transition=fade" not in text
     assert "[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}" in text
-    assert '-stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"' in text
+    assert '-stream_loop -1 -i "$TRIMMED_BACKGROUND_LOOP_FILE"' in text
+    assert '-stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"' not in text
     assert '-stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"' in text
     assert "split=61" not in text
     assert "asplit=61" not in text
@@ -60,8 +64,9 @@ def test_supports_video_without_rain_audio():
 
 def test_logs_audio_only_crossfade_loop_strategy():
     text = script_text()
+    assert "trimmed_background_duration_seconds=$TRIMMED_BACKGROUND_DURATION_SECONDS" in text
     assert "seamless_loop_duration_seconds=$LOOP_DURATION_SECONDS" in text
-    assert "loop_strategy=plain-video-loop-with-audio-only-crossfade" in text
+    assert "loop_strategy=trimmed-video-loop-with-audio-only-crossfade" in text
 
 
 def test_validates_source_video_and_background_audio_duration():
@@ -70,6 +75,7 @@ def test_validates_source_video_and_background_audio_duration():
     assert "require_video_and_audio_streams()" in text
     assert 'require_video_and_audio_streams "$SEAMLESS_LOOP_FILE" "Seamless background loop"' not in text
     assert "Background source is missing a video stream" in text
+    assert "Trimmed background loop is missing a video stream" in text
     assert "has_positive_audio_duration" in text
     assert "audio stream has no positive duration" in text
     assert 'ffprobe -v error -select_streams v:0' in text
@@ -126,8 +132,13 @@ def test_generates_crossfaded_audio_loop_with_positive_aac_audio_duration(tmp_pa
         "RAIN_OUTRO_SECONDS": "0",
         "LOOP_PRESET": "ultrafast",
         "LOOP_CRF": "35",
+        "BACKGROUND_LOOP_TRIM_START_SECONDS": "0.25",
+        "BACKGROUND_LOOP_TRIM_END_SECONDS": "0.25",
     }
     subprocess.run(["bash", str(SCRIPT)], check=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    trimmed_loop_file = output_dir / "trimmed_background_loop.mp4"
+    assert trimmed_loop_file.exists()
 
     loop_file = output_dir / "crossfaded_background_audio.m4a"
     codec = subprocess.run(
