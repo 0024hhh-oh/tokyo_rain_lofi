@@ -1,11 +1,6 @@
 name: Generate LOFI video
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/generate_lofi_video.yml"
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
@@ -34,6 +29,10 @@ on:
         description: "YouTubeタグ（カンマ区切り）"
         required: false
         default: "lofi, chill, tokyo, rain, study music"
+
+concurrency:
+  group: generate-lofi-video
+  cancel-in-progress: false
 
 jobs:
   generate:
