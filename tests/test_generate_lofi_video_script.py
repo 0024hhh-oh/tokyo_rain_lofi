@@ -22,8 +22,12 @@ def test_builds_one_short_seamless_loop_then_stream_loops_it():
     assert 'SEAMLESS_LOOP_FILE="$OUTPUT_DIR/seamless_background_loop.mp4"' in text
     assert "split=2[vbody][vhead]" in text
     assert "asplit=2[abody][ahead]" in text
+    assert "atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS}" in text
+    assert "atrim=start=0:end=${LOOP_CROSSFADE_SECONDS}" in text
+    assert "asetpts=PTS-STARTPTS[abody_t]" in text
+    assert "asetpts=PTS-STARTPTS[ahead_t]" in text
     assert "xfade=transition=fade" in text
-    assert "acrossfade=d=${LOOP_CROSSFADE_SECONDS}" in text
+    assert "[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}" in text
     assert '-stream_loop -1 -i "$SEAMLESS_LOOP_FILE"' in text
     assert "split=61" not in text
     assert "asplit=61" not in text
@@ -57,3 +61,13 @@ def test_logs_lightweight_loop_strategy():
     text = script_text()
     assert "seamless_loop_duration_seconds=$LOOP_DURATION_SECONDS" in text
     assert "loop_strategy=single-crossfade-then-stream-loop" in text
+
+
+def test_validates_seamless_loop_has_video_and_audio_before_final_ffmpeg():
+    text = script_text()
+    assert "has_video_stream()" in text
+    assert "require_video_and_audio_streams()" in text
+    assert 'require_video_and_audio_streams "$SEAMLESS_LOOP_FILE" "Seamless background loop"' in text
+    assert "Cannot run final FFmpeg because the loop generated from an audio-bearing background has no usable audio stream." in text
+    assert 'ffprobe -v error -select_streams v:0' in text
+    assert 'ffprobe -v error -select_streams a:0' in text

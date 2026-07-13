@@ -42,6 +42,23 @@ has_audio_stream() {
   [[ -n "$(ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "$1" | head -n 1)" ]]
 }
 
+has_video_stream() {
+  [[ -n "$(ffprobe -v error -select_streams v:0 -show_entries stream=index -of csv=p=0 "$1" | head -n 1)" ]]
+}
+
+require_video_and_audio_streams() {
+  local file="$1"
+  local context="$2"
+  if ! has_video_stream "$file"; then
+    echo "${context} is missing a video stream: $file" >&2
+    return 1
+  fi
+  if ! has_audio_stream "$file"; then
+    echo "${context} is missing an audio stream: $file" >&2
+    return 1
+  fi
+}
+
 SOURCE_BACKGROUND_FILE="$(select_background_file)"
 BACKGROUND_DURATION_SECONDS="$(ffprobe_duration_seconds "$SOURCE_BACKGROUND_FILE")"
 
@@ -125,7 +142,7 @@ PY_OFFSET
 )"
 
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  seamless_filter="[0:v]split=2[vbody][vhead];[vbody]trim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},setpts=PTS-STARTPTS[vbody_t];[vhead]trim=start=0:end=${LOOP_CROSSFADE_SECONDS},setpts=PTS-STARTPTS[vhead_t];[vbody_t][vhead_t]xfade=transition=fade:duration=${LOOP_CROSSFADE_SECONDS}:offset=${VIDEO_XFADE_OFFSET},format=yuv420p[vloop];[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},asetpts=N/SR/TB[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=N/SR/TB[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
+  seamless_filter="[0:v]split=2[vbody][vhead];[vbody]trim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},setpts=PTS-STARTPTS[vbody_t];[vhead]trim=start=0:end=${LOOP_CROSSFADE_SECONDS},setpts=PTS-STARTPTS[vhead_t];[vbody_t][vhead_t]xfade=transition=fade:duration=${LOOP_CROSSFADE_SECONDS}:offset=${VIDEO_XFADE_OFFSET},format=yuv420p[vloop];[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},asetpts=PTS-STARTPTS[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
   ffmpeg -y -i "$SOURCE_BACKGROUND_FILE" \
     -filter_complex "$seamless_filter" \
     -map '[vloop]' -map '[aloop]' \
@@ -143,6 +160,15 @@ else
     -movflags +faststart "$SEAMLESS_LOOP_FILE"
 fi
 
+if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
+  require_video_and_audio_streams "$SEAMLESS_LOOP_FILE" "Seamless background loop" || {
+    echo "Cannot run final FFmpeg because the loop generated from an audio-bearing background has no usable audio stream." >&2
+    exit 1
+  }
+else
+  has_video_stream "$SEAMLESS_LOOP_FILE" || { echo "Seamless background loop is missing a video stream: $SEAMLESS_LOOP_FILE" >&2; exit 1; }
+fi
+
 FADE_OUT_START="$(python - "$VIDEO_TOTAL_SECONDS" "$VIDEO_EDGE_FADE_SECONDS" <<'PY_FADE'
 import sys
 from decimal import Decimal
@@ -151,9 +177,9 @@ PY_FADE
 )"
 
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
 else
-  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS},alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS},alimiter=limit=${AUDIO_LIMIT}[audio_out]"
 fi
 
 cat <<EOF_STATUS
