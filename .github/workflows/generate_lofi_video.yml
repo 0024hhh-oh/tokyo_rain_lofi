@@ -1,6 +1,11 @@
 name: Generate LOFI video
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/generate_lofi_video.yml"
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
@@ -47,7 +52,7 @@ jobs:
           pip install google-api-python-client google-auth
 
       - name: Process all incoming work folders
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID == '') }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
@@ -138,13 +143,13 @@ jobs:
 
 
       - name: Download assets from Google Drive
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '') }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
           WORKFLOW_DISPATCH_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
           WORKFLOW_DISPATCH_VIDEO_NUMBER: ${{ inputs.video_number || '' }}
-          RESOLVED_DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || '' }}
+          RESOLVED_DRIVE_FOLDER_ID: ${{ github.event_name == 'push' && '1NzEs6y4Bz1dsn8nzLwa46kutf5e6VdNO' || inputs.DRIVE_FOLDER_ID || '' }}
           VIDEO_NUMBER: ${{ inputs.video_number || '001' }}
         run: |
           rm -rf video_assets dist
@@ -163,11 +168,11 @@ jobs:
           fi
 
       - name: Generate MP4
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '') }}
         env:
           ASSET_DIR: video_assets
           OUTPUT_DIR: dist
-          OUTPUT_FILE: ${{ inputs.output_file }}
+          OUTPUT_FILE: ${{ github.event_name == 'push' && 'incoming_work_rain_rgb_fix.mp4' || inputs.output_file }}
           BGM_VOLUME: "1.0"
           BACKGROUND_AUDIO_VOLUME: "1.0"
           AUDIO_LIMIT: "0.98"
@@ -178,13 +183,13 @@ jobs:
           scripts/generate_lofi_video.sh
 
       - name: Upload private video to YouTube
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '') }}
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          OUTPUT_FILE: ${{ inputs.output_file }}
-          YOUTUBE_TITLE: ${{ inputs.youtube_title }}
+          OUTPUT_FILE: ${{ github.event_name == 'push' && 'incoming_work_rain_rgb_fix.mp4' || inputs.output_file }}
+          YOUTUBE_TITLE: ${{ github.event_name == 'push' && 'テスト 雨オーバーレイRGB修正版' || inputs.youtube_title }}
           YOUTUBE_DESCRIPTION: ${{ inputs.youtube_description || 'Tokyo ChillMatic FM - rainy lofi archive.' }}
           YOUTUBE_TAGS: ${{ inputs.youtube_tags || 'lofi, chill, tokyo, rain, study music' }}
         run: |
