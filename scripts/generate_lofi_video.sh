@@ -11,6 +11,9 @@ AUDIO_LIMIT="${AUDIO_LIMIT:-0.98}"
 RAIN_OUTRO_SECONDS="${RAIN_OUTRO_SECONDS:-5}"
 LOOP_CROSSFADE_SECONDS="${LOOP_CROSSFADE_SECONDS:-1}"
 VIDEO_EDGE_FADE_SECONDS="${VIDEO_EDGE_FADE_SECONDS:-1}"
+ENABLE_RAIN_OVERLAY="${ENABLE_RAIN_OVERLAY:-1}"
+RAIN_OVERLAY_OPACITY="${RAIN_OVERLAY_OPACITY:-0.55}"
+RAIN_DENSITY_THRESHOLD="${RAIN_DENSITY_THRESHOLD:-0.996}"
 LOOP_PRESET="${LOOP_PRESET:-veryfast}"
 LOOP_CRF="${LOOP_CRF:-22}"
 CROSSFADED_BACKGROUND_AUDIO_CODEC="${CROSSFADED_BACKGROUND_AUDIO_CODEC:-aac}"
@@ -18,8 +21,8 @@ CROSSFADED_BACKGROUND_AUDIO_CODEC="${CROSSFADED_BACKGROUND_AUDIO_CODEC:-aac}"
 CONCAT_FILE="$OUTPUT_DIR/suno_tracks_concat.txt"
 TRIMMED_BACKGROUND_LOOP_FILE="$OUTPUT_DIR/trimmed_background_loop.mp4"
 BACKGROUND_AUDIO_LOOP_FILE="$OUTPUT_DIR/crossfaded_background_audio.m4a"
-BACKGROUND_AUDIO_INPUT_FILE="$TRIMMED_BACKGROUND_LOOP_FILE"
 BACKGROUND_AUDIO_LOOP_STATUS="not-attempted"
+BACKGROUND_AUDIO_LOOP_EXPECTED_SECONDS="0"
 BACKGROUND_LOOP_TRIM_START_SECONDS="${BACKGROUND_LOOP_TRIM_START_SECONDS:-$VIDEO_EDGE_FADE_SECONDS}"
 BACKGROUND_LOOP_TRIM_END_SECONDS="${BACKGROUND_LOOP_TRIM_END_SECONDS:-$VIDEO_EDGE_FADE_SECONDS}"
 OUTPUT_PATH="$OUTPUT_DIR/$OUTPUT_FILE"
@@ -89,11 +92,40 @@ has_video_stream() {
   [[ -n "$(ffprobe -v error -select_streams v:0 -show_entries stream=index -of csv=p=0 "$1" | head -n 1)" ]]
 }
 
-has_usable_audio_file() {
+validate_crossfaded_audio_loop() {
   local file="$1"
-  [[ -s "$file" ]] || return 1
-  has_audio_stream "$file" || return 1
-  has_positive_audio_duration "$file" || return 1
+  local expected_duration="$2"
+  local actual_duration
+
+  if [[ ! -s "$file" ]]; then
+    echo "Crossfaded background audio file is missing or empty: $file" >&2
+    return 1
+  fi
+  if ! has_audio_stream "$file"; then
+    echo "Crossfaded background audio file has no audio stream: $file" >&2
+    return 1
+  fi
+
+  actual_duration="$(audio_duration_seconds "$file")"
+  if ! python - "$actual_duration" "$expected_duration" <<'PY_VALIDATE_CROSSFADE_DURATION'
+import sys
+from decimal import Decimal, InvalidOperation
+
+try:
+    actual = Decimal(sys.argv[1])
+    expected = Decimal(sys.argv[2])
+except (IndexError, InvalidOperation):
+    raise SystemExit(1)
+
+tolerance = Decimal("0.1")
+if actual <= 0 or expected <= 0:
+    raise SystemExit(1)
+raise SystemExit(0 if abs(actual - expected) <= tolerance else 1)
+PY_VALIDATE_CROSSFADE_DURATION
+  then
+    echo "Crossfaded background audio duration validation failed: actual=${actual_duration}s expected=${expected_duration}s tolerance=0.1s" >&2
+    return 1
+  fi
 }
 
 require_video_and_audio_streams() {
@@ -257,21 +289,42 @@ if duration <= crossfade * 2:
         f"duration={duration}s, crossfade={crossfade}s; required duration > {crossfade * 2}s"
     )
 PY_VALIDATE_AUDIO_LOOP
-  audio_loop_filter="[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
-  if ffmpeg -y -i "$TRIMMED_BACKGROUND_LOOP_FILE" \
+  BACKGROUND_AUDIO_LOOP_EXPECTED_SECONDS="$(python - "$BACKGROUND_AUDIO_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_AUDIO_LOOP_DURATION'
+import sys
+from decimal import Decimal
+print(format(Decimal(sys.argv[1]) - Decimal(sys.argv[2]), "f"))
+PY_AUDIO_LOOP_DURATION
+)"
+  BACKGROUND_AUDIO_MID_END_SECONDS="$BACKGROUND_AUDIO_LOOP_EXPECTED_SECONDS"
+  BACKGROUND_AUDIO_HEAD_DELAY_SAMPLES="$(python - "$BACKGROUND_AUDIO_MID_END_SECONDS" <<'PY_HEAD_DELAY_SAMPLES'
+import sys
+from decimal import Decimal, ROUND_HALF_UP
+print((Decimal(sys.argv[1]) * Decimal("48000")).to_integral_value(rounding=ROUND_HALF_UP))
+PY_HEAD_DELAY_SAMPLES
+)"
+  # Keep the early head samples buffered until the late tail branch is available.
+  # Without this sample-accurate delay, FFmpeg can drain the shared asplit head
+  # before acrossfade starts pulling it and produce an empty seam.
+  audio_loop_filter="[0:a]asplit=3[amid][atail][ahead];[amid]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_MID_END_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[amid_t];[atail]atrim=start=${BACKGROUND_AUDIO_MID_END_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[atail_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,adelay=${BACKGROUND_AUDIO_HEAD_DELAY_SAMPLES}S:all=1,atrim=start=${BACKGROUND_AUDIO_MID_END_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[atail_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aseam];[amid_t][aseam]concat=n=2:v=0:a=1[out]"
+  rm -f "$BACKGROUND_AUDIO_LOOP_FILE"
+  if ! ffmpeg -y -i "$TRIMMED_BACKGROUND_LOOP_FILE" \
     -filter_complex "$audio_loop_filter" \
-    -map '[aloop]' -vn \
-    -t "$LOOP_DURATION_SECONDS" \
+    -map '[out]' -vn \
+    -t "$BACKGROUND_AUDIO_LOOP_EXPECTED_SECONDS" \
     -c:a "$CROSSFADED_BACKGROUND_AUDIO_CODEC" -b:a 192k -ar 48000 \
-    -movflags +faststart "$BACKGROUND_AUDIO_LOOP_FILE" && has_usable_audio_file "$BACKGROUND_AUDIO_LOOP_FILE"; then
-    BACKGROUND_AUDIO_INPUT_FILE="$BACKGROUND_AUDIO_LOOP_FILE"
-    BACKGROUND_AUDIO_LOOP_STATUS="generated"
-  else
-    echo "Crossfaded background audio loop generation failed or produced an unusable file; falling back to trimmed background loop audio: $TRIMMED_BACKGROUND_LOOP_FILE" >&2
+    -movflags +faststart "$BACKGROUND_AUDIO_LOOP_FILE"; then
+    echo "Crossfaded background audio loop generation failed; stopping before video generation: $BACKGROUND_AUDIO_LOOP_FILE" >&2
     rm -f "$BACKGROUND_AUDIO_LOOP_FILE"
-    BACKGROUND_AUDIO_INPUT_FILE="$TRIMMED_BACKGROUND_LOOP_FILE"
-    BACKGROUND_AUDIO_LOOP_STATUS="fallback-trimmed-background-loop-audio"
+    exit 1
   fi
+  if ! validate_crossfaded_audio_loop "$BACKGROUND_AUDIO_LOOP_FILE" "$BACKGROUND_AUDIO_LOOP_EXPECTED_SECONDS"; then
+    echo "Crossfaded background audio loop validation failed; stopping before video generation: $BACKGROUND_AUDIO_LOOP_FILE" >&2
+    rm -f "$BACKGROUND_AUDIO_LOOP_FILE"
+    exit 1
+  fi
+  BACKGROUND_AUDIO_LOOP_STATUS="generated"
+else
+  BACKGROUND_AUDIO_LOOP_STATUS="not-required-no-background-audio"
 fi
 
 has_video_stream "$TRIMMED_BACKGROUND_LOOP_FILE" || { echo "Trimmed background loop is missing a video stream: $TRIMMED_BACKGROUND_LOOP_FILE" >&2; exit 1; }
@@ -284,10 +337,18 @@ print(format(max(Decimal("0"), Decimal(sys.argv[1]) - Decimal(sys.argv[2])), "f"
 PY_FADE
 )"
 
-if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[1:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[2:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+if [[ "$ENABLE_RAIN_OVERLAY" == "1" ]]; then
+  video_filter="[0:v]split=2[video_source][rain_seed];[video_source]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fps=30,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[video_base];[rain_seed]select='eq(n,0)',geq=lum='if(gt(random(1)\,${RAIN_DENSITY_THRESHOLD})\,255\,0)':cb=128:cr=128,gblur=sigma=0.3:sigmaV=6,lutyuv=y='min(val*5\,255)',loop=loop=-1:size=1:start=0,setpts=N/30/TB,scroll=horizontal=-0.003:vertical=0.04,trim=0:${VIDEO_TOTAL_SECONDS},format=yuv420p[rain_layer];[video_base][rain_layer]blend=all_mode=screen:all_opacity=${RAIN_OVERLAY_OPACITY},format=yuv420p[vout]"
+  RAIN_OVERLAY_STATUS="generated-visible-rain"
 else
-  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS},alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  video_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout]"
+  RAIN_OVERLAY_STATUS="disabled"
+fi
+
+if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
+  final_filter="${video_filter};[1:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[2:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+else
+  final_filter="${video_filter};[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS},alimiter=limit=${AUDIO_LIMIT}[audio_out]"
 fi
 
 cat <<EOF_STATUS
@@ -295,7 +356,7 @@ Minimal video generation mode:
   source_background=$SOURCE_BACKGROUND_FILE
   trimmed_background_loop_file=$TRIMMED_BACKGROUND_LOOP_FILE
   background_audio_loop_file=$BACKGROUND_AUDIO_LOOP_FILE
-  background_audio_input_file=$BACKGROUND_AUDIO_INPUT_FILE
+  background_audio_input_file=$BACKGROUND_AUDIO_LOOP_FILE
   background_audio_loop_status=$BACKGROUND_AUDIO_LOOP_STATUS
   output=$OUTPUT_PATH
   suno_seconds=$SUNO_TOTAL_SECONDS
@@ -308,6 +369,9 @@ Minimal video generation mode:
   seamless_loop_duration_seconds=$LOOP_DURATION_SECONDS
   loop_crossfade_seconds=$LOOP_CROSSFADE_SECONDS
   background_audio_stream=$BACKGROUND_HAS_AUDIO
+  rain_overlay_status=$RAIN_OVERLAY_STATUS
+  rain_overlay_opacity=$RAIN_OVERLAY_OPACITY
+  rain_density_threshold=$RAIN_DENSITY_THRESHOLD
   loop_strategy=trimmed-video-loop-with-audio-only-crossfade
 EOF_STATUS
 
@@ -315,7 +379,7 @@ if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
   ffmpeg_cmd=(
     ffmpeg -y
     -stream_loop -1 -i "$TRIMMED_BACKGROUND_LOOP_FILE"
-    -stream_loop -1 -i "$BACKGROUND_AUDIO_INPUT_FILE"
+    -stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"
     -f concat -safe 0 -i "$CONCAT_FILE"
     -filter_complex "$final_filter"
     -map '[vout]' -map '[audio_out]'
