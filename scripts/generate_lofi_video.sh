@@ -9,7 +9,8 @@ BGM_VOLUME="${BGM_VOLUME:-1.0}"
 BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"
 AUDIO_LIMIT="${AUDIO_LIMIT:-0.98}"
 RAIN_OUTRO_SECONDS="${RAIN_OUTRO_SECONDS:-5}"
-LOOP_CROSSFADE_SECONDS="${LOOP_CROSSFADE_SECONDS:-1.5}"
+LOOP_CROSSFADE_SECONDS="${LOOP_CROSSFADE_SECONDS:-1}"
+VIDEO_EDGE_FADE_SECONDS="${VIDEO_EDGE_FADE_SECONDS:-1}"
 LOOP_PRESET="${LOOP_PRESET:-veryfast}"
 LOOP_CRF="${LOOP_CRF:-22}"
 
@@ -49,7 +50,7 @@ select_background_file() {
 }
 
 SOURCE_BACKGROUND_FILE="$(select_background_file)"
-BACKGROUND_FILE="$ASSET_DIR/background_seamless.mp4"
+BACKGROUND_FILE="$SOURCE_BACKGROUND_FILE"
 
 
 ffprobe_duration_seconds() {
@@ -65,85 +66,185 @@ has_audio_stream() {
   [[ "$(ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "$path" | head -n 1)" != "" ]]
 }
 
-generate_seamless_background() {
+calculate_background_loop_plan() {
   local source_path="$1"
-  local output_path="$2"
+  local total_seconds="$2"
   local crossfade_seconds="$3"
-  local preset="$4"
-  local crf="$5"
-  local duration has_audio offset loop_duration start_epoch end_epoch elapsed
 
-  duration="$(ffprobe_duration_seconds "$source_path")"
-  if has_audio_stream "$source_path"; then
-    has_audio="yes"
-  else
-    has_audio="no"
-  fi
-
-  echo "Original background duration seconds: $duration"
-  echo "Loop crossfade seconds: $crossfade_seconds"
-  echo "Background audio stream: $has_audio"
-
-  read -r offset loop_duration < <(python - "$duration" "$crossfade_seconds" <<'PY_LOOP_VALIDATE'
+  python - "$source_path" "$total_seconds" "$crossfade_seconds" <<'PY_LOOP_PLAN'
+import math
+import subprocess
 import sys
 from decimal import Decimal, InvalidOperation
+
+path, total_arg, crossfade_arg = sys.argv[1:4]
+
+result = subprocess.run(
+    [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        path,
+    ],
+    check=True,
+    text=True,
+    capture_output=True,
+)
 try:
-    duration = Decimal(sys.argv[1])
-    crossfade = Decimal(sys.argv[2])
+    duration = Decimal(result.stdout.strip())
+    total = Decimal(total_arg)
+    crossfade = Decimal(crossfade_arg)
 except InvalidOperation as exc:
-    raise SystemExit(f"Invalid loop duration/crossfade value: {exc}") from exc
+    raise SystemExit(f"Invalid duration/crossfade value: {exc}") from exc
+
 if duration <= 0:
     raise SystemExit(f"Background duration must be positive: {duration}")
+if total <= 0:
+    raise SystemExit(f"Final video duration must be positive: {total}")
 if crossfade <= 0:
     raise SystemExit(f"LOOP_CROSSFADE_SECONDS must be positive: {crossfade}")
-if duration <= crossfade * 2:
+if duration <= crossfade:
     raise SystemExit(
-        f"Background video is too short for seamless loop generation: "
+        f"Background video is too short for loop crossfades: "
         f"duration={duration}s, LOOP_CROSSFADE_SECONDS={crossfade}s, "
-        f"required duration > {crossfade * 2}s"
+        f"required duration > {crossfade}s"
     )
-print(format(duration - (crossfade * 2), "f"), format(duration - crossfade, "f"))
-PY_LOOP_VALIDATE
-  )
 
-  echo "Seamless loop generation starting: $source_path -> $output_path"
-  start_epoch="$(date +%s)"
-  rm -f "$output_path"
+step = duration - crossfade
+if total <= duration:
+    loop_count = 1
+else:
+    loop_count = 1 + math.ceil(float((total - duration) / step))
 
-  local filter_complex
-  local -a seamless_cmd
-  filter_complex="[0:v]trim=start=${crossfade_seconds},setpts=PTS-STARTPTS[loop_main_v];[0:v]trim=start=0:duration=${crossfade_seconds},setpts=PTS-STARTPTS[loop_head_v];[loop_main_v][loop_head_v]xfade=transition=fade:duration=${crossfade_seconds}:offset=${offset},format=yuv420p[vout]"
-  seamless_cmd=(
-    ffmpeg -y -i "$source_path"
-    -filter_complex "$filter_complex"
-    -map "[vout]"
-    -an
-    -c:v libx264 -preset "$preset" -crf "$crf" -pix_fmt yuv420p
-    -movflags +faststart
-    "$output_path"
-  )
-
-  echo "Seamless FFmpeg command:"
-  printf ' %q' "${seamless_cmd[@]}"
-  echo
-  if ! "${seamless_cmd[@]}"; then
-    echo "Seamless loop generation failed for $source_path" >&2
-    return 1
-  fi
-  if [[ ! -f "$output_path" ]]; then
-    echo "Seamless loop output was not created: $output_path" >&2
-    return 1
-  fi
-  end_epoch="$(date +%s)"
-  elapsed=$((end_epoch - start_epoch))
-  echo "Seamless loop generation completed: $output_path"
-  echo "Generated seamless loop duration seconds: $(ffprobe_duration_seconds "$output_path")"
-  echo "Expected seamless loop duration seconds: $loop_duration"
-  echo "Seamless FFmpeg execution time seconds: $elapsed"
+print(format(duration, "f"), loop_count, format(duration - crossfade, "f"))
+PY_LOOP_PLAN
 }
 
+build_loop_filter_complex() {
+  local source_path="$1"
+  local total_seconds="$2"
+  local suno_total_seconds="$3"
+  local crossfade_seconds="$4"
+  local background_has_audio="$5"
+  local background_audio_volume="$6"
+  local bgm_volume="$7"
+  local audio_limit="$8"
+  local edge_fade_seconds="$9"
 
-generate_seamless_background "$SOURCE_BACKGROUND_FILE" "$BACKGROUND_FILE" "$LOOP_CROSSFADE_SECONDS" "$LOOP_PRESET" "$LOOP_CRF"
+  python - "$source_path" "$total_seconds" "$suno_total_seconds" "$crossfade_seconds" "$background_has_audio" "$background_audio_volume" "$bgm_volume" "$audio_limit" "$edge_fade_seconds" <<'PY_FILTER'
+import math
+import subprocess
+import sys
+from decimal import Decimal, InvalidOperation
+
+(
+    path,
+    total_arg,
+    suno_arg,
+    crossfade_arg,
+    has_audio,
+    background_volume,
+    bgm_volume,
+    audio_limit,
+    edge_fade_arg,
+) = sys.argv[1:10]
+
+result = subprocess.run(
+    [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        path,
+    ],
+    check=True,
+    text=True,
+    capture_output=True,
+)
+try:
+    duration = Decimal(result.stdout.strip())
+    total = Decimal(total_arg)
+    suno_total = Decimal(suno_arg)
+    crossfade = Decimal(crossfade_arg)
+    edge_fade = Decimal(edge_fade_arg)
+except InvalidOperation as exc:
+    raise SystemExit(f"Invalid duration/crossfade value: {exc}") from exc
+
+if duration <= 0:
+    raise SystemExit(f"Background duration must be positive: {duration}")
+if total <= 0:
+    raise SystemExit(f"Final video duration must be positive: {total}")
+if crossfade <= 0:
+    raise SystemExit(f"LOOP_CROSSFADE_SECONDS must be positive: {crossfade}")
+if duration <= crossfade:
+    raise SystemExit(
+        f"Background video is too short for loop crossfades: duration={duration}s, "
+        f"LOOP_CROSSFADE_SECONDS={crossfade}s, required duration > {crossfade}s"
+    )
+if edge_fade < 0:
+    raise SystemExit(f"VIDEO_EDGE_FADE_SECONDS must be non-negative: {edge_fade}")
+
+step = duration - crossfade
+loop_count = 1 if total <= duration else 1 + math.ceil(float((total - duration) / step))
+if loop_count == 1:
+    parts = ["[0:v]setpts=PTS-STARTPTS[v0]"]
+    if has_audio == "yes":
+        parts.append("[0:a]aresample=48000,asetpts=N/SR/TB[a0]")
+else:
+    parts = [f"[0:v]split={loop_count}" + "".join(f"[v{i}]" for i in range(loop_count))]
+    if has_audio == "yes":
+        parts.append(f"[0:a]aresample=48000,asplit={loop_count}" + "".join(f"[a{i}]" for i in range(loop_count)))
+
+video_current = "v0"
+current_duration = duration
+for i in range(1, loop_count):
+    offset = current_duration - crossfade
+    out = f"vx{i}"
+    parts.append(
+        f"[{video_current}][v{i}]xfade=transition=fade:duration={crossfade}:offset={offset}[{out}]"
+    )
+    video_current = out
+    current_duration += duration - crossfade
+
+fade_out_start = max(Decimal("0"), total - edge_fade)
+video_filters = [f"[{video_current}]trim=0:{total},setpts=PTS-STARTPTS"]
+if edge_fade > 0:
+    video_filters.append(f"fade=t=in:st=0:d={edge_fade}")
+    video_filters.append(f"fade=t=out:st={fade_out_start}:d={edge_fade}")
+video_filters.append("format=yuv420p[vout]")
+parts.append(",".join(video_filters))
+
+if has_audio == "yes":
+    audio_current = "a0"
+    for i in range(1, loop_count):
+        out = f"ax{i}"
+        parts.append(f"[{audio_current}][a{i}]acrossfade=d={crossfade}:c1=tri:c2=tri[{out}]")
+        audio_current = out
+    parts.append(
+        f"[{audio_current}]atrim=0:{total},asetpts=N/SR/TB,volume={background_volume}[background_audio]"
+    )
+    parts.append(
+        f"[1:a]atrim=0:{suno_total},asetpts=N/SR/TB,volume={bgm_volume},apad,atrim=0:{total}[suno_bgm]"
+    )
+    parts.append(
+        f"[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit={audio_limit}[audio_out]"
+    )
+else:
+    parts.append(
+        f"[1:a]atrim=0:{suno_total},asetpts=N/SR/TB,volume={bgm_volume},apad,atrim=0:{total},alimiter=limit={audio_limit}[audio_out]"
+    )
+
+print(";".join(parts))
+PY_FILTER
+}
+
 
 mapfile -t TRACKS < <(find "$TRACK_DIR" -maxdepth 1 -type f -iname '*.mp3' | sort)
 if [[ "${#TRACKS[@]}" -eq 0 ]]; then
@@ -213,53 +314,13 @@ PY_VIDEO_DURATION
 
 if has_audio_stream "$SOURCE_BACKGROUND_FILE"; then
   BACKGROUND_HAS_AUDIO="yes"
-  BACKGROUND_AUDIO_LOOP_SAMPLES="$(python - "$SOURCE_BACKGROUND_FILE" <<'PY_BACKGROUND_AUDIO_LOOP'
-import math
-import subprocess
-import sys
-from decimal import Decimal, InvalidOperation
-
-path = sys.argv[1]
-
-
-def ffprobe_duration(args):
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            *args,
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            path,
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
-
-value = ffprobe_duration(["-select_streams", "a:0", "-show_entries", "stream=duration"])
-if value in {"", "N/A"}:
-    value = ffprobe_duration(["-show_entries", "format=duration"])
-
-try:
-    duration = Decimal(value)
-except InvalidOperation as exc:
-    raise SystemExit(f"Invalid background audio duration from ffprobe for {path}: {value}") from exc
-
-if duration <= 0:
-    raise SystemExit(f"Background audio duration must be positive for {path}: {value}")
-
-# The filtergraph resamples background audio to 48 kHz before aloop, so aloop's
-# size must be expressed in 48 kHz samples. Round up to preserve the full loop.
-print(math.ceil(float(duration) * 48000))
-PY_BACKGROUND_AUDIO_LOOP
-)"
 else
   BACKGROUND_HAS_AUDIO="no"
-  BACKGROUND_AUDIO_LOOP_SAMPLES="0"
 fi
+
+read -r BACKGROUND_DURATION_SECONDS BACKGROUND_LOOP_COUNT BACKGROUND_LOOP_OFFSET_SECONDS < <(calculate_background_loop_plan "$SOURCE_BACKGROUND_FILE" "$VIDEO_TOTAL_SECONDS" "$LOOP_CROSSFADE_SECONDS")
+FILTER_COMPLEX="$(build_loop_filter_complex "$SOURCE_BACKGROUND_FILE" "$VIDEO_TOTAL_SECONDS" "$SUNO_TOTAL_SECONDS" "$LOOP_CROSSFADE_SECONDS" "$BACKGROUND_HAS_AUDIO" "$BACKGROUND_AUDIO_VOLUME" "$BGM_VOLUME" "$AUDIO_LIMIT" "$VIDEO_EDGE_FADE_SECONDS")"
+
 
 log_media_metadata() {
   local label="$1"
@@ -279,9 +340,8 @@ log_media_metadata() {
 cat <<EOF_STATUS
 Minimal video generation mode:
   source_background=$SOURCE_BACKGROUND_FILE
-  seamless_background=$BACKGROUND_FILE
-  video source: background_seamless.mp4
-  rain audio source: background.mp4
+  video source: $SOURCE_BACKGROUND_FILE
+  rain audio source: $SOURCE_BACKGROUND_FILE
   rain audio stream detected: $BACKGROUND_HAS_AUDIO
   output=$OUTPUT_PATH
   suno_seconds=$SUNO_TOTAL_SECONDS
@@ -292,8 +352,11 @@ Minimal video generation mode:
   bgm_volume=$BGM_VOLUME
   audio_limit=$AUDIO_LIMIT
   background_audio_stream=$BACKGROUND_HAS_AUDIO
-  background_audio_loop_samples=$BACKGROUND_AUDIO_LOOP_SAMPLES
+  background_duration_seconds=$BACKGROUND_DURATION_SECONDS
+  background_loop_count=$BACKGROUND_LOOP_COUNT
   loop_crossfade_seconds=$LOOP_CROSSFADE_SECONDS
+  loop_offset_seconds=$BACKGROUND_LOOP_OFFSET_SECONDS
+  video_edge_fade_seconds=$VIDEO_EDGE_FADE_SECONDS
   loop_preset=$LOOP_PRESET
   loop_crf=$LOOP_CRF
 
@@ -304,13 +367,12 @@ Visual processing intentionally disabled:
   film_dust=disabled
   color_correction=disabled
   logo=disabled
-  video_filters=disabled
 
-The generated seamless background video is treated as the completed video source.
-The actual long-form video file is $BACKGROUND_FILE.
-The original background file provides the rain audio when an audio stream is present.
-The video stream is looped and copied without FFmpeg video filters or re-encoding.
-The original background audio is looped to the total video duration and kept at the same volume for both the main program and the outro. The concatenated Suno BGM is not looped; it is padded with silence after its natural end so only the original background rain audio remains for the configured outro duration.
+The source rain MP4 contains both video and rain audio.
+Each loop boundary is crossfaded with FFmpeg xfade for video and acrossfade for rain audio.
+The loop offset is calculated automatically from the rain video duration and LOOP_CROSSFADE_SECONDS.
+The final output is trimmed to VIDEO_TOTAL_SECONDS after dynamic loop assembly.
+The concatenated Suno BGM is not looped; it is padded with silence after its natural end so only the original background rain audio remains for the configured outro duration.
 EOF_STATUS
 
 log_media_metadata "Source background video" "$SOURCE_BACKGROUND_FILE"
@@ -318,34 +380,18 @@ log_media_metadata "Selected seamless background loop video" "$BACKGROUND_FILE"
 echo "Long-form generation background file: $BACKGROUND_FILE"
 echo "Long-form rain audio file: $SOURCE_BACKGROUND_FILE"
 
-if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  ffmpeg_cmd=(
-    ffmpeg -y
-    -stream_loop -1 -i "$BACKGROUND_FILE"
-    -i "$SOURCE_BACKGROUND_FILE"
-    -f concat -safe 0 -i "$CONCAT_FILE"
-    -filter_complex "[1:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[2:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
-    -map 0:v:0 -map "[audio_out]"
-    -t "$VIDEO_TOTAL_SECONDS"
-    -c:v copy
-    -c:a aac -b:a 192k -ar 48000
-    -movflags +faststart
-    "$OUTPUT_PATH"
-  )
-else
-  ffmpeg_cmd=(
-    ffmpeg -y
-    -stream_loop -1 -i "$BACKGROUND_FILE"
-    -f concat -safe 0 -i "$CONCAT_FILE"
-    -filter_complex "[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS},alimiter=limit=${AUDIO_LIMIT}[audio_out]"
-    -map 0:v:0 -map "[audio_out]"
-    -t "$VIDEO_TOTAL_SECONDS"
-    -c:v copy
-    -c:a aac -b:a 192k -ar 48000
-    -movflags +faststart
-    "$OUTPUT_PATH"
-  )
-fi
+ffmpeg_cmd=(
+  ffmpeg -y
+  -i "$SOURCE_BACKGROUND_FILE"
+  -f concat -safe 0 -i "$CONCAT_FILE"
+  -filter_complex "$FILTER_COMPLEX"
+  -map "[vout]" -map "[audio_out]"
+  -t "$VIDEO_TOTAL_SECONDS"
+  -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p
+  -c:a aac -b:a 192k -ar 48000
+  -movflags +faststart
+  "$OUTPUT_PATH"
+)
 
 echo "FFmpeg command:"
 printf ' %q' "${ffmpeg_cmd[@]}"
