@@ -104,7 +104,7 @@ jobs:
               export OUTPUT_FILE="${output_file}"
               echo "Output file: dist/${OUTPUT_FILE}"
               echo "Using minimal CapCut background_loop.mp4 generation matched to concatenated Suno track duration."
-              echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
+              echo "A visible procedural rain overlay is applied by generate_lofi_video.sh."
               scripts/generate_lofi_video.sh
               echo "YouTube upload starting: dist/${OUTPUT_FILE}"
               python scripts/upload_youtube_video.py \
@@ -174,7 +174,7 @@ jobs:
         run: |
           echo "Output file: dist/${OUTPUT_FILE}"
           echo "Using minimal CapCut background_loop.mp4 generation matched to concatenated Suno track duration."
-          echo "No waveform, rain overlay, film grain, film dust, color correction, logo, or video filters are applied."
+          echo "A visible procedural rain overlay is applied by generate_lofi_video.sh."
           scripts/generate_lofi_video.sh
 
       - name: Upload private video to YouTube
