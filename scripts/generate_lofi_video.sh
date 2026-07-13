@@ -15,7 +15,7 @@ LOOP_PRESET="${LOOP_PRESET:-veryfast}"
 LOOP_CRF="${LOOP_CRF:-22}"
 
 CONCAT_FILE="$OUTPUT_DIR/suno_tracks_concat.txt"
-SEAMLESS_LOOP_FILE="$OUTPUT_DIR/seamless_background_loop.mp4"
+BACKGROUND_AUDIO_LOOP_FILE="$OUTPUT_DIR/crossfaded_background_audio.m4a"
 OUTPUT_PATH="$OUTPUT_DIR/$OUTPUT_FILE"
 mkdir -p "$OUTPUT_DIR"
 
@@ -177,13 +177,6 @@ else
   BACKGROUND_AUDIO_DURATION_SECONDS="0"
 fi
 
-VIDEO_XFADE_OFFSET="$(python - "$BACKGROUND_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_OFFSET'
-import sys
-from decimal import Decimal
-print(format(Decimal(sys.argv[1]) - Decimal(sys.argv[2]) * 2, "f"))
-PY_OFFSET
-)"
-
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
   python - "$BACKGROUND_AUDIO_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_VALIDATE_AUDIO_LOOP'
 import sys
@@ -197,32 +190,17 @@ if duration <= crossfade * 2:
         f"duration={duration}s, crossfade={crossfade}s; required duration > {crossfade * 2}s"
     )
 PY_VALIDATE_AUDIO_LOOP
-  seamless_filter="[0:v]split=2[vbody][vhead];[vbody]trim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},setpts=PTS-STARTPTS[vbody_t];[vhead]trim=start=0:end=${LOOP_CROSSFADE_SECONDS},setpts=PTS-STARTPTS[vhead_t];[vbody_t][vhead_t]xfade=transition=fade:duration=${LOOP_CROSSFADE_SECONDS}:offset=${VIDEO_XFADE_OFFSET},format=yuv420p[vloop];[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
+  audio_loop_filter="[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
   ffmpeg -y -i "$SOURCE_BACKGROUND_FILE" \
-    -filter_complex "$seamless_filter" \
-    -map '[vloop]' -map '[aloop]' \
+    -filter_complex "$audio_loop_filter" \
+    -map '[aloop]' -vn \
     -t "$LOOP_DURATION_SECONDS" \
-    -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p \
     -c:a aac -b:a 192k -ar 48000 \
-    -movflags +faststart "$SEAMLESS_LOOP_FILE"
-else
-  seamless_filter="[0:v]split=2[vbody][vhead];[vbody]trim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},setpts=PTS-STARTPTS[vbody_t];[vhead]trim=start=0:end=${LOOP_CROSSFADE_SECONDS},setpts=PTS-STARTPTS[vhead_t];[vbody_t][vhead_t]xfade=transition=fade:duration=${LOOP_CROSSFADE_SECONDS}:offset=${VIDEO_XFADE_OFFSET},format=yuv420p[vloop]"
-  ffmpeg -y -i "$SOURCE_BACKGROUND_FILE" \
-    -filter_complex "$seamless_filter" \
-    -map '[vloop]' -an \
-    -t "$LOOP_DURATION_SECONDS" \
-    -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p \
-    -movflags +faststart "$SEAMLESS_LOOP_FILE"
+    -movflags +faststart "$BACKGROUND_AUDIO_LOOP_FILE"
 fi
 
-if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  require_video_and_audio_streams "$SEAMLESS_LOOP_FILE" "Seamless background loop" || {
-    echo "Cannot run final FFmpeg because the loop generated from an audio-bearing background has no usable audio stream." >&2
-    exit 1
-  }
-else
-  has_video_stream "$SEAMLESS_LOOP_FILE" || { echo "Seamless background loop is missing a video stream: $SEAMLESS_LOOP_FILE" >&2; exit 1; }
-fi
+has_video_stream "$SOURCE_BACKGROUND_FILE" || { echo "Background source is missing a video stream: $SOURCE_BACKGROUND_FILE" >&2; exit 1; }
+
 
 FADE_OUT_START="$(python - "$VIDEO_TOTAL_SECONDS" "$VIDEO_EDGE_FADE_SECONDS" <<'PY_FADE'
 import sys
@@ -232,7 +210,7 @@ PY_FADE
 )"
 
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[0:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
+  final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[1:a]atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio];[2:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm];[background_audio][suno_bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=${AUDIO_LIMIT}[audio_out]"
 else
   final_filter="[0:v]trim=0:${VIDEO_TOTAL_SECONDS},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${VIDEO_EDGE_FADE_SECONDS},fade=t=out:st=${FADE_OUT_START}:d=${VIDEO_EDGE_FADE_SECONDS},format=yuv420p[vout];[1:a]atrim=0:${SUNO_TOTAL_SECONDS},asetpts=PTS-STARTPTS,volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS},alimiter=limit=${AUDIO_LIMIT}[audio_out]"
 fi
@@ -240,7 +218,7 @@ fi
 cat <<EOF_STATUS
 Minimal video generation mode:
   source_background=$SOURCE_BACKGROUND_FILE
-  seamless_loop_file=$SEAMLESS_LOOP_FILE
+  background_audio_loop_file=$BACKGROUND_AUDIO_LOOP_FILE
   output=$OUTPUT_PATH
   suno_seconds=$SUNO_TOTAL_SECONDS
   video_seconds=$VIDEO_TOTAL_SECONDS
@@ -249,21 +227,37 @@ Minimal video generation mode:
   seamless_loop_duration_seconds=$LOOP_DURATION_SECONDS
   loop_crossfade_seconds=$LOOP_CROSSFADE_SECONDS
   background_audio_stream=$BACKGROUND_HAS_AUDIO
-  loop_strategy=single-crossfade-then-stream-loop
+  loop_strategy=plain-video-loop-with-audio-only-crossfade
 EOF_STATUS
 
-ffmpeg_cmd=(
-  ffmpeg -y
-  -stream_loop -1 -i "$SEAMLESS_LOOP_FILE"
-  -f concat -safe 0 -i "$CONCAT_FILE"
-  -filter_complex "$final_filter"
-  -map '[vout]' -map '[audio_out]'
-  -t "$VIDEO_TOTAL_SECONDS"
-  -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p
-  -c:a aac -b:a 192k -ar 48000
-  -movflags +faststart
-  "$OUTPUT_PATH"
-)
+if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
+  ffmpeg_cmd=(
+    ffmpeg -y
+    -stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"
+    -stream_loop -1 -i "$BACKGROUND_AUDIO_LOOP_FILE"
+    -f concat -safe 0 -i "$CONCAT_FILE"
+    -filter_complex "$final_filter"
+    -map '[vout]' -map '[audio_out]'
+    -t "$VIDEO_TOTAL_SECONDS"
+    -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p
+    -c:a aac -b:a 192k -ar 48000
+    -movflags +faststart
+    "$OUTPUT_PATH"
+  )
+else
+  ffmpeg_cmd=(
+    ffmpeg -y
+    -stream_loop -1 -i "$SOURCE_BACKGROUND_FILE"
+    -f concat -safe 0 -i "$CONCAT_FILE"
+    -filter_complex "$final_filter"
+    -map '[vout]' -map '[audio_out]'
+    -t "$VIDEO_TOTAL_SECONDS"
+    -c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p
+    -c:a aac -b:a 192k -ar 48000
+    -movflags +faststart
+    "$OUTPUT_PATH"
+  )
+fi
 
 printf 'FFmpeg command:'
 printf ' %q' "${ffmpeg_cmd[@]}"
