@@ -132,18 +132,25 @@ def download_file(service, file_id: str, destination: Path) -> None:
                 print(f"Download progress: {status.progress() * 100:.1f}%")
 
 
-def probe(path: Path, *entries: str) -> str:
-    result = subprocess.run(
+def probe(path: Path, *entries: str, select_streams: str | None = None) -> str:
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+    ]
+    if select_streams:
+        command.extend(["-select_streams", select_streams])
+    command.extend(
         [
-            "ffprobe",
-            "-v",
-            "error",
             "-show_entries",
             ",".join(entries),
             "-of",
             "default=noprint_wrappers=1:nokey=1",
             str(path),
-        ],
+        ]
+    )
+    result = subprocess.run(
+        command,
         check=True,
         text=True,
         capture_output=True,
@@ -188,7 +195,9 @@ def main() -> None:
         output_path = Path(temp_dir) / OUTPUT_FILE
         download_file(service, source["id"], source_path)
 
-        codec = probe(source_path, "stream=codec_name").splitlines()[0]
+        codec = probe(
+            source_path, "stream=codec_name", select_streams="a:0"
+        ).splitlines()[0]
         source_duration = float(probe(source_path, "format=duration"))
         if source_duration <= 0:
             raise RuntimeError(f"Source duration is not positive: {source_duration}")
