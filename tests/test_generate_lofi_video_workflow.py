@@ -156,7 +156,12 @@ def test_workflow_no_longer_exports_fixed_target_seconds():
     assert "TARGET_SECONDS" not in text
     assert "duration_minutes" not in text
     assert "DURATION_MINUTES" not in text
-    assert "matched to concatenated Suno track duration" in text
+    assert "Using the project background video as a silent visual loop." in text
+    assert (
+        "Using audio_source/rain_audio_source.mp4 as the separate rain soundtrack."
+        in text
+    )
+    assert 'RAIN_AUDIO_VOLUME: "0.20"' in text
 
 
 def test_workflow_does_not_run_google_drive_upload_after_youtube_success():
