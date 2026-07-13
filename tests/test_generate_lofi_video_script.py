@@ -20,86 +20,67 @@ def test_script_uses_suno_plus_rain_outro_duration_instead_of_fixed_target_secon
     assert "-t \"$VIDEO_TOTAL_SECONDS\"" in text
 
 
-def test_script_loops_background_but_not_suno_concat_input():
+def test_script_uses_original_rain_mp4_for_video_and_audio_loop_filter():
     text = script_text()
 
-    assert '-stream_loop -1 -i "$BACKGROUND_FILE"' in text
-    assert '-stream_loop -1 -f concat' not in text
+    assert '-stream_loop -1 -i "$BACKGROUND_FILE"' not in text
+    assert '-i "$SOURCE_BACKGROUND_FILE"' in text
     assert '-f concat -safe 0 -i "$CONCAT_FILE"' in text
-    assert "[2:a]atrim=0:${SUNO_TOTAL_SECONDS}" in text
-    assert "volume=${BGM_VOLUME},apad,atrim=0:${VIDEO_TOTAL_SECONDS}[suno_bgm]" in text
-    assert "[1:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS}" in text
-    assert "BACKGROUND_AUDIO_LOOP_SAMPLES" in text
+    assert "[1:a]atrim=0:{suno_total}" in text
+    assert "volume={bgm_volume},apad,atrim=0:{total}[suno_bgm]" in text
+    assert "[0:a]aresample=48000,asplit={loop_count}" in text
     assert "amix=inputs=2:duration=first" in text
     assert "amix=inputs=2:duration=shortest" not in text
 
 
-def test_script_keeps_background_rain_audio_through_outro_without_fade():
+def test_script_crossfades_rain_video_and_audio_at_each_loop_boundary():
     text = script_text()
 
-    assert 'BACKGROUND_AUDIO_VOLUME="${BACKGROUND_AUDIO_VOLUME:-1.0}"' in text
-    assert "[1:a]aresample=48000,aloop=loop=-1:size=${BACKGROUND_AUDIO_LOOP_SAMPLES},atrim=0:${VIDEO_TOTAL_SECONDS},asetpts=N/SR/TB,volume=${BACKGROUND_AUDIO_VOLUME}[background_audio]" in text
-    assert "math.ceil(float(duration) * 48000)" in text
-    assert "dropout_transition=0" in text
-    assert "afade" not in text
-    assert "fade=t=out" not in text
+    assert 'LOOP_CROSSFADE_SECONDS="${LOOP_CROSSFADE_SECONDS:-1}"' in text
+    assert "loop_count = 1 if total <= duration else 1 + math.ceil" in text
+    assert "offset = current_duration - crossfade" in text
+    assert "xfade=transition=fade:duration={crossfade}:offset={offset}" in text
+    assert "acrossfade=d={crossfade}:c1=tri:c2=tri" in text
+    assert "required duration > {crossfade}s" in text
 
 
-def test_script_generates_background_seamless_mp4_from_drive_background():
+def test_script_trims_final_video_and_keeps_edge_fades():
     text = script_text()
 
-    assert "LOOP_CROSSFADE_SECONDS=\"${LOOP_CROSSFADE_SECONDS:-1.5}\"" in text
-    assert "BACKGROUND_FILE=\"$ASSET_DIR/background_seamless.mp4\"" in text
-    assert "-name 'background.mp4'" in text
-    assert "generate_seamless_background \"$SOURCE_BACKGROUND_FILE\" \"$BACKGROUND_FILE\"" in text
-    assert "Seamless loop generation completed" in text
+    assert 'VIDEO_EDGE_FADE_SECONDS="${VIDEO_EDGE_FADE_SECONDS:-1}"' in text
+    assert "trim=0:{total},setpts=PTS-STARTPTS" in text
+    assert "fade=t=in:st=0:d={edge_fade}" in text
+    assert "fade=t=out:st={fade_out_start}:d={edge_fade}" in text
+    assert "atrim=0:{total},asetpts=N/SR/TB,volume={background_volume}[background_audio]" in text
+    assert "The final output is trimmed to VIDEO_TOTAL_SECONDS" in text
 
 
-def test_script_honors_loop_crossfade_env_and_rejects_too_short_source():
+def test_script_supports_silent_rain_mp4_by_using_suno_audio_only():
     text = script_text()
 
-    assert "LOOP_CROSSFADE_SECONDS=\"${LOOP_CROSSFADE_SECONDS:-1.5}\"" in text
-    assert "crossfade_seconds=\"$3\"" in text
-    assert "duration <= crossfade * 2" in text
-    assert "Background video is too short for seamless loop generation" in text
-    assert "required duration >" in text
-
-
-def test_script_generates_seamless_loop_as_video_only_without_audio_crossfade():
-    text = script_text()
-
-    assert "has_audio_stream" in text
-    assert "xfade=transition=fade:duration=${crossfade_seconds}:offset=${offset}" in text
-    assert "acrossfade" not in text
-    assert "-map \"[vout]\"" in text
-    assert "-an" in text
-    assert "-map \"[aout]\"" not in text
-
-
-def test_script_supports_silent_background_during_seamless_generation():
-    text = script_text()
-
-    assert "Background audio stream: $has_audio" in text
-    assert "-map \"[vout]\"" in text
-    assert "-an" in text
     assert "BACKGROUND_HAS_AUDIO=\"no\"" in text
+    assert "if has_audio == \"yes\":" in text
+    assert "[1:a]atrim=0:{suno_total},asetpts=N/SR/TB,volume={bgm_volume},apad,atrim=0:{total},alimiter=limit={audio_limit}[audio_out]" in text
 
 
-def test_script_uses_seamless_video_and_original_background_audio_for_long_form_copy_loop():
+def test_script_uses_dynamic_filter_complex_for_final_render():
     text = script_text()
 
-    assert "Long-form generation background file: $BACKGROUND_FILE" in text
-    assert "Long-form rain audio file: $SOURCE_BACKGROUND_FILE" in text
-    assert "-stream_loop -1 -i \"$BACKGROUND_FILE\"" in text
-    assert "-i \"$SOURCE_BACKGROUND_FILE\"" in text
-    assert "-c:v copy" in text
-    assert "The video stream is looped and copied without FFmpeg video filters or re-encoding." in text
+    assert "calculate_background_loop_plan" in text
+    assert "build_loop_filter_complex" in text
+    assert "FILTER_COMPLEX=\"$(build_loop_filter_complex" in text
+    assert '-filter_complex "$FILTER_COMPLEX"' in text
+    assert '-map "[vout]" -map "[audio_out]"' in text
+    assert '-c:v libx264 -preset "$LOOP_PRESET" -crf "$LOOP_CRF" -pix_fmt yuv420p' in text
+
 
 def test_script_logs_split_video_and_rain_audio_sources_and_volumes():
     text = script_text()
 
-    assert "video source: background_seamless.mp4" in text
-    assert "rain audio source: background.mp4" in text
+    assert "video source: $SOURCE_BACKGROUND_FILE" in text
+    assert "rain audio source: $SOURCE_BACKGROUND_FILE" in text
     assert "rain audio stream detected: $BACKGROUND_HAS_AUDIO" in text
     assert "background_audio_volume=$BACKGROUND_AUDIO_VOLUME" in text
     assert "bgm_volume=$BGM_VOLUME" in text
+    assert "background_loop_count=$BACKGROUND_LOOP_COUNT" in text
+    assert "loop_offset_seconds=$BACKGROUND_LOOP_OFFSET_SECONDS" in text
