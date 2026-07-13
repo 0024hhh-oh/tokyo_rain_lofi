@@ -42,6 +42,43 @@ has_audio_stream() {
   [[ -n "$(ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "$1" | head -n 1)" ]]
 }
 
+audio_duration_seconds() {
+  local duration
+  duration="$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 "$1" | head -n 1)"
+  python - "$duration" "$1" <<'PY_AUDIO_DURATION_FALLBACK'
+import subprocess
+import sys
+from decimal import Decimal, InvalidOperation
+
+try:
+    duration = Decimal(sys.argv[1])
+except (IndexError, InvalidOperation):
+    duration = Decimal("0")
+if duration <= 0:
+    value = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", sys.argv[2]],
+        check=True, text=True, capture_output=True,
+    ).stdout.strip()
+    duration = Decimal(value)
+print(format(duration, "f"))
+PY_AUDIO_DURATION_FALLBACK
+}
+
+has_positive_audio_duration() {
+  local duration
+  duration="$(audio_duration_seconds "$1")"
+  python - "$duration" <<'PY_AUDIO_DURATION'
+import sys
+from decimal import Decimal, InvalidOperation
+
+try:
+    duration = Decimal(sys.argv[1])
+except (IndexError, InvalidOperation):
+    raise SystemExit(1)
+raise SystemExit(0 if duration > 0 else 1)
+PY_AUDIO_DURATION
+}
+
 has_video_stream() {
   [[ -n "$(ffprobe -v error -select_streams v:0 -show_entries stream=index -of csv=p=0 "$1" | head -n 1)" ]]
 }
@@ -55,6 +92,10 @@ require_video_and_audio_streams() {
   fi
   if ! has_audio_stream "$file"; then
     echo "${context} is missing an audio stream: $file" >&2
+    return 1
+  fi
+  if ! has_positive_audio_duration "$file"; then
+    echo "${context} audio stream has no positive duration: $file" >&2
     return 1
   fi
 }
@@ -130,8 +171,10 @@ PY_LOOP
 
 if has_audio_stream "$SOURCE_BACKGROUND_FILE"; then
   BACKGROUND_HAS_AUDIO="yes"
+  BACKGROUND_AUDIO_DURATION_SECONDS="$(audio_duration_seconds "$SOURCE_BACKGROUND_FILE")"
 else
   BACKGROUND_HAS_AUDIO="no"
+  BACKGROUND_AUDIO_DURATION_SECONDS="0"
 fi
 
 VIDEO_XFADE_OFFSET="$(python - "$BACKGROUND_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_OFFSET'
@@ -142,7 +185,19 @@ PY_OFFSET
 )"
 
 if [[ "$BACKGROUND_HAS_AUDIO" == "yes" ]]; then
-  seamless_filter="[0:v]split=2[vbody][vhead];[vbody]trim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},setpts=PTS-STARTPTS[vbody_t];[vhead]trim=start=0:end=${LOOP_CROSSFADE_SECONDS},setpts=PTS-STARTPTS[vhead_t];[vbody_t][vhead_t]xfade=transition=fade:duration=${LOOP_CROSSFADE_SECONDS}:offset=${VIDEO_XFADE_OFFSET},format=yuv420p[vloop];[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},asetpts=PTS-STARTPTS[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
+  python - "$BACKGROUND_AUDIO_DURATION_SECONDS" "$LOOP_CROSSFADE_SECONDS" <<'PY_VALIDATE_AUDIO_LOOP'
+import sys
+from decimal import Decimal
+
+duration = Decimal(sys.argv[1])
+crossfade = Decimal(sys.argv[2])
+if duration <= crossfade * 2:
+    raise SystemExit(
+        f"Background audio is too short for loop crossfade: "
+        f"duration={duration}s, crossfade={crossfade}s; required duration > {crossfade * 2}s"
+    )
+PY_VALIDATE_AUDIO_LOOP
+  seamless_filter="[0:v]split=2[vbody][vhead];[vbody]trim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_DURATION_SECONDS},setpts=PTS-STARTPTS[vbody_t];[vhead]trim=start=0:end=${LOOP_CROSSFADE_SECONDS},setpts=PTS-STARTPTS[vhead_t];[vbody_t][vhead_t]xfade=transition=fade:duration=${LOOP_CROSSFADE_SECONDS}:offset=${VIDEO_XFADE_OFFSET},format=yuv420p[vloop];[0:a]asplit=2[abody][ahead];[abody]atrim=start=${LOOP_CROSSFADE_SECONDS}:end=${BACKGROUND_AUDIO_DURATION_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[abody_t];[ahead]atrim=start=0:end=${LOOP_CROSSFADE_SECONDS},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[ahead_t];[abody_t][ahead_t]acrossfade=d=${LOOP_CROSSFADE_SECONDS}:c1=tri:c2=tri[aloop]"
   ffmpeg -y -i "$SOURCE_BACKGROUND_FILE" \
     -filter_complex "$seamless_filter" \
     -map '[vloop]' -map '[aloop]' \
@@ -190,6 +245,7 @@ Minimal video generation mode:
   suno_seconds=$SUNO_TOTAL_SECONDS
   video_seconds=$VIDEO_TOTAL_SECONDS
   background_duration_seconds=$BACKGROUND_DURATION_SECONDS
+  background_audio_duration_seconds=$BACKGROUND_AUDIO_DURATION_SECONDS
   seamless_loop_duration_seconds=$LOOP_DURATION_SECONDS
   loop_crossfade_seconds=$LOOP_CROSSFADE_SECONDS
   background_audio_stream=$BACKGROUND_HAS_AUDIO
