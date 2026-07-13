@@ -240,3 +240,76 @@ def test_incoming_missing_background_error_mentions_background_image(tmp_path, c
     assert "No usable background asset detected before FileNotFoundError" in output
     assert "because no item name matched 'background_loop.mp4'" in output
     assert "because no item matched names=" in output
+
+
+def test_download_shared_rain_audio_uses_exact_common_source(tmp_path, capsys):
+    output_dir = tmp_path / "video_assets"
+    source = {
+        "id": "rain-source-id",
+        "name": "rain_audio_source.mp4",
+        "mimeType": "video/mp4",
+    }
+
+    def write_download(service, file_id, destination):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"shared-rain-audio")
+
+    with (
+        patch.object(
+            download_drive_video_assets,
+            "resolve_root_folder",
+            return_value={"id": "root-id", "name": "Tokyo ChillMatic FM"},
+        ),
+        patch.object(
+            download_drive_video_assets,
+            "find_shared_audio_folder",
+            return_value={"id": "audio-source-id", "name": "audio_source"},
+        ),
+        patch.object(
+            download_drive_video_assets, "list_files", return_value=[source]
+        ),
+        patch.object(
+            download_drive_video_assets, "download_file", side_effect=write_download
+        ),
+    ):
+        destination = download_drive_video_assets.download_shared_rain_audio(
+            None, output_dir
+        )
+
+    assert destination == output_dir / "rain_audio_source.mp4"
+    assert destination.read_bytes() == b"shared-rain-audio"
+    output = capsys.readouterr().out
+    assert "Shared audio_source items: count=1" in output
+    assert "Selected shared rain audio source:" in output
+    assert "source_name=rain_audio_source.mp4" in output
+
+
+def test_download_shared_rain_audio_rejects_missing_exact_source(tmp_path):
+    with (
+        patch.object(
+            download_drive_video_assets,
+            "resolve_root_folder",
+            return_value={"id": "root-id", "name": "Tokyo ChillMatic FM"},
+        ),
+        patch.object(
+            download_drive_video_assets,
+            "find_shared_audio_folder",
+            return_value={"id": "audio-source-id", "name": "audio_source"},
+        ),
+        patch.object(
+            download_drive_video_assets,
+            "list_files",
+            return_value=[
+                {"id": "other", "name": "other.mp4", "mimeType": "video/mp4"}
+            ],
+        ),
+    ):
+        try:
+            download_drive_video_assets.download_shared_rain_audio(
+                None, tmp_path / "video_assets"
+            )
+        except FileNotFoundError as exc:
+            assert "audio_source/rain_audio_source.mp4" in str(exc)
+            assert "found 0" in str(exc)
+        else:
+            raise AssertionError("FileNotFoundError was not raised")
