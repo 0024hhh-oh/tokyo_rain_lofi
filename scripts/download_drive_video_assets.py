@@ -28,6 +28,8 @@ VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 ROOT_FOLDER = "Tokyo ChillMatic FM"
 ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
+SHARED_AUDIO_FOLDER_NAME = "audio_source"
+SHARED_RAIN_SOURCE_NAME = "rain_audio_source.mp4"
 
 
 def quote_drive_query(value: str) -> str:
@@ -294,6 +296,55 @@ def download_file(service, file_id: str, destination: Path) -> None:
             _, done = downloader.next_chunk()
 
 
+def find_shared_audio_folder(service, root_id: str) -> dict:
+    """Find audio_source under the configured root, with a shared-folder fallback."""
+    try:
+        return find_single_folder(service, SHARED_AUDIO_FOLDER_NAME, root_id)
+    except FileNotFoundError:
+        print(
+            f"{SHARED_AUDIO_FOLDER_NAME} was not found under {ROOT_FOLDER}; "
+            "checking all folders accessible to the service account"
+        )
+        return find_single_folder(service, SHARED_AUDIO_FOLDER_NAME)
+
+
+def download_shared_rain_audio(
+    service, output_dir: Path, root_folder_id: str | None = None
+) -> Path:
+    """Download the reusable long rain recording beside the project assets."""
+    root = resolve_root_folder(service, ROOT_FOLDER, root_folder_id)
+    audio_source = find_shared_audio_folder(service, root["id"])
+    children = list_files(service, audio_source["id"])
+    log_drive_items("Shared audio_source items", children)
+    candidates = [
+        item
+        for item in children
+        if normalized_drive_name(item) == SHARED_RAIN_SOURCE_NAME
+    ]
+    if len(candidates) != 1:
+        raise FileNotFoundError(
+            f"{SHARED_AUDIO_FOLDER_NAME}/{SHARED_RAIN_SOURCE_NAME} "
+            f"must exist exactly once; found {len(candidates)}"
+        )
+
+    source = candidates[0]
+    destination = output_dir / SHARED_RAIN_SOURCE_NAME
+    if destination.exists():
+        destination.unlink()
+        print(f"Removed stale shared rain source: {destination.as_posix()}")
+    download_file(service, source["id"], destination)
+    source_path = drive_source_path(
+        ROOT_FOLDER, SHARED_AUDIO_FOLDER_NAME, source["name"]
+    )
+    log_drive_download(source, destination, source_path)
+    print(
+        "Selected shared rain audio source: "
+        f"source_name={source['name']} file_id={source['id']} "
+        f"destination={destination.as_posix()}"
+    )
+    return destination
+
+
 def download_legacy_video_folder(
     service, video_number: str, output_dir: Path, root_folder_id: str | None = None
 ) -> None:
@@ -469,6 +520,8 @@ def main() -> None:
         download_legacy_video_folder(
             service, args.video_number, output_dir, args.root_folder_id
         )
+
+    download_shared_rain_audio(service, output_dir, args.root_folder_id)
 
 
 if __name__ == "__main__":
