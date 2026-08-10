@@ -11,6 +11,7 @@ on:
       - "scripts/render_night_background.sh"
       - "scripts/night_test_drive.py"
       - "scripts/render_night_test_video.sh"
+      - "scripts/validate_visible_lighting.mjs"
       - "scripts/create_remotion_fixture.mjs"
       - "tests/**"
       - ".github/workflows/generate_lofi_video.yml"
@@ -38,15 +39,15 @@ jobs:
           python -m pytest \
             tests/test_drive_night_test.py \
             tests/test_generate_lofi_video_workflow.py
-      - name: Render a three-second lighting sample
+      - name: Render a six-second visibly changing lighting sample
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           node scripts/create_remotion_fixture.mjs
           mkdir -p video_assets/tracks dist
-          ffmpeg -y -f lavfi -i "sine=frequency=440:duration=3" \
+          ffmpeg -y -f lavfi -i "sine=frequency=440:duration=6" \
             -c:a libmp3lame video_assets/tracks/night-test.mp3
-          NIGHT_TEST_SECONDS=3 REMOTION_FRAMES=0-89 \
+          NIGHT_TEST_SECONDS=6 REMOTION_FRAMES=0-179 \
             bash scripts/render_night_test_video.sh
           ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/night-test.mp4
       - uses: actions/upload-artifact@v4
