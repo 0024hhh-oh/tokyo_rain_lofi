@@ -1,0 +1,8 @@
+node_modules/
+.venv/
+.pytest_cache/
+pytest-of-root/
+__pycache__/
+dist/
+public/background.png
+video_assets/
