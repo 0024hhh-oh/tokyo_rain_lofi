@@ -241,7 +241,7 @@ def test_night_test_renderer_requires_motion_audio_and_exact_duration():
         Path(__file__).resolve().parents[1] / "scripts/render_night_test_video.sh"
     ).read_text()
 
-    assert "blend=all_mode=difference" in renderer
-    assert "motion check failed" in renderer
+    assert "validate_visible_lighting.mjs" in renderer
+    assert "validation_frames" in renderer
     assert "-map 0:v:0 -map 1:a:0" in renderer
     assert "output has no audio stream" in renderer
