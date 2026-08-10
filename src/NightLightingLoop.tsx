@@ -21,43 +21,30 @@ type LightZone = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-const circularDistance = (a: number, b: number) => {
-  const direct = Math.abs(a - b);
-  return Math.min(direct, 1 - direct);
-};
-
 const getLightLevel = (
   zone: LightZone,
   frame: number,
-  durationInFrames: number,
+  fps: number,
 ) => {
-  const progress = frame / durationInFrames;
+  const seconds = frame / fps;
+  const cycleSeconds = 5.2 + random(`${zone.id}-cycle`) * 2.4;
   const phase = random(`${zone.id}-phase`) * Math.PI * 2;
-  const slowCycles = 1 + Math.floor(random(`${zone.id}-slow`) * 3);
-  const mediumCycles = 4 + Math.floor(random(`${zone.id}-medium`) * 4);
-  const quickCycles = 9 + Math.floor(random(`${zone.id}-quick`) * 7);
+  const wave = Math.sin((seconds / cycleSeconds) * Math.PI * 2 + phase);
 
-  const drift =
-    Math.sin(progress * Math.PI * 2 * slowCycles + phase) * 0.48 +
-    Math.sin(progress * Math.PI * 2 * mediumCycles + phase * 0.63) * 0.22 +
-    Math.sin(progress * Math.PI * 2 * quickCycles + phase * 1.31) * 0.08;
+  // Cross the on/off boundary quickly enough to read as a light switching,
+  // while retaining a short eased transition instead of a harsh strobe.
+  const transition = clamp((wave + 0.16) / 0.32, 0, 1);
+  const switched = transition * transition * (3 - 2 * transition);
+  const slowDrift = Math.sin(
+    (seconds / (cycleSeconds * 2.7)) * Math.PI * 2 + phase * 0.41,
+  );
 
-  const dipCount = 1 + Math.floor(random(`${zone.id}-dip-count`) * 3);
-  let softDip = 0;
-  for (let index = 0; index < dipCount; index += 1) {
-    const center = random(`${zone.id}-dip-${index}`);
-    const width = 0.009 + random(`${zone.id}-dip-width-${index}`) * 0.018;
-    const distance = circularDistance(progress, center);
-    softDip += Math.exp(-0.5 * (distance / width) ** 2) *
-      (0.18 + random(`${zone.id}-dip-depth-${index}`) * 0.2);
-  }
-
-  return clamp(0.56 + drift - softDip, 0.12, 1);
+  return clamp(0.04 + switched * 0.92 + slowDrift * 0.025, 0.02, 1);
 };
 
 export const NightLightingLoop: React.FC = () => {
   const frame = useCurrentFrame();
-  const {durationInFrames} = useVideoConfig();
+  const {fps} = useVideoConfig();
   const zones = lighting.zones as LightZone[];
 
   return (
@@ -68,20 +55,20 @@ export const NightLightingLoop: React.FC = () => {
       />
 
       {lighting.animate && zones.map((zone) => {
-        const level = getLightLevel(zone, frame, durationInFrames);
+        const level = getLightLevel(zone, frame, fps);
         const left = (zone.x - zone.width / 2) * 100;
         const top = (zone.y - zone.height / 2) * 100;
         const right = 100 - (zone.x + zone.width / 2) * 100;
         const bottom = 100 - (zone.y + zone.height / 2) * 100;
-        const brightness = 1 + level * zone.strength * 0.38;
-        const glowOpacity = level * zone.strength * (0.09 + zone.warmth * 0.08);
+        const brightness = 0.36 + level * zone.strength * 1.5;
+        const glowOpacity = level * zone.strength * (0.24 + zone.warmth * 0.18);
 
         return (
           <div key={zone.id}>
             <AbsoluteFill
               style={{
                 clipPath: `inset(${top}% ${right}% ${bottom}% ${left}% round 14%)`,
-                filter: `brightness(${brightness}) saturate(${1 + zone.warmth * 0.05})`,
+                filter: `brightness(${brightness}) saturate(${0.72 + level * zone.warmth * 0.48})`,
                 maskImage: `radial-gradient(ellipse at ${zone.x * 100}% ${zone.y * 100}%, black 0%, transparent 74%)`,
                 WebkitMaskImage: `radial-gradient(ellipse at ${zone.x * 100}% ${zone.y * 100}%, black 0%, transparent 74%)`,
               }}
