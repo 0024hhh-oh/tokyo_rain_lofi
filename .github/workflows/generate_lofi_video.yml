@@ -74,25 +74,12 @@ jobs:
             --folder-id "${{ steps.night.outputs.folder_id }}" \
             --output-dir video_assets
 
-      - name: Render 30-second Remotion night-test
+      - name: Render and validate 30-second night-test with MP3 audio
         if: ${{ steps.night.outputs.found == 'true' }}
         env:
           ASSET_DIR: video_assets
         run: |
-          echo "night-test stage=remotion-render"
-          bash scripts/render_night_background.sh
-          test -s video_assets/background.mp4 || {
-            echo "night-test Remotion render failed: video_assets/background.mp4 was not created" >&2
-            exit 1
-          }
-          duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 video_assets/background.mp4)"
-          python - "${duration}" <<'PY'
-          import sys
-          duration = float(sys.argv[1])
-          if not 29.9 <= duration <= 30.1:
-              raise SystemExit(f"night-test duration must be 30 seconds; got {duration}")
-          print(f"night-test duration verified: {duration:.3f}s")
-          PY
+          bash scripts/render_night_test_video.sh
 
       - name: Upload night-test video privately to YouTube
         if: ${{ steps.night.outputs.found == 'true' }}
@@ -103,19 +90,20 @@ jobs:
         run: |
           echo "night-test stage=youtube-upload"
           python scripts/upload_youtube_video.py \
-            --file video_assets/background.mp4 \
+            --file dist/night-test.mp4 \
             --title "Tokyo ChillMatic FM - Night Lighting Test" \
             --description "Private 30-second Remotion lighting test." \
             --tags "tokyo chillmatic fm,night lighting test,remotion"
 
-      - name: Mark Drive night-test as completed
+      - name: Move successful Drive night-test to completed
         if: ${{ steps.night.outputs.found == 'true' }}
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
-          echo "night-test stage=completion-marker"
-          python scripts/night_test_drive.py mark-completed \
-            --folder-id "${{ steps.night.outputs.folder_id }}"
+          echo "night-test stage=move-completed"
+          python scripts/drive_incoming_queue.py move \
+            --folder-id "${{ steps.night.outputs.folder_id }}" \
+            --destination completed
 
   generate:
     runs-on: ubuntu-latest
@@ -124,12 +112,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Node for Remotion
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
 
       - name: Install FFmpeg and Python dependencies
         run: |
@@ -191,7 +173,6 @@ jobs:
               python scripts/download_drive_video_assets.py \
                 --drive-folder-id "${work_folder_id}" \
                 --output-dir video_assets
-              bash scripts/render_night_background.sh
               export ASSET_DIR=video_assets
               export OUTPUT_DIR=dist
               export OUTPUT_FILE="${output_file}"
@@ -254,12 +235,6 @@ jobs:
             echo "No debug DRIVE_FOLDER_ID was provided." >&2
             exit 1
           fi
-
-      - name: Render natural night lighting loop with Remotion
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
-        env:
-          ASSET_DIR: video_assets
-        run: bash scripts/render_night_background.sh
 
       - name: Generate MP4
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}

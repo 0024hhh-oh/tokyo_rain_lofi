@@ -107,46 +107,26 @@ def test_detect_skips_existing_output_video(capsys):
     assert "output/video.mp4 already exists" in output
 
 
-def test_detect_skips_completed_private_youtube_upload(capsys):
-    items = ready_items()
-    items[2]["appProperties"] = {drive_night_test.COMPLETION_PROPERTY: "true"}
-    with patch.dict(os.environ, {"GITHUB_OUTPUT": ""}), patch.object(
-        drive_night_test, "get_drive_service", return_value=object()
-    ), patch.object(
-        drive_night_test,
-        "resolve_night_test",
-        return_value=({"id": "night-id", "name": "night-test"}, items),
-    ):
-        drive_night_test.detect(args())
-
-    output = capsys.readouterr().out
-    assert "found=false" in output
-    assert "reason=already-completed" in output
-    assert "private YouTube upload already completed" in output
-
-
-def test_mark_completed_sets_project_metadata_without_changing_content():
-    update_call = types.SimpleNamespace(execute=lambda: {})
-    files_api = types.SimpleNamespace(update=lambda **kwargs: update_call)
-    service = types.SimpleNamespace(files=lambda: files_api)
+def test_download_fetches_background_and_mp3(tmp_path):
     command_args = args()
     command_args.folder_id = "night-id"
+    command_args.output_dir = str(tmp_path)
 
-    with patch.object(drive_night_test, "get_drive_service", return_value=service), patch.object(
+    def fake_download(_service, file_id, destination):
+        destination.write_bytes(file_id.encode())
+
+    with patch.object(drive_night_test, "get_drive_service", return_value=object()), patch.object(
         drive_night_test,
         "get_folder_by_id",
         return_value={"id": "night-id", "name": "night-test"},
     ), patch.object(drive_night_test, "list_children", return_value=ready_items()), patch.object(
-        files_api, "update", wraps=files_api.update
-    ) as update:
-        drive_night_test.mark_completed(command_args)
+        drive_night_test, "download_file", side_effect=fake_download
+    ) as download:
+        drive_night_test.download(command_args)
 
-    update.assert_called_once_with(
-        fileId="project",
-        body={"appProperties": {drive_night_test.COMPLETION_PROPERTY: "true"}},
-        fields="id,name,appProperties",
-        supportsAllDrives=True,
-    )
+    assert (tmp_path / "background.png").read_bytes() == b"background"
+    assert (tmp_path / "tracks/night-test.mp3").read_bytes() == b"track"
+    assert download.call_count == 2
 
 
 def test_casefold_night_test_folder_name_is_accepted():

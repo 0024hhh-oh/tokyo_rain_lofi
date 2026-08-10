@@ -20,14 +20,20 @@ if [[ "$animate" != "true" ]]; then
 fi
 
 rm -f "$ASSET_DIR/background.mp4"
-npx remotion render \
-  src/index.ts \
-  NightLightingLoop \
-  "$ASSET_DIR/background.mp4" \
-  --codec=h264 \
-  --crf=23 \
-  --concurrency=2 \
+render_args=(
+  npx remotion render
+  src/index.ts
+  NightLightingLoop
+  "$ASSET_DIR/background.mp4"
+  --codec=h264
+  --crf=23
+  --concurrency=2
   --log=verbose
+)
+if [[ -n "${REMOTION_FRAMES:-}" ]]; then
+  render_args+=(--frames "$REMOTION_FRAMES")
+fi
+"${render_args[@]}"
 
 ffprobe -v error \
   -show_entries stream=codec_name,width,height,r_frame_rate \
