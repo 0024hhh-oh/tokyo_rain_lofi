@@ -10,6 +10,7 @@ on:
       - "scripts/prepare_remotion_background.mjs"
       - "scripts/render_night_background.sh"
       - "scripts/night_test_drive.py"
+      - "scripts/render_night_test_video.sh"
       - "scripts/create_remotion_fixture.mjs"
       - "tests/**"
       - ".github/workflows/generate_lofi_video.yml"
@@ -42,19 +43,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           node scripts/create_remotion_fixture.mjs
-          node scripts/prepare_remotion_background.mjs video_assets
-          mkdir -p dist
-          npx remotion render \
-            src/index.ts \
-            NightLightingLoop \
-            dist/remotion-lighting-test.mp4 \
-            --frames=0-89 \
-            --codec=h264 \
-            --crf=30 \
-            --concurrency=2
-          ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/remotion-lighting-test.mp4
+          mkdir -p video_assets/tracks dist
+          ffmpeg -y -f lavfi -i "sine=frequency=440:duration=3" \
+            -c:a libmp3lame video_assets/tracks/night-test.mp3
+          NIGHT_TEST_SECONDS=3 REMOTION_FRAMES=0-89 \
+            bash scripts/render_night_test_video.sh
+          ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/night-test.mp4
       - uses: actions/upload-artifact@v4
         with:
           name: remotion-lighting-test
-          path: dist/remotion-lighting-test.mp4
+          path: dist/night-test.mp4
           retention-days: 7

@@ -73,8 +73,8 @@ export const NightLightingLoop: React.FC = () => {
         const top = (zone.y - zone.height / 2) * 100;
         const right = 100 - (zone.x + zone.width / 2) * 100;
         const bottom = 100 - (zone.y + zone.height / 2) * 100;
-        const brightness = 1 + level * zone.strength * 0.13;
-        const glowOpacity = level * zone.strength * (0.035 + zone.warmth * 0.035);
+        const brightness = 1 + level * zone.strength * 0.38;
+        const glowOpacity = level * zone.strength * (0.09 + zone.warmth * 0.08);
 
         return (
           <div key={zone.id}>

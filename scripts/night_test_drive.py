@@ -23,7 +23,6 @@ NIGHT_TEST_FOLDER = "night-test"
 OUTPUT_FOLDER = "output"
 OUTPUT_FILE = "video.mp4"
 PROJECT_FILE = "project.json"
-COMPLETION_PROPERTY = "nightTestYouTubeUploaded"
 IMAGE_NAMES = {"background.png", "background.jpg", "background.jpeg"}
 
 
@@ -187,17 +186,6 @@ def detect(args: argparse.Namespace) -> None:
         write_github_output({"found": "false", "reason": "input-validation"})
         return
 
-    project_file = next(
-        item
-        for item in items
-        if item.get("mimeType") != FOLDER_MIME
-        and item.get("name", "").casefold() == PROJECT_FILE
-    )
-    if (project_file.get("appProperties") or {}).get(COMPLETION_PROPERTY) == "true":
-        print("night-test skipped: private YouTube upload already completed")
-        write_github_output({"found": "false", "reason": "already-completed"})
-        return
-
     if output_folder:
         outputs = list_children(service, output_folder["id"])
         completed = [
@@ -239,8 +227,9 @@ def download(args: argparse.Namespace) -> None:
     ok, reason, _ = inspect_night_test(items)
     if not ok:
         raise RuntimeError(f"night-test input validation failed: {reason}")
-    image = next(
-        item for item in items if item.get("name", "").casefold() in IMAGE_NAMES
+    image = next(item for item in items if item.get("name", "").casefold() in IMAGE_NAMES)
+    track = next(
+        item for item in items if item.get("name", "").casefold().endswith(".mp3")
     )
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -250,6 +239,14 @@ def download(args: argparse.Namespace) -> None:
     if not destination.is_file() or destination.stat().st_size == 0:
         raise RuntimeError("night-test background download produced an empty file")
     print(f"night-test background downloaded: {destination}")
+
+    track_dir = output_dir / "tracks"
+    track_dir.mkdir(parents=True, exist_ok=True)
+    track_destination = track_dir / "night-test.mp3"
+    download_file(service, track["id"], track_destination)
+    if not track_destination.is_file() or track_destination.stat().st_size == 0:
+        raise RuntimeError("night-test MP3 download produced an empty file")
+    print(f"night-test MP3 downloaded: {track_destination}")
 
 
 def ensure_output(args: argparse.Namespace) -> None:
@@ -277,38 +274,9 @@ def ensure_output(args: argparse.Namespace) -> None:
     write_github_output({"output_folder_id": output["id"]})
 
 
-def mark_completed(args: argparse.Namespace) -> None:
-    print("night-test stage=completion-marker")
-    service = get_drive_service()
-    folder = get_folder_by_id(service, args.folder_id)
-    items = list_children(service, folder["id"])
-    project_files = [
-        item
-        for item in items
-        if item.get("mimeType") != FOLDER_MIME
-        and item.get("name", "").casefold() == PROJECT_FILE
-    ]
-    if len(project_files) != 1:
-        raise RuntimeError(
-            f"project.json count must be 1 before marking completion; found {len(project_files)}"
-        )
-    project_file = project_files[0]
-    properties = dict(project_file.get("appProperties") or {})
-    properties[COMPLETION_PROPERTY] = "true"
-    service.files().update(
-        fileId=project_file["id"],
-        body={"appProperties": properties},
-        fields="id,name,appProperties",
-        supportsAllDrives=True,
-    ).execute()
-    print("night-test completion marker saved on project.json")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "command", choices=("detect", "download", "ensure-output", "mark-completed")
-    )
+    parser.add_argument("command", choices=("detect", "download", "ensure-output"))
     parser.add_argument("--root-folder-id", default=os.environ.get(ROOT_FOLDER_ID_ENV))
     parser.add_argument("--projects-folder", default=PROJECTS_FOLDER)
     parser.add_argument("--night-test-folder", default=NIGHT_TEST_FOLDER)
@@ -325,14 +293,10 @@ def main() -> None:
         if not args.folder_id:
             raise RuntimeError("--folder-id is required for download")
         download(args)
-    elif args.command == "ensure-output":
+    else:
         if not args.folder_id:
             raise RuntimeError("--folder-id is required for ensure-output")
         ensure_output(args)
-    else:
-        if not args.folder_id:
-            raise RuntimeError("--folder-id is required for mark-completed")
-        mark_completed(args)
 
 
 if __name__ == "__main__":

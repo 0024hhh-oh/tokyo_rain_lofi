@@ -212,11 +212,12 @@ def test_night_test_is_an_isolated_one_track_30_second_private_youtube_job():
 
     assert "python scripts/night_test_drive.py detect" in night_job
     assert "python scripts/night_test_drive.py download" in night_job
-    assert "bash scripts/render_night_background.sh" in night_job
-    assert "29.9 <= duration <= 30.1" in night_job
+    assert "bash scripts/render_night_test_video.sh" in night_job
+    assert "--file dist/night-test.mp4" in night_job
     assert "python scripts/upload_youtube_video.py" in night_job
     assert '--title "Tokyo ChillMatic FM - Night Lighting Test"' in night_job
-    assert "python scripts/night_test_drive.py mark-completed" in night_job
+    assert "python scripts/drive_incoming_queue.py move" in night_job
+    assert "--destination completed" in night_job
     assert "python scripts/upload_drive_output.py" not in night_job
     assert "python scripts/drive_incoming_queue.py detect" in production_job
     assert "python scripts/upload_youtube_video.py" in production_job
@@ -227,3 +228,20 @@ def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
 
     assert "require_exactly_20_tracks=True" in detector
     assert "mp3音源は20曲ちょうど必要です" in detector
+
+
+def test_production_job_has_no_remotion_lighting_mutation():
+    production_job = workflow_text().split("  generate:", 1)[1]
+
+    assert "render_night_background.sh" not in production_job
+
+
+def test_night_test_renderer_requires_motion_audio_and_exact_duration():
+    renderer = (
+        Path(__file__).resolve().parents[1] / "scripts/render_night_test_video.sh"
+    ).read_text()
+
+    assert "blend=all_mode=difference" in renderer
+    assert "motion check failed" in renderer
+    assert "-map 0:v:0 -map 1:a:0" in renderer
+    assert "output has no audio stream" in renderer
