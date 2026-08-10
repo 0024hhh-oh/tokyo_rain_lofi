@@ -43,6 +43,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node for Remotion
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
       - name: Install FFmpeg and Python dependencies
         run: |
           sudo apt-get update
@@ -103,6 +109,7 @@ jobs:
               python scripts/download_drive_video_assets.py \
                 --drive-folder-id "${work_folder_id}" \
                 --output-dir video_assets
+              bash scripts/render_night_background.sh
               export ASSET_DIR=video_assets
               export OUTPUT_DIR=dist
               export OUTPUT_FILE="${output_file}"
@@ -165,6 +172,12 @@ jobs:
             echo "No debug DRIVE_FOLDER_ID was provided." >&2
             exit 1
           fi
+
+      - name: Render natural night lighting loop with Remotion
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
+        env:
+          ASSET_DIR: video_assets
+        run: bash scripts/render_night_background.sh
 
       - name: Generate MP4
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
