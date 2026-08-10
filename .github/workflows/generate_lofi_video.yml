@@ -94,25 +94,28 @@ jobs:
           print(f"night-test duration verified: {duration:.3f}s")
           PY
 
-      - name: Ensure Drive night-test output folder
-        if: ${{ steps.night.outputs.found == 'true' }}
-        id: night_output
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-        run: |
-          python scripts/night_test_drive.py ensure-output \
-            --folder-id "${{ steps.night.outputs.folder_id }}"
-
-      - name: Return night-test video to Drive
+      - name: Upload night-test video privately to YouTube
         if: ${{ steps.night.outputs.found == 'true' }}
         env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
-          echo "night-test stage=drive-return"
-          python scripts/upload_drive_output.py \
+          echo "night-test stage=youtube-upload"
+          python scripts/upload_youtube_video.py \
             --file video_assets/background.mp4 \
-            --output-name video.mp4 \
-            --output-folder-id "${{ steps.night_output.outputs.output_folder_id }}"
+            --title "Tokyo ChillMatic FM - Night Lighting Test" \
+            --description "Private 30-second Remotion lighting test." \
+            --tags "tokyo chillmatic fm,night lighting test,remotion"
+
+      - name: Mark Drive night-test as completed
+        if: ${{ steps.night.outputs.found == 'true' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "night-test stage=completion-marker"
+          python scripts/night_test_drive.py mark-completed \
+            --folder-id "${{ steps.night.outputs.folder_id }}"
 
   generate:
     runs-on: ubuntu-latest
