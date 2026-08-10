@@ -7,14 +7,7 @@ OUTPUT_FILE="${OUTPUT_FILE:-night-test.mp4}"
 BACKGROUND_VIDEO="$ASSET_DIR/background.mp4"
 TRACK_FILE="$ASSET_DIR/tracks/night-test.mp3"
 OUTPUT_PATH="$OUTPUT_DIR/$OUTPUT_FILE"
-MOTION_MIN_YAVG="${MOTION_MIN_YAVG:-0.08}"
 NIGHT_TEST_SECONDS="${NIGHT_TEST_SECONDS:-30}"
-MOTION_FIRST_SECOND="${MOTION_FIRST_SECOND:-0.2}"
-MOTION_SECOND_SECOND="${MOTION_SECOND_SECOND:-$(python - "$NIGHT_TEST_SECONDS" <<'PY'
-import sys
-print(max(0.4, float(sys.argv[1]) / 2))
-PY
-)}"
 
 echo "night-test stage=remotion-render"
 bash scripts/render_night_background.sh
@@ -29,27 +22,24 @@ test -s "$TRACK_FILE" || {
 }
 
 mkdir -p "$OUTPUT_DIR"
-motion_log="$(mktemp)"
-trap 'rm -f "$motion_log"' EXIT
-
-ffmpeg -v error \
-  -ss "$MOTION_FIRST_SECOND" -i "$BACKGROUND_VIDEO" \
-  -ss "$MOTION_SECOND_SECOND" -i "$BACKGROUND_VIDEO" \
-  -filter_complex "[0:v][1:v]blend=all_mode=difference,signalstats,metadata=print:file=${motion_log}" \
-  -frames:v 1 -f null -
-
-motion_yavg="$(awk -F= '/lavfi.signalstats.YAVG=/{print $2; exit}' "$motion_log")"
-python - "$motion_yavg" "$MOTION_MIN_YAVG" <<'PY'
+validation_dir="$(mktemp -d)"
+trap 'rm -rf "$validation_dir"' EXIT
+readarray -t validation_seconds < <(python - "$NIGHT_TEST_SECONDS" <<'PY'
 import sys
-
-actual = float(sys.argv[1]) if sys.argv[1] else 0.0
-minimum = float(sys.argv[2])
-if actual < minimum:
-    raise SystemExit(
-        f"night-test motion check failed: YAVG difference {actual:.6f} < {minimum:.6f}"
-    )
-print(f"night-test motion verified: YAVG difference={actual:.6f}")
+duration = float(sys.argv[1])
+for fraction in (0.05, 0.30, 0.55, 0.80):
+    print(max(0.05, duration * fraction))
 PY
+)
+validation_frames=()
+for index in "${!validation_seconds[@]}"; do
+  frame="$validation_dir/frame-${index}.png"
+  ffmpeg -v error -ss "${validation_seconds[$index]}" -i "$BACKGROUND_VIDEO" \
+    -frames:v 1 "$frame"
+  validation_frames+=("$frame")
+done
+node scripts/validate_visible_lighting.mjs \
+  src/generated-light-zones.json "${validation_frames[@]}"
 
 ffmpeg -y \
   -i "$BACKGROUND_VIDEO" \
