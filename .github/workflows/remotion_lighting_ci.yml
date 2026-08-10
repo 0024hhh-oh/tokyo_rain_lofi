@@ -1,0 +1,52 @@
+name: Remotion lighting CI
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "src/**"
+      - "scripts/prepare_remotion_background.mjs"
+      - "scripts/render_night_background.sh"
+      - "scripts/create_remotion_fixture.mjs"
+      - "tests/**"
+      - ".github/workflows/remotion_lighting_ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - name: Render a three-second lighting sample
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          node scripts/create_remotion_fixture.mjs
+          node scripts/prepare_remotion_background.mjs video_assets
+          mkdir -p dist
+          npx remotion render \
+            src/index.ts \
+            NightLightingLoop \
+            dist/remotion-lighting-test.mp4 \
+            --frames=0-89 \
+            --codec=h264 \
+            --crf=30 \
+            --concurrency=2
+          ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/remotion-lighting-test.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: remotion-lighting-test
+          path: dist/remotion-lighting-test.mp4
+          retention-days: 7
