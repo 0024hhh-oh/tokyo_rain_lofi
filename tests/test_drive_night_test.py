@@ -1,3 +1,4 @@
+import os
 import sys
 import types
 from pathlib import Path
@@ -71,7 +72,9 @@ def test_inspect_rejects_twenty_track_production_input():
 
 
 def test_detect_marks_ready_folder_for_processing(capsys):
-    with patch.object(drive_night_test, "get_drive_service", return_value=object()), patch.object(
+    with patch.dict(os.environ, {"GITHUB_OUTPUT": ""}), patch.object(
+        drive_night_test, "get_drive_service", return_value=object()
+    ), patch.object(
         drive_night_test,
         "resolve_night_test",
         return_value=({"id": "night-id", "name": "night-test"}, ready_items()),
@@ -89,7 +92,9 @@ def test_detect_skips_existing_output_video(capsys):
         {"id": "output-id", "name": "output", "mimeType": drive_night_test.FOLDER_MIME}
     ]
     existing = [{"id": "video-id", "name": "video.mp4", "mimeType": "video/mp4"}]
-    with patch.object(drive_night_test, "get_drive_service", return_value=object()), patch.object(
+    with patch.dict(os.environ, {"GITHUB_OUTPUT": ""}), patch.object(
+        drive_night_test, "get_drive_service", return_value=object()
+    ), patch.object(
         drive_night_test,
         "resolve_night_test",
         return_value=({"id": "night-id", "name": "night-test"}, items),
