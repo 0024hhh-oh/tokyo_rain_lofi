@@ -166,12 +166,13 @@ def test_workflow_no_longer_exports_fixed_target_seconds():
 
 def test_workflow_does_not_run_google_drive_upload_after_youtube_success():
     text = workflow_text()
+    production_job = text.split("  generate:", 1)[1]
 
-    assert "upload_to_drive" not in text
-    assert "actions/upload-artifact" not in text
-    assert "Upload MP4 to Google Drive" not in text
-    assert "Google Drive upload starting" not in text
-    assert "python scripts/upload_drive_output.py" not in text
+    assert "upload_to_drive" not in production_job
+    assert "actions/upload-artifact" not in production_job
+    assert "Upload MP4 to Google Drive" not in production_job
+    assert "Google Drive upload starting" not in production_job
+    assert "python scripts/upload_drive_output.py" not in production_job
 
 
 def test_youtube_secrets_are_passed_to_all_upload_paths():
@@ -202,3 +203,26 @@ def test_workflow_successful_youtube_upload_still_moves_completed():
 
     assert "python scripts/upload_youtube_video.py" in loop
     assert "--destination completed" in success_branch
+
+
+def test_night_test_is_an_isolated_one_track_30_second_drive_return_job():
+    text = workflow_text()
+    night_job = text.split("  night-test:", 1)[1].split("  generate:", 1)[0]
+    production_job = text.split("  generate:", 1)[1]
+
+    assert "python scripts/night_test_drive.py detect" in night_job
+    assert "python scripts/night_test_drive.py download" in night_job
+    assert "bash scripts/render_night_background.sh" in night_job
+    assert "29.9 <= duration <= 30.1" in night_job
+    assert "--output-name video.mp4" in night_job
+    assert "steps.night_output.outputs.output_folder_id" in night_job
+    assert "python scripts/upload_youtube_video.py" not in night_job
+    assert "python scripts/drive_incoming_queue.py detect" in production_job
+    assert "python scripts/upload_youtube_video.py" in production_job
+
+
+def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
+    detector = (Path(__file__).resolve().parents[1] / "scripts/drive_incoming_queue.py").read_text()
+
+    assert "require_exactly_20_tracks=True" in detector
+    assert "mp3音源は20曲ちょうど必要です" in detector

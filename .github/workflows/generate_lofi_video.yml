@@ -35,6 +35,85 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  night-test:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.DRIVE_FOLDER_ID == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node for Remotion
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install night-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install google-api-python-client google-auth
+
+      - name: Detect isolated Drive night-test
+        id: night
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+        run: python scripts/night_test_drive.py detect
+
+      - name: Download night-test background
+        if: ${{ steps.night.outputs.found == 'true' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          rm -rf video_assets dist public/background.png
+          python scripts/night_test_drive.py download \
+            --folder-id "${{ steps.night.outputs.folder_id }}" \
+            --output-dir video_assets
+
+      - name: Render 30-second Remotion night-test
+        if: ${{ steps.night.outputs.found == 'true' }}
+        env:
+          ASSET_DIR: video_assets
+        run: |
+          echo "night-test stage=remotion-render"
+          bash scripts/render_night_background.sh
+          test -s video_assets/background.mp4 || {
+            echo "night-test Remotion render failed: video_assets/background.mp4 was not created" >&2
+            exit 1
+          }
+          duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 video_assets/background.mp4)"
+          python - "${duration}" <<'PY'
+          import sys
+          duration = float(sys.argv[1])
+          if not 29.9 <= duration <= 30.1:
+              raise SystemExit(f"night-test duration must be 30 seconds; got {duration}")
+          print(f"night-test duration verified: {duration:.3f}s")
+          PY
+
+      - name: Ensure Drive night-test output folder
+        if: ${{ steps.night.outputs.found == 'true' }}
+        id: night_output
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python scripts/night_test_drive.py ensure-output \
+            --folder-id "${{ steps.night.outputs.folder_id }}"
+
+      - name: Return night-test video to Drive
+        if: ${{ steps.night.outputs.found == 'true' }}
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "night-test stage=drive-return"
+          python scripts/upload_drive_output.py \
+            --file video_assets/background.mp4 \
+            --output-name video.mp4 \
+            --output-folder-id "${{ steps.night_output.outputs.output_folder_id }}"
+
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 120
