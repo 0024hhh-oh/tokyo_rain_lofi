@@ -75,6 +75,7 @@ jobs:
             track_count=""
             output_file=""
             youtube_title=""
+            project_mode=""
             while IFS='=' read -r key value; do
               case "${key}" in
                 found) found="${value}" ;;
@@ -83,6 +84,7 @@ jobs:
                 track_count) track_count="${value}" ;;
                 output_file) output_file="${value}" ;;
                 youtube_title) youtube_title="${value}" ;;
+                project_mode) project_mode="${value}" ;;
               esac
             done < "${incoming_output}"
             rm -f "${incoming_output}"
@@ -94,6 +96,7 @@ jobs:
 
             echo "incoming selected work_folder_id=${work_folder_id}"
             echo "incoming selected work_folder_name=${work_folder_name}"
+            echo "incoming selected project_mode=${project_mode}"
             echo "asset acquisition method=incoming-queue"
 
             rm -rf video_assets dist
@@ -107,6 +110,15 @@ jobs:
               export OUTPUT_DIR=dist
               export OUTPUT_FILE="${output_file}"
               echo "Output file: dist/${OUTPUT_FILE}"
+              if [[ "${project_mode}" == "night" ]]; then
+                echo "Night project: applying approved three-light irregular animation."
+                bash scripts/render_night_background.sh
+              elif [[ "${project_mode}" == "day" ]]; then
+                echo "Day project: keeping the supplied background unchanged."
+              else
+                echo "Unsupported project_mode: ${project_mode}" >&2
+                exit 1
+              fi
               echo "Using the project background video as a silent visual loop."
               echo "Using audio_source/rain_audio_source.mp4 as the separate rain soundtrack."
               scripts/generate_lofi_video.sh
@@ -132,7 +144,7 @@ jobs:
               failed_count=$((failed_count + 1))
             fi
 
-            unset found work_folder_id work_folder_name track_count output_file youtube_title
+            unset found work_folder_id work_folder_name track_count output_file youtube_title project_mode
           done
 
           echo "incoming processing summary: completed=${processed_count} failed=${failed_count}"
