@@ -74,5 +74,21 @@ test('production night renderer uses the approved three-light sparse mixed behav
   assert.doesNotMatch(component, /random\(|Math\.random|Math\.sin|cycle/i);
   assert.doesNotMatch(component, /clipPath|mixBlendMode|glowOpacity/);
   assert.match(renderer, /safe_zone_count/);
-  assert.match(renderer, /safe_zone_count" != "3"/);
+  assert.match(renderer, /rain animation will still be rendered/);
+});
+
+test('subtle deterministic rain is shared by day and night compositions', () => {
+  const rain = fs.readFileSync('src/RainLayer.tsx', 'utf8');
+  const day = fs.readFileSync('src/DayRainLoop.tsx', 'utf8');
+  const night = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
+  const dayRenderer = fs.readFileSync('scripts/render_day_background.sh', 'utf8');
+
+  assert.match(rain, /const DROP_COUNT = 84/);
+  assert.match(rain, /const LOOP_FRAMES = 900/);
+  assert.match(rain, /opacity = 0\.08 \+ drop\.depth \* 0\.13/);
+  assert.doesNotMatch(rain, /Math\.random|random\(/);
+  assert.match(day, /<RainLayer \/>/);
+  assert.match(night, /<RainLayer \/>/);
+  assert.match(dayRenderer, /DayRainLoop/);
+  assert.match(dayRenderer, /background\.mp4/);
 });
