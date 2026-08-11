@@ -16,7 +16,7 @@ test('lighting visual test is manual-only and isolated from production services'
 });
 
 test('lighting visual test renders native 1080p for eight seconds', () => {
-  assert.match(workflow, /tests\/lighting-visual-index\.ts/);
+  assert.match(workflow, /tests\/lighting-visual-index\.tsx/);
   assert.match(workflow, /--frames=0-239/);
   assert.match(workflow, /--crf=14/);
   assert.match(workflow, /Expected 1920x1080/);
