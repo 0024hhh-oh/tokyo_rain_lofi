@@ -32,3 +32,12 @@ test('lighting changes once from all-off to all-on at four seconds', () => {
   assert.match(component, /frame >= fps \* 4/);
   assert.doesNotMatch(component, /random\(|Math\.sin|cycle/i);
 });
+
+test('off-state masks are feathered and never use visible clipped rectangles', () => {
+  const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
+  assert.match(component, /featheredMask/);
+  assert.match(component, /rgba\(0, 0, 0, 0\.56\).*transparent 100%/);
+  assert.match(component, /!lightsOn/);
+  assert.doesNotMatch(component, /clipPath|inset\(/);
+  assert.doesNotMatch(component, /zone\.strength \* 0\.7/);
+});
