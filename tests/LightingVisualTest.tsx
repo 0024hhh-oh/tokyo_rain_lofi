@@ -26,11 +26,11 @@ type Flicker = {
 
 const MAX_LIGHTS = 3;
 const SAFE_MIN_WARMTH = 0.55;
-const SAFE_MAX_Y = 0.8;
+const SAFE_MAX_Y = 0.72;
 
 // The detector may find windows, street lamps, and wet-road reflections.
 // Keep only warm, independently bounded lights above the reflection-heavy
-// lower fifth of the image, then cap the animation at three locations.
+// lower 28% of the image, then cap the animation at three locations.
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
