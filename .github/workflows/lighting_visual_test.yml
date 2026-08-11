@@ -35,13 +35,13 @@ jobs:
         run: |
           npx tsc --noEmit --jsx react-jsx --module ESNext \
             --moduleResolution Bundler --target ES2022 --skipLibCheck \
-            tests/lighting-visual-index.ts tests/LightingVisualTest.tsx
+            tests/lighting-visual-index.tsx tests/LightingVisualTest.tsx
 
       - name: Render 8-second 1080p lighting test
         run: |
           mkdir -p dist
           npx remotion render \
-            tests/lighting-visual-index.ts \
+            tests/lighting-visual-index.tsx \
             LightingVisualTest \
             dist/lighting-visual-test.mp4 \
             --codec=h264 \
