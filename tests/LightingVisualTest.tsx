@@ -34,6 +34,7 @@ const SAFE_MAX_Y = 0.8;
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
+const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
 // Each light has different start times, durations, and dim levels. The events
 // are deliberately non-overlapping so no two locations switch together.
@@ -82,7 +83,7 @@ export const LightingVisualTest: React.FC = () => {
         style={{height: '100%', objectFit: 'cover', width: '100%'}}
       />
 
-      {lighting.animate && safeLightZones.map((zone, index) => {
+      {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
         const mask = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)`;
         return (
