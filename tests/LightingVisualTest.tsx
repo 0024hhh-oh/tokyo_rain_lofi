@@ -36,23 +36,20 @@ const safeLightZones = (lighting.zones as LightZone[])
   .slice(0, MAX_LIGHTS);
 const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
-// Each light has different start times, durations, and dim levels. The events
-// are deliberately non-overlapping so no two locations switch together.
+// Two lights dim and one light brightens. Event counts, gaps, durations, and
+// strengths intentionally differ so the scene never settles into a rhythm.
+// Events are also non-overlapping so no two locations switch together.
 const flickerSchedules: Flicker[][] = [
   [
-    {start: 0.72, end: 0.92, level: 0.78},
-    {start: 4.96, end: 5.30, level: 0.72},
-    {start: 7.32, end: 7.47, level: 0.82},
+    {start: 0.85, end: 0.99, level: 0.76},
+    {start: 5.95, end: 6.28, level: 0.80},
   ],
   [
-    {start: 1.38, end: 1.50, level: 0.74},
-    {start: 3.55, end: 3.82, level: 0.80},
-    {start: 6.54, end: 6.91, level: 0.70},
+    {start: 3.45, end: 4.05, level: 0.72},
   ],
   [
-    {start: 2.06, end: 2.36, level: 0.71},
-    {start: 4.18, end: 4.35, level: 0.81},
-    {start: 5.76, end: 5.99, level: 0.76},
+    {start: 2.90, end: 3.10, level: 1.14},
+    {start: 7.15, end: 7.56, level: 1.10},
   ],
 ];
 
@@ -66,7 +63,9 @@ const getBrightness = (seconds: number, flickers: Flicker[]) => {
       [1, flicker.level, flicker.level, 1],
       {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
     );
-    brightness = Math.min(brightness, level);
+    if (Math.abs(level - 1) > Math.abs(brightness - 1)) {
+      brightness = level;
+    }
   }
   return brightness;
 };
