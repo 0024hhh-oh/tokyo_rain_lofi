@@ -48,8 +48,8 @@ const flickerSchedules: Flicker[][] = [
     {start: 3.45, end: 4.05, level: 0.72},
   ],
   [
-    {start: 2.90, end: 3.10, level: 1.14},
-    {start: 7.15, end: 7.56, level: 1.10},
+    {start: 2.90, end: 3.10, level: 1.35},
+    {start: 7.15, end: 7.56, level: 1.28},
   ],
 ];
 
