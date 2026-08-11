@@ -28,6 +28,7 @@ BACKGROUND_LOOP_MOV_NAME = "background_loop.mov"
 IMAGE_MIME_PREFIX = "image/"
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "application/octet-stream"}
 SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
+PROJECT_MODES = ("day", "night")
 
 
 def quote_drive_query(value: str) -> str:
@@ -368,17 +369,44 @@ def detect(args: argparse.Namespace) -> None:
     )
     project_folders = [item for item in project_items if is_folder(item)]
     print(f"Projects folder id: {projects['id']}")
-    print(f"Projects内の作品フォルダ数: {len(project_folders)}")
+    print(f"Projects内の直下フォルダ数: {len(project_folders)}")
     for item in project_items:
         if not is_folder(item):
             print(f"Projects直下ファイルは読み取り専用扱いでスキップ: {describe_drive_item(item)}")
     found_false_reasons: list[str] = []
-    work_folders = project_folders
+    queue_folders = {
+        normalized_drive_name(folder): folder
+        for folder in project_folders
+        if normalized_drive_name(folder) in PROJECT_MODES
+    }
+    work_folders: list[tuple[str, dict]] = []
+    for mode in PROJECT_MODES:
+        queue = queue_folders.get(mode)
+        if not queue:
+            reason = f"Projects/{mode} フォルダがありません"
+            found_false_reasons.append(reason)
+            print(f"スキップ理由: {reason}")
+            continue
+        queue_items = list_files(
+            service,
+            f"'{quote_drive_query(queue['id'])}' in parents and trashed = false",
+            fields="files(id,name,mimeType,createdTime,modifiedTime,parents,shortcutDetails)",
+        )
+        queue_work_folders = [item for item in queue_items if is_folder(item)]
+        print(f"Projects/{mode} folder id: {queue['id']}")
+        print(f"Projects/{mode}内の作品フォルダ数: {len(queue_work_folders)}")
+        for item in queue_items:
+            if not is_folder(item):
+                print(
+                    f"Projects/{mode}直下ファイルは読み取り専用扱いでスキップ: "
+                    f"{describe_drive_item(item)}"
+                )
+        work_folders.extend((mode, folder) for folder in queue_work_folders)
     if not work_folders:
-        reason = "Projects内に作品フォルダがありません"
+        reason = "Projects/day と Projects/night 内に作品フォルダがありません"
         found_false_reasons.append(reason)
         print(f"スキップ理由: {reason}")
-    for folder in work_folders:
+    for mode, folder in work_folders:
         if folder_exists(service, completed["id"], folder["name"]):
             reason = f"{folder['name']} - completed に同名フォルダがあるためスキップ"
             found_false_reasons.append(reason)
@@ -392,7 +420,7 @@ def detect(args: argparse.Namespace) -> None:
             found_false_reasons.append(reason)
             print(f"スキップ理由: {reason}")
             continue
-        print(f"処理対象: {folder['name']} - {message}")
+        print(f"処理対象: Projects/{mode}/{folder['name']} - {message}")
         print(f"最終的に選ばれた folder id: {folder['id']}")
         stem = safe_file_stem(folder["name"])
         write_github_output(
@@ -403,7 +431,8 @@ def detect(args: argparse.Namespace) -> None:
                 "track_count": str(track_count),
                 "output_file": f"{stem}.mp4",
                 "youtube_title": folder["name"].replace("_", " "),
-                "source_queue": "projects",
+                "source_queue": f"projects/{mode}",
+                "project_mode": mode,
             }
         )
         return

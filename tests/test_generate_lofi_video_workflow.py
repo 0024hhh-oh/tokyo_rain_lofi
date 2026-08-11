@@ -224,10 +224,23 @@ def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
     assert "mp3音源は20曲ちょうど必要です" in detector
 
 
-def test_production_job_has_no_remotion_lighting_mutation():
+def test_production_job_applies_lighting_only_to_night_projects():
     production_job = workflow_text().split("  generate:", 1)[1]
 
-    assert "render_night_background.sh" not in production_job
+    assert 'if [[ "${project_mode}" == "night" ]]; then' in production_job
+    assert "bash scripts/render_night_background.sh" in production_job
+    assert 'elif [[ "${project_mode}" == "day" ]]; then' in production_job
+    assert "Day project: keeping the supplied background unchanged." in production_job
+    assert production_job.index('if [[ "${project_mode}" == "night" ]]; then') < production_job.index("scripts/generate_lofi_video.sh")
+
+
+def test_workflow_reads_mode_from_detector_and_clears_it_between_projects():
+    text = workflow_text()
+
+    assert 'project_mode=""' in text
+    assert 'project_mode) project_mode="${value}" ;;' in text
+    assert 'echo "incoming selected project_mode=${project_mode}"' in text
+    assert "unset found work_folder_id work_folder_name track_count output_file youtube_title project_mode" in text
 
 
 def test_night_test_renderer_requires_motion_audio_and_exact_duration():
