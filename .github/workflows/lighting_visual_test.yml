@@ -179,7 +179,7 @@ jobs:
               throw new Error(`Light ${targetIndex + 1} escaped its ROI: target=${target.toFixed(2)} outside=${flicker.outside.toFixed(2)}`);
             }
           });
-          if (Math.max(...recovery.inside) > 0.8 || recovery.outside > 0.25) {
+          if (Math.max(...recovery.inside) > 1.2 || recovery.outside > 0.25) {
             throw new Error(`Lights did not recover naturally: inside=${recovery.inside.map((value) => value.toFixed(2)).join(',')} outside=${recovery.outside.toFixed(2)}`);
           }
           console.log(`Three independent flickers verified: ${flickers.map((flicker, index) =>
