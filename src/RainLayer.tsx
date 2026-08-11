@@ -1,6 +1,6 @@
 import {AbsoluteFill, interpolate, useCurrentFrame} from 'remotion';
 
-const DROP_COUNT = 84;
+const DROP_COUNT = 220;
 const LOOP_FRAMES = 900;
 const DROP_LIFETIMES = [30, 36, 45, 50, 60, 75];
 
@@ -27,10 +27,10 @@ export const RainLayer: React.FC = () => {
       {drops.map((drop, index) => {
         const localFrame = (frame + drop.delay) % drop.lifetime;
         const progress = localFrame / drop.lifetime;
-        const length = 18 + drop.depth * 32;
-        const opacity = 0.08 + drop.depth * 0.13;
-        const width = 0.65 + drop.depth * 0.75;
-        const xDrift = interpolate(progress, [0, 1], [-24, 28]);
+        const length = 26 + drop.depth * 46;
+        const opacity = 0.16 + drop.depth * 0.32;
+        const width = 0.8 + drop.depth * 1.1;
+        const xDrift = interpolate(progress, [0, 1], [-28, 34]);
         const y = interpolate(progress, [0, 1], [-80, 1160]);
 
         return (
@@ -38,9 +38,9 @@ export const RainLayer: React.FC = () => {
             key={index}
             style={{
               background:
-                'linear-gradient(180deg, rgba(225,235,240,0), rgba(225,235,240,0.88))',
+                'linear-gradient(180deg, rgba(225,235,240,0), rgba(235,242,246,0.96))',
               borderRadius: 999,
-              filter: `blur(${0.25 + (1 - drop.depth) * 0.45}px)`,
+              filter: `blur(${0.15 + (1 - drop.depth) * 0.35}px)`,
               height: length,
               left: `${drop.left}%`,
               opacity,
