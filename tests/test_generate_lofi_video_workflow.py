@@ -216,6 +216,7 @@ def test_workflow_runs_only_the_original_generate_job():
     assert "python scripts/upload_youtube_video.py" in jobs
     assert "--destination completed" in jobs
 
+
 def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
     detector = (Path(__file__).resolve().parents[1] / "scripts/drive_incoming_queue.py").read_text()
 
