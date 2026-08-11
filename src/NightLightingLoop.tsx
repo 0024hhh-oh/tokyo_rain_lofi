@@ -7,6 +7,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import lighting from './generated-light-zones.json';
+import {RainLayer} from './RainLayer';
 
 type LightZone = {
   id: string;
@@ -100,6 +101,7 @@ export const NightLightingLoop: React.FC = () => {
           </AbsoluteFill>
         );
       })}
+      <RainLayer />
     </AbsoluteFill>
   );
 };
