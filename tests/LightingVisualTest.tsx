@@ -1,21 +1,42 @@
-import {AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
-import lighting from '../src/generated-light-zones.json';
+import {
+  AbsoluteFill,
+  Img,
+  interpolate,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from 'remotion';
 
-type LightZone = {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  warmth: number;
-  strength: number;
-};
+const flickerSeconds = [
+  0,
+  1.56, 1.68, 1.78, 1.88, 1.98,
+  4.48, 4.58, 4.67, 4.77,
+  6.72, 6.82, 6.92, 7.02,
+  8,
+];
+
+const flickerBrightness = [
+  1,
+  1, 0.7, 0.94, 0.76, 1,
+  1, 0.82, 0.72, 1,
+  1, 0.7, 0.92, 1,
+  1,
+];
+
+// This mask is intentionally tied to the single red lantern in the supplied
+// visual-test scene. It must not include the vending machine, windows, street
+// lamps, or road reflections.
+const lanternMask = 'radial-gradient(ellipse 2.35% 5.4% at 52.6% 48.2%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)';
 
 export const LightingVisualTest: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const lightsOn = frame >= fps * 4;
-  const zones = lighting.zones as LightZone[];
+  const lanternBrightness = interpolate(
+    frame,
+    flickerSeconds.map((second) => second * fps),
+    flickerBrightness,
+    {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
+  );
 
   return (
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
@@ -24,43 +45,18 @@ export const LightingVisualTest: React.FC = () => {
         style={{height: '100%', objectFit: 'cover', width: '100%'}}
       />
 
-      {lighting.animate && zones.map((zone) => {
-        const radiusX = zone.width * 72;
-        const radiusY = zone.height * 72;
-        const featheredMask = `radial-gradient(ellipse ${radiusX}% ${radiusY}% at ${zone.x * 100}% ${zone.y * 100}%, black 0%, rgba(0, 0, 0, 0.94) 34%, rgba(0, 0, 0, 0.56) 62%, transparent 100%)`;
-        const glowOpacity = lightsOn ? zone.strength * (0.06 + zone.warmth * 0.04) : 0;
-
-        return (
-          <div key={zone.id}>
-            {!lightsOn && (
-              <AbsoluteFill
-                style={{
-                  filter: `brightness(${0.27 + (1 - zone.strength) * 0.08}) saturate(0.58)`,
-                  maskImage: featheredMask,
-                  WebkitMaskImage: featheredMask,
-                }}
-              >
-                <Img
-                  src={staticFile('background.png')}
-                  style={{height: '100%', objectFit: 'cover', width: '100%'}}
-                />
-              </AbsoluteFill>
-            )}
-            <div
-              style={{
-                background: `radial-gradient(ellipse, rgba(255, ${Math.round(185 + zone.warmth * 35)}, 128, ${glowOpacity}) 0%, rgba(255, 174, 96, 0) 72%)`,
-                height: `${zone.height * 112}%`,
-                left: `${zone.x * 100}%`,
-                mixBlendMode: 'screen',
-                position: 'absolute',
-                top: `${zone.y * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                width: `${zone.width * 112}%`,
-              }}
-            />
-          </div>
-        );
-      })}
+      <AbsoluteFill
+        style={{
+          filter: `brightness(${lanternBrightness}) saturate(${0.9 + lanternBrightness * 0.1})`,
+          maskImage: lanternMask,
+          WebkitMaskImage: lanternMask,
+        }}
+      >
+        <Img
+          src={staticFile('background.png')}
+          style={{height: '100%', objectFit: 'cover', width: '100%'}}
+        />
+      </AbsoluteFill>
     </AbsoluteFill>
   );
 };

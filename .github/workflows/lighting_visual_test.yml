@@ -37,13 +37,13 @@ jobs:
           cat test_assets/lighting-real-scene.jpg.b64.* | base64 --decode > video_assets/background.jpg
           node scripts/prepare_remotion_background.mjs video_assets
           node --input-type=module <<'NODE'
-          import fs from 'node:fs';
+          import sharp from 'sharp';
 
-          const lighting = JSON.parse(fs.readFileSync('src/generated-light-zones.json', 'utf8'));
-          if (!lighting.animate || lighting.zones.length < 1) {
-            throw new Error(`Expected at least one detected light zone; got ${lighting.zones.length}`);
+          const metadata = await sharp('public/background.png').metadata();
+          if (metadata.width !== 1920 || metadata.height !== 1080) {
+            throw new Error(`Expected prepared 1920x1080 background; got ${metadata.width}x${metadata.height}`);
           }
-          console.log(`Detected ${lighting.zones.length} real-scene light zones.`);
+          console.log('Prepared real-scene background at 1920x1080.');
           NODE
 
       - name: Type-check isolated lighting test
@@ -65,7 +65,7 @@ jobs:
             --frames=0-239 \
             --log=verbose
 
-      - name: Verify 1080p, duration, and one off-to-on change
+      - name: Verify 1080p, duration, and lantern-only flicker
         run: |
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
@@ -87,21 +87,64 @@ jobs:
 
           validation_dir="$(mktemp -d)"
           trap 'rm -rf "$validation_dir"' EXIT
-          ffmpeg -v error -ss 2 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/off.png"
-          ffmpeg -v error -ss 6 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/on.png"
-          node --input-type=module - "$validation_dir/off.png" "$validation_dir/on.png" <<'NODE'
+          ffmpeg -v error -ss 1.00 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/steady.png"
+          ffmpeg -v error -ss 1.70 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/dim.png"
+          ffmpeg -v error -ss 2.10 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/recovered.png"
+          node --input-type=module - \
+            "$validation_dir/steady.png" \
+            "$validation_dir/dim.png" \
+            "$validation_dir/recovered.png" <<'NODE'
           import sharp from 'sharp';
 
-          const [offFile, onFile] = process.argv.slice(2);
-          const luma = async (file) => {
-            const {channels} = await sharp(file).stats();
-            return channels[0].mean * 0.2126 + channels[1].mean * 0.7152 + channels[2].mean * 0.0722;
+          const [steadyFile, dimFile, recoveredFile] = process.argv.slice(2);
+          const decode = async (file) => sharp(file)
+            .removeAlpha()
+            .raw()
+            .toBuffer({resolveWithObject: true});
+          const [steady, dim, recovered] = await Promise.all([
+            decode(steadyFile), decode(dimFile), decode(recoveredFile),
+          ]);
+          const roi = {left: 960, top: 440, right: 1070, bottom: 590};
+          const compare = (first, second) => {
+            let inside = 0;
+            let insidePixels = 0;
+            let outside = 0;
+            let outsidePixels = 0;
+            const {width, height, channels} = first.info;
+            for (let y = 0; y < height; y += 1) {
+              for (let x = 0; x < width; x += 1) {
+                const offset = (y * width + x) * channels;
+                const delta = (
+                  Math.abs(first.data[offset] - second.data[offset]) +
+                  Math.abs(first.data[offset + 1] - second.data[offset + 1]) +
+                  Math.abs(first.data[offset + 2] - second.data[offset + 2])
+                ) / 3;
+                if (x >= roi.left && x < roi.right && y >= roi.top && y < roi.bottom) {
+                  inside += delta;
+                  insidePixels += 1;
+                } else {
+                  outside += delta;
+                  outsidePixels += 1;
+                }
+              }
+            }
+            return {inside: inside / insidePixels, outside: outside / outsidePixels};
           };
-          const off = await luma(offFile);
-          const on = await luma(onFile);
-          const delta = on - off;
-          if (delta < 0.15) throw new Error(`Off-to-on change is too weak: delta=${delta.toFixed(2)}`);
-          console.log(`Off-to-on change verified: delta=${delta.toFixed(2)}`);
+          const flicker = compare(steady, dim);
+          const recovery = compare(steady, recovered);
+          if (flicker.inside < 2) {
+            throw new Error(`Lantern flicker is too weak: inside=${flicker.inside.toFixed(2)}`);
+          }
+          if (flicker.outside > Math.max(0.35, flicker.inside * 0.08)) {
+            throw new Error(`Flicker escaped lantern ROI: inside=${flicker.inside.toFixed(2)} outside=${flicker.outside.toFixed(2)}`);
+          }
+          if (recovery.inside > 0.8 || recovery.outside > 0.25) {
+            throw new Error(`Lantern did not recover naturally: inside=${recovery.inside.toFixed(2)} outside=${recovery.outside.toFixed(2)}`);
+          }
+          console.log(
+            `Lantern-only flicker verified: inside=${flicker.inside.toFixed(2)} ` +
+            `outside=${flicker.outside.toFixed(2)} recovery=${recovery.inside.toFixed(2)}`,
+          );
           NODE
 
       - name: Upload MP4 artifact
