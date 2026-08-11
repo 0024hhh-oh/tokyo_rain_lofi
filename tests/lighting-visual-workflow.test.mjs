@@ -27,21 +27,34 @@ test('lighting visual test uses the supplied real scene at native 1080p', () => 
   assert.match(workflow, /path: dist\/lighting-visual-test\.mp4/);
 });
 
-test('only the fixed lantern region uses deterministic irregular flicker', () => {
+test('two lights dim and one brightens on sparse irregular schedules', () => {
   const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
-  assert.match(component, /const lanternMask/);
-  assert.match(component, /52\.6% 48\.2%/);
+  assert.match(component, /generated-light-zones\.json/);
+  assert.match(component, /const MAX_LIGHTS = 3/);
+  assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
+  assert.match(component, /SAFE_MAX_Y = 0\.72/);
+  assert.match(component, /slice\(0, MAX_LIGHTS\)/);
+  assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
+  assert.match(component, /lighting\.animate && hasThreeSafeLights/);
   assert.match(component, /interpolate\(/);
-  assert.match(component, /1\.56, 1\.68, 1\.78, 1\.88, 1\.98/);
-  assert.doesNotMatch(component, /generated-light-zones|lighting\.zones/);
+  assert.match(component, /start: 0\.85, end: 0\.99, level: 0\.76/);
+  assert.match(component, /start: 5\.95, end: 6\.28, level: 0\.80/);
+  assert.match(component, /start: 3\.45, end: 4\.05, level: 0\.72/);
+  assert.match(component, /start: 2\.90, end: 3\.10, level: 1\.35/);
+  assert.match(component, /start: 7\.15, end: 7\.56, level: 1\.28/);
+  assert.match(component, /Math\.abs\(level - 1\)/);
+  assert.doesNotMatch(component, /Math\.min\(brightness, level\)/);
+  assert.doesNotMatch(component, /lanternMask|52\.6% 48\.2%/);
   assert.doesNotMatch(component, /random\(|Math\.random|Math\.sin|cycle/i);
 });
 
-test('lantern mask is feathered and never changes global light regions', () => {
+test('three masks are feathered and never change global light regions', () => {
   const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
-  assert.match(component, /ellipse 2\.35% 5\.4%/);
+  assert.match(component, /zone\.width \* 50/);
+  assert.match(component, /zone\.height \* 50/);
   assert.match(component, /rgba\(0, 0, 0, 0\.48\) 80%, transparent 100%/);
-  assert.match(component, /vending machine, windows, street/);
+  assert.match(component, /windows, street lamps, and wet-road reflections/);
+  assert.match(component, /non-overlapping/);
   assert.doesNotMatch(component, /clipPath|inset\(/);
   assert.doesNotMatch(component, /mixBlendMode|screen|glowOpacity/);
 });

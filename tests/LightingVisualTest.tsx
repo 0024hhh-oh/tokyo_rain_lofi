@@ -6,37 +6,74 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+import lighting from '../src/generated-light-zones.json';
 
-const flickerSeconds = [
-  0,
-  1.56, 1.68, 1.78, 1.88, 1.98,
-  4.48, 4.58, 4.67, 4.77,
-  6.72, 6.82, 6.92, 7.02,
-  8,
+type LightZone = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  warmth: number;
+  strength: number;
+};
+
+type Flicker = {
+  start: number;
+  end: number;
+  level: number;
+};
+
+const MAX_LIGHTS = 3;
+const SAFE_MIN_WARMTH = 0.55;
+const SAFE_MAX_Y = 0.72;
+
+// The detector may find windows, street lamps, and wet-road reflections.
+// Keep only warm, independently bounded lights above the reflection-heavy
+// lower 28% of the image, then cap the animation at three locations.
+const safeLightZones = (lighting.zones as LightZone[])
+  .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
+  .slice(0, MAX_LIGHTS);
+const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
+
+// Two lights dim and one light brightens. Event counts, gaps, durations, and
+// strengths intentionally differ so the scene never settles into a rhythm.
+// Events are also non-overlapping so no two locations switch together.
+const flickerSchedules: Flicker[][] = [
+  [
+    {start: 0.85, end: 0.99, level: 0.76},
+    {start: 5.95, end: 6.28, level: 0.80},
+  ],
+  [
+    {start: 3.45, end: 4.05, level: 0.72},
+  ],
+  [
+    {start: 2.90, end: 3.10, level: 1.35},
+    {start: 7.15, end: 7.56, level: 1.28},
+  ],
 ];
 
-const flickerBrightness = [
-  1,
-  1, 0.7, 0.94, 0.76, 1,
-  1, 0.82, 0.72, 1,
-  1, 0.7, 0.92, 1,
-  1,
-];
-
-// This mask is intentionally tied to the single red lantern in the supplied
-// visual-test scene. It must not include the vending machine, windows, street
-// lamps, or road reflections.
-const lanternMask = 'radial-gradient(ellipse 2.35% 5.4% at 52.6% 48.2%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)';
+const getBrightness = (seconds: number, flickers: Flicker[]) => {
+  let brightness = 1;
+  for (const flicker of flickers) {
+    const fade = Math.min(0.07, (flicker.end - flicker.start) / 3);
+    const level = interpolate(
+      seconds,
+      [flicker.start, flicker.start + fade, flicker.end - fade, flicker.end],
+      [1, flicker.level, flicker.level, 1],
+      {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
+    );
+    if (Math.abs(level - 1) > Math.abs(brightness - 1)) {
+      brightness = level;
+    }
+  }
+  return brightness;
+};
 
 export const LightingVisualTest: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const lanternBrightness = interpolate(
-    frame,
-    flickerSeconds.map((second) => second * fps),
-    flickerBrightness,
-    {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
-  );
+  const seconds = frame / fps;
 
   return (
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
@@ -45,18 +82,25 @@ export const LightingVisualTest: React.FC = () => {
         style={{height: '100%', objectFit: 'cover', width: '100%'}}
       />
 
-      <AbsoluteFill
-        style={{
-          filter: `brightness(${lanternBrightness}) saturate(${0.9 + lanternBrightness * 0.1})`,
-          maskImage: lanternMask,
-          WebkitMaskImage: lanternMask,
-        }}
-      >
-        <Img
-          src={staticFile('background.png')}
-          style={{height: '100%', objectFit: 'cover', width: '100%'}}
-        />
-      </AbsoluteFill>
+      {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
+        const brightness = getBrightness(seconds, flickerSchedules[index]);
+        const mask = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)`;
+        return (
+          <AbsoluteFill
+            key={zone.id}
+            style={{
+              filter: `brightness(${brightness}) saturate(${0.9 + brightness * 0.1})`,
+              maskImage: mask,
+              WebkitMaskImage: mask,
+            }}
+          >
+            <Img
+              src={staticFile('background.png')}
+              style={{height: '100%', objectFit: 'cover', width: '100%'}}
+            />
+          </AbsoluteFill>
+        );
+      })}
     </AbsoluteFill>
   );
 };

@@ -43,7 +43,16 @@ jobs:
           if (metadata.width !== 1920 || metadata.height !== 1080) {
             throw new Error(`Expected prepared 1920x1080 background; got ${metadata.width}x${metadata.height}`);
           }
+          const lighting = JSON.parse(await import('node:fs/promises').then(({readFile}) =>
+            readFile('src/generated-light-zones.json', 'utf8')));
+          const safeZones = lighting.zones
+            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.72)
+            .slice(0, 3);
+          if (!lighting.animate || safeZones.length !== 3) {
+            throw new Error(`Expected exactly three safe warm lights; got ${safeZones.length}`);
+          }
           console.log('Prepared real-scene background at 1920x1080.');
+          console.log(`Selected three safe lights: ${safeZones.map((zone) => zone.id).join(', ')}`);
           NODE
 
       - name: Type-check isolated lighting test
@@ -65,7 +74,7 @@ jobs:
             --frames=0-239 \
             --log=verbose
 
-      - name: Verify 1080p, duration, and lantern-only flicker
+      - name: Verify 1080p, duration, and sparse mixed light changes
         run: |
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
@@ -87,27 +96,47 @@ jobs:
 
           validation_dir="$(mktemp -d)"
           trap 'rm -rf "$validation_dir"' EXIT
-          ffmpeg -v error -ss 1.00 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/steady.png"
-          ffmpeg -v error -ss 1.70 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/dim.png"
-          ffmpeg -v error -ss 2.10 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/recovered.png"
+          ffmpeg -v error -ss 0.30 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/steady.png"
+          ffmpeg -v error -ss 0.92 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-1.png"
+          ffmpeg -v error -ss 3.75 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-2.png"
+          ffmpeg -v error -ss 3.00 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-3.png"
+          ffmpeg -v error -ss 4.80 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/recovered.png"
           node --input-type=module - \
             "$validation_dir/steady.png" \
-            "$validation_dir/dim.png" \
+            "$validation_dir/light-1.png" \
+            "$validation_dir/light-2.png" \
+            "$validation_dir/light-3.png" \
             "$validation_dir/recovered.png" <<'NODE'
+          import fs from 'node:fs/promises';
           import sharp from 'sharp';
 
-          const [steadyFile, dimFile, recoveredFile] = process.argv.slice(2);
+          const [steadyFile, ...changedFiles] = process.argv.slice(2);
+          const recoveredFile = changedFiles.pop();
           const decode = async (file) => sharp(file)
             .removeAlpha()
             .raw()
             .toBuffer({resolveWithObject: true});
-          const [steady, dim, recovered] = await Promise.all([
-            decode(steadyFile), decode(dimFile), decode(recoveredFile),
+          const [steady, ...changedAndRecovered] = await Promise.all([
+            decode(steadyFile),
+            ...changedFiles.map(decode),
+            decode(recoveredFile),
           ]);
-          const roi = {left: 960, top: 440, right: 1070, bottom: 590};
+          const recovered = changedAndRecovered.pop();
+          const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
+          const zones = lighting.zones
+            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.72)
+            .slice(0, 3)
+            .map((zone) => ({
+              left: Math.max(0, Math.floor((zone.x - zone.width / 2) * 1920)),
+              top: Math.max(0, Math.floor((zone.y - zone.height / 2) * 1080)),
+              right: Math.min(1920, Math.ceil((zone.x + zone.width / 2) * 1920)),
+              bottom: Math.min(1080, Math.ceil((zone.y + zone.height / 2) * 1080)),
+            }));
+          if (zones.length !== 3) throw new Error(`Expected 3 validation zones; got ${zones.length}`);
+
           const compare = (first, second) => {
-            let inside = 0;
-            let insidePixels = 0;
+            const inside = zones.map(() => 0);
+            const insidePixels = zones.map(() => 0);
             let outside = 0;
             let outsidePixels = 0;
             const {width, height, channels} = first.info;
@@ -119,32 +148,42 @@ jobs:
                   Math.abs(first.data[offset + 1] - second.data[offset + 1]) +
                   Math.abs(first.data[offset + 2] - second.data[offset + 2])
                 ) / 3;
-                if (x >= roi.left && x < roi.right && y >= roi.top && y < roi.bottom) {
-                  inside += delta;
-                  insidePixels += 1;
+                const zoneIndex = zones.findIndex((zone) =>
+                  x >= zone.left && x < zone.right && y >= zone.top && y < zone.bottom);
+                if (zoneIndex >= 0) {
+                  inside[zoneIndex] += delta;
+                  insidePixels[zoneIndex] += 1;
                 } else {
                   outside += delta;
                   outsidePixels += 1;
                 }
               }
             }
-            return {inside: inside / insidePixels, outside: outside / outsidePixels};
+            return {
+              inside: inside.map((sum, index) => sum / insidePixels[index]),
+              outside: outside / outsidePixels,
+            };
           };
-          const flicker = compare(steady, dim);
+          const flickers = changedAndRecovered.map((frame) => compare(steady, frame));
           const recovery = compare(steady, recovered);
-          if (flicker.inside < 2) {
-            throw new Error(`Lantern flicker is too weak: inside=${flicker.inside.toFixed(2)}`);
+          flickers.forEach((flicker, targetIndex) => {
+            const target = flicker.inside[targetIndex];
+            const otherPeak = Math.max(...flicker.inside.filter((_, index) => index !== targetIndex));
+            if (target < 1) {
+              throw new Error(`Light ${targetIndex + 1} flicker is too weak: ${target.toFixed(2)}`);
+            }
+            if (otherPeak > Math.max(0.8, target * 0.15)) {
+              throw new Error(`Light ${targetIndex + 1} changed another light: target=${target.toFixed(2)} other=${otherPeak.toFixed(2)}`);
+            }
+            if (flicker.outside > Math.max(0.35, target * 0.08)) {
+              throw new Error(`Light ${targetIndex + 1} escaped its ROI: target=${target.toFixed(2)} outside=${flicker.outside.toFixed(2)}`);
+            }
+          });
+          if (Math.max(...recovery.inside) > 1.2 || recovery.outside > 0.25) {
+            throw new Error(`Lights did not recover naturally: inside=${recovery.inside.map((value) => value.toFixed(2)).join(',')} outside=${recovery.outside.toFixed(2)}`);
           }
-          if (flicker.outside > Math.max(0.35, flicker.inside * 0.08)) {
-            throw new Error(`Flicker escaped lantern ROI: inside=${flicker.inside.toFixed(2)} outside=${flicker.outside.toFixed(2)}`);
-          }
-          if (recovery.inside > 0.8 || recovery.outside > 0.25) {
-            throw new Error(`Lantern did not recover naturally: inside=${recovery.inside.toFixed(2)} outside=${recovery.outside.toFixed(2)}`);
-          }
-          console.log(
-            `Lantern-only flicker verified: inside=${flicker.inside.toFixed(2)} ` +
-            `outside=${flicker.outside.toFixed(2)} recovery=${recovery.inside.toFixed(2)}`,
-          );
+          console.log(`Sparse independent light changes verified: ${flickers.map((flicker, index) =>
+            `light-${index + 1}=${flicker.inside[index].toFixed(2)}`).join(' ')} outside<=${Math.max(...flickers.map((flicker) => flicker.outside)).toFixed(2)}`);
           NODE
 
       - name: Upload MP4 artifact
