@@ -178,9 +178,9 @@ def test_workflow_does_not_run_google_drive_upload_after_youtube_success():
 def test_youtube_secrets_are_passed_to_all_upload_paths():
     text = workflow_text()
 
-    assert text.count("YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}") == 3
-    assert text.count("YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}") == 3
-    assert text.count("YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}") == 3
+    assert text.count("YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}") == 2
+    assert text.count("YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}") == 2
+    assert text.count("YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}") == 2
     assert '--file "dist/${OUTPUT_FILE}"' in text
     assert '--file "dist/${{ inputs.output_file }}"' not in text
 
@@ -205,23 +205,16 @@ def test_workflow_successful_youtube_upload_still_moves_completed():
     assert "--destination completed" in success_branch
 
 
-def test_night_test_is_an_isolated_one_track_30_second_private_youtube_job():
+def test_workflow_runs_only_the_original_generate_job():
     text = workflow_text()
-    night_job = text.split("  night-test:", 1)[1].split("  generate:", 1)[0]
-    production_job = text.split("  generate:", 1)[1]
+    jobs = text.split("jobs:", 1)[1]
 
-    assert "python scripts/night_test_drive.py detect" in night_job
-    assert "python scripts/night_test_drive.py download" in night_job
-    assert "bash scripts/render_night_test_video.sh" in night_job
-    assert "--file dist/night-test.mp4" in night_job
-    assert "python scripts/upload_youtube_video.py" in night_job
-    assert '--title "Tokyo ChillMatic FM - Night Lighting Test"' in night_job
-    assert "python scripts/drive_incoming_queue.py move" in night_job
-    assert "--destination completed" in night_job
-    assert "python scripts/upload_drive_output.py" not in night_job
-    assert "python scripts/drive_incoming_queue.py detect" in production_job
-    assert "python scripts/upload_youtube_video.py" in production_job
-
+    assert "\n  generate:\n" in jobs
+    assert "\n  night-test:\n" not in jobs
+    assert jobs.count("\n  generate:\n") == 1
+    assert "Process all incoming work folders" in jobs
+    assert "python scripts/upload_youtube_video.py" in jobs
+    assert "--destination completed" in jobs
 
 def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
     detector = (Path(__file__).resolve().parents[1] / "scripts/drive_incoming_queue.py").read_text()
