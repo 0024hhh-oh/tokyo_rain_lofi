@@ -34,6 +34,8 @@ test('three image-specific warm lights use independent irregular flicker', () =>
   assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
   assert.match(component, /SAFE_MAX_Y = 0\.8/);
   assert.match(component, /slice\(0, MAX_LIGHTS\)/);
+  assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
+  assert.match(component, /lighting\.animate && hasThreeSafeLights/);
   assert.match(component, /interpolate\(/);
   assert.match(component, /start: 0\.72, end: 0\.92/);
   assert.match(component, /start: 1\.38, end: 1\.50/);
