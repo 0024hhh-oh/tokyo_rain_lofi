@@ -59,6 +59,7 @@ jobs:
             --codec=h264 \
             --crf=18 \
             --concurrency=2 \
+            --muted \
             --frames=0-899 \
             --log=verbose
       - name: Verify 1080p, 30 seconds, and no source audio
@@ -87,6 +88,7 @@ jobs:
           print(f"Verified silent output: {width}x{height}, {duration:.3f}s")
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: rain-video-lighting-test
           path: dist/rain-video-lighting-test.mp4

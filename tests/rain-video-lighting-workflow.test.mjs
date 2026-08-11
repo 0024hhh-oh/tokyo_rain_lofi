@@ -35,7 +35,9 @@ test('the approved three-light behavior is preserved over the moving background'
 
 test('CI renders a silent 30-second 1080p artifact', () => {
   assert.match(workflow, /--frames=0-899/);
+  assert.match(workflow, /--muted/);
   assert.match(workflow, /Expected a 30-second MP4/);
   assert.match(workflow, /Output must not contain an audio stream/);
   assert.match(workflow, /path: dist\/rain-video-lighting-test\.mp4/);
+  assert.match(workflow, /if: always\(\)/);
 });
