@@ -1,0 +1,114 @@
+name: Lighting visual test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lighting-visual-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-lighting-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node for Remotion
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          npm ci --no-audit --no-fund
+
+      - name: Create isolated night test image
+        run: |
+          mkdir -p video_assets dist
+          node --input-type=module <<'NODE'
+          import sharp from 'sharp';
+
+          const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+              <rect width="1920" height="1080" fill="#05070c"/>
+              <rect x="180" y="150" width="1560" height="790" rx="28" fill="#101722"/>
+              <rect x="260" y="260" width="280" height="190" rx="12" fill="#ffd58a"/>
+              <rect x="670" y="260" width="280" height="190" rx="12" fill="#ffca72"/>
+              <rect x="1080" y="260" width="280" height="190" rx="12" fill="#ffe1a6"/>
+              <rect x="465" y="580" width="280" height="190" rx="12" fill="#ffc46b"/>
+              <rect x="980" y="580" width="280" height="190" rx="12" fill="#ffd995"/>
+            </svg>`;
+
+          await sharp(Buffer.from(svg)).png().toFile('video_assets/background.png');
+          NODE
+
+      - name: Detect test light zones
+        run: |
+          node scripts/prepare_remotion_background.mjs video_assets
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const lighting = JSON.parse(fs.readFileSync('src/generated-light-zones.json', 'utf8'));
+          if (!lighting.animate || lighting.zones.length < 2) {
+            throw new Error(`Expected at least two animated light zones; got ${lighting.zones.length}`);
+          }
+          console.log(`Detected ${lighting.zones.length} isolated test light zones.`);
+          NODE
+
+      - name: Render 8-second Remotion lighting test
+        run: |
+          npx remotion render \
+            src/index.ts \
+            NightLightingLoop \
+            dist/lighting-visual-test.mp4 \
+            --codec=h264 \
+            --crf=20 \
+            --concurrency=2 \
+            --frames=0-239 \
+            --log=verbose
+
+      - name: Verify duration and visible off-to-on change
+        run: |
+          duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 dist/lighting-visual-test.mp4)"
+          python - "$duration" <<'PY'
+          import sys
+
+          duration = float(sys.argv[1])
+          if not 7.9 <= duration <= 8.1:
+              raise SystemExit(f"Expected an 8-second MP4; got {duration:.3f}s")
+          print(f"Lighting test duration verified: {duration:.3f}s")
+          PY
+
+          validation_dir="$(mktemp -d)"
+          trap 'rm -rf "$validation_dir"' EXIT
+          frames=()
+          for index in $(seq 0 15); do
+            timestamp="$(python - "$index" <<'PY'
+          import sys
+          print(float(sys.argv[1]) * 0.5)
+          PY
+          )"
+            frame="$validation_dir/frame-${index}.png"
+            ffmpeg -v error -ss "$timestamp" -i dist/lighting-visual-test.mp4 -frames:v 1 "$frame"
+            frames+=("$frame")
+          done
+          LIGHTING_ZONE_MIN_DELTA=18 LIGHTING_PEAK_MIN_DELTA=28 \
+            node scripts/validate_visible_lighting.mjs \
+              src/generated-light-zones.json "${frames[@]}"
+
+      - name: Upload MP4 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighting-visual-test-${{ github.run_id }}
+          path: dist/lighting-visual-test.mp4
+          if-no-files-found: error
+          retention-days: 7
