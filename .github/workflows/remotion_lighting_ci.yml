@@ -9,6 +9,7 @@ on:
       - "src/**"
       - "scripts/prepare_remotion_background.mjs"
       - "scripts/render_night_background.sh"
+      - "scripts/render_day_background.sh"
       - "scripts/night_test_drive.py"
       - "scripts/render_night_test_video.sh"
       - "scripts/validate_visible_lighting.mjs"
@@ -39,7 +40,7 @@ jobs:
           python -m pytest \
             tests/test_drive_night_test.py \
             tests/test_generate_lofi_video_workflow.py
-      - name: Render a six-second visibly changing lighting sample
+      - name: Render a six-second rain and lighting sample
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
