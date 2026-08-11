@@ -16,8 +16,7 @@ node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
 safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.warmth >= 0.55 && z.y < 0.72).slice(0, 3).length)")"
 if [[ "$animate" != "true" || "$safe_zone_count" != "3" ]]; then
-  echo "Remotion lighting skipped: the supplied image did not contain exactly three safe warm light candidates."
-  exit 0
+  echo "Night lighting skipped: no exact three-light match; rain animation will still be rendered."
 fi
 
 rm -f "$ASSET_DIR/background.mp4"
