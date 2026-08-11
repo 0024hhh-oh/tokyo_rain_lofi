@@ -27,17 +27,21 @@ test('lighting visual test uses the supplied real scene at native 1080p', () => 
   assert.match(workflow, /path: dist\/lighting-visual-test\.mp4/);
 });
 
-test('lighting changes once from all-off to all-on at four seconds', () => {
+test('only the fixed lantern region uses deterministic irregular flicker', () => {
   const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
-  assert.match(component, /frame >= fps \* 4/);
-  assert.doesNotMatch(component, /random\(|Math\.sin|cycle/i);
+  assert.match(component, /const lanternMask/);
+  assert.match(component, /52\.6% 48\.2%/);
+  assert.match(component, /interpolate\(/);
+  assert.match(component, /1\.56, 1\.68, 1\.78, 1\.88, 1\.98/);
+  assert.doesNotMatch(component, /generated-light-zones|lighting\.zones/);
+  assert.doesNotMatch(component, /random\(|Math\.random|Math\.sin|cycle/i);
 });
 
-test('off-state masks are feathered and never use visible clipped rectangles', () => {
+test('lantern mask is feathered and never changes global light regions', () => {
   const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
-  assert.match(component, /featheredMask/);
-  assert.match(component, /rgba\(0, 0, 0, 0\.56\).*transparent 100%/);
-  assert.match(component, /!lightsOn/);
+  assert.match(component, /ellipse 2\.35% 5\.4%/);
+  assert.match(component, /rgba\(0, 0, 0, 0\.48\) 80%, transparent 100%/);
+  assert.match(component, /vending machine, windows, street/);
   assert.doesNotMatch(component, /clipPath|inset\(/);
-  assert.doesNotMatch(component, /zone\.strength \* 0\.7/);
+  assert.doesNotMatch(component, /mixBlendMode|screen|glowOpacity/);
 });
