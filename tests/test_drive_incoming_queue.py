@@ -195,7 +195,7 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
                     return {
                         "id": fileId,
                         "name": next(f["name"] for f in folders if f["id"] == fileId),
-                        "parents": ["projects-id"],
+                        "parents": ["day-id"],
                     }
 
             return Request()
@@ -223,7 +223,15 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
         if "name = 'Projects'" in query:
             return [{"id": "projects-id", "name": "Projects"}]
         if "'projects-id' in parents" in query:
+            return [
+                {"id": "day-id", "name": "day", "mimeType": drive_incoming_queue.FOLDER_MIME},
+                {"id": "night-id", "name": "night", "mimeType": drive_incoming_queue.FOLDER_MIME},
+                {"id": "night-test-id", "name": "night-test", "mimeType": drive_incoming_queue.FOLDER_MIME},
+            ]
+        if "'day-id' in parents" in query:
             return [folder for folder in folders if folder["id"] in incoming_ids]
+        if "'night-id' in parents" in query:
+            return []
         for folder_id, children in children_by_folder.items():
             if f"'{folder_id}' in parents" in query:
                 return children
@@ -274,3 +282,72 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
     assert detected_names == ["音源024", "音源025"]
     assert moved_to_completed == ["work-024", "work-025"]
     assert incoming_ids == []
+
+
+def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
+    day_work = {
+        "id": "day-work",
+        "name": "Day Archive",
+        "mimeType": drive_incoming_queue.FOLDER_MIME,
+    }
+    night_work = {
+        "id": "night-work",
+        "name": "Night Archive",
+        "mimeType": drive_incoming_queue.FOLDER_MIME,
+    }
+
+    def fake_list_files(
+        _service,
+        query,
+        fields="files(id,name,mimeType,createdTime,modifiedTime,parents)",
+    ):
+        if "name = 'Projects'" in query:
+            return [{"id": "projects-id", "name": "Projects"}]
+        if "'projects-id' in parents" in query:
+            return [
+                {"id": "day-id", "name": "day", "mimeType": drive_incoming_queue.FOLDER_MIME},
+                {"id": "night-id", "name": "night", "mimeType": drive_incoming_queue.FOLDER_MIME},
+                {"id": "night-test-id", "name": "night-test", "mimeType": drive_incoming_queue.FOLDER_MIME},
+            ]
+        if "'day-id' in parents" in query:
+            return [day_work]
+        if "'night-id' in parents" in query:
+            return [night_work]
+        if "'day-work' in parents" in query or "'night-work' in parents" in query:
+            return [
+                {"id": "bg", "name": "background.png", "mimeType": "image/png"},
+                *make_tracks(20),
+            ]
+        return []
+
+    args = types.SimpleNamespace(
+        root_folder="Tokyo ChillMatic FM",
+        root_folder_id=None,
+        projects_folder="Projects",
+        incoming_folder="incoming",
+        completed_folder="completed",
+        failed_folder="failed",
+        folder_id=None,
+        destination=None,
+    )
+    with patch.object(
+        drive_incoming_queue, "get_drive_service", return_value=object()
+    ), patch.object(
+        drive_incoming_queue,
+        "resolve_root_folder",
+        return_value={"id": "root-id", "name": "root"},
+    ), patch.object(
+        drive_incoming_queue,
+        "ensure_child_folder",
+        side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
+    ), patch.object(
+        drive_incoming_queue, "list_files", side_effect=fake_list_files
+    ):
+        drive_incoming_queue.detect(args)
+
+    output = capsys.readouterr().out
+    assert "処理対象: Projects/day/Day Archive" in output
+    assert "work_folder_id=day-work" in output
+    assert "source_queue=projects/day" in output
+    assert "project_mode=day" in output
+    assert "night-test" not in output.split("処理対象:", 1)[-1]
