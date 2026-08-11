@@ -24,13 +24,8 @@ test -s "$TRACK_FILE" || {
 mkdir -p "$OUTPUT_DIR"
 validation_dir="$(mktemp -d)"
 trap 'rm -rf "$validation_dir"' EXIT
-readarray -t validation_seconds < <(python - "$NIGHT_TEST_SECONDS" <<'PY'
-import sys
-duration = float(sys.argv[1])
-for fraction in (0.05, 0.30, 0.55, 0.80):
-    print(max(0.05, duration * fraction))
-PY
-)
+# Compare one steady frame with the three approved irregular lighting events.
+validation_seconds=(0.30 0.92 3.00 3.75)
 validation_frames=()
 for index in "${!validation_seconds[@]}"; do
   frame="$validation_dir/frame-${index}.png"
