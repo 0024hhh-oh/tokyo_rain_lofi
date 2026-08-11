@@ -40,8 +40,8 @@ test('two lights dim and one brightens on sparse irregular schedules', () => {
   assert.match(component, /start: 0\.85, end: 0\.99, level: 0\.76/);
   assert.match(component, /start: 5\.95, end: 6\.28, level: 0\.80/);
   assert.match(component, /start: 3\.45, end: 4\.05, level: 0\.72/);
-  assert.match(component, /start: 2\.90, end: 3\.10, level: 1\.14/);
-  assert.match(component, /start: 7\.15, end: 7\.56, level: 1\.10/);
+  assert.match(component, /start: 2\.90, end: 3\.10, level: 1\.35/);
+  assert.match(component, /start: 7\.15, end: 7\.56, level: 1\.28/);
   assert.match(component, /Math\.abs\(level - 1\)/);
   assert.doesNotMatch(component, /Math\.min\(brightness, level\)/);
   assert.doesNotMatch(component, /lanternMask|52\.6% 48\.2%/);
