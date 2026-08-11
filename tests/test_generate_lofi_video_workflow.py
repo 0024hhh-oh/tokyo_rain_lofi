@@ -224,13 +224,14 @@ def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
     assert "mp3音源は20曲ちょうど必要です" in detector
 
 
-def test_production_job_applies_lighting_only_to_night_projects():
+def test_production_job_applies_rain_to_both_modes_and_lighting_only_to_night():
     production_job = workflow_text().split("  generate:", 1)[1]
 
     assert 'if [[ "${project_mode}" == "night" ]]; then' in production_job
     assert "bash scripts/render_night_background.sh" in production_job
     assert 'elif [[ "${project_mode}" == "day" ]]; then' in production_job
-    assert "Day project: keeping the supplied background unchanged." in production_job
+    assert "bash scripts/render_day_background.sh" in production_job
+    assert "Day project: applying subtle rain animation without lighting changes." in production_job
     assert production_job.index('if [[ "${project_mode}" == "night" ]]; then') < production_job.index("scripts/generate_lofi_video.sh")
 
 
