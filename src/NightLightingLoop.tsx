@@ -1,7 +1,7 @@
 import {
   AbsoluteFill,
   Img,
-  random,
+  interpolate,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
@@ -18,34 +18,60 @@ type LightZone = {
   strength: number;
 };
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
+type Flicker = {
+  start: number;
+  end: number;
+  level: number;
+};
 
-const getLightLevel = (
-  zone: LightZone,
-  frame: number,
-  fps: number,
-) => {
-  const seconds = frame / fps;
-  const cycleSeconds = 5.2 + random(`${zone.id}-cycle`) * 2.4;
-  const phase = random(`${zone.id}-phase`) * Math.PI * 2;
-  const wave = Math.sin((seconds / cycleSeconds) * Math.PI * 2 + phase);
+const MAX_LIGHTS = 3;
+const SAFE_MIN_WARMTH = 0.55;
+const SAFE_MAX_Y = 0.72;
 
-  // Cross the on/off boundary quickly enough to read as a light switching,
-  // while retaining a short eased transition instead of a harsh strobe.
-  const transition = clamp((wave + 0.16) / 0.32, 0, 1);
-  const switched = transition * transition * (3 - 2 * transition);
-  const slowDrift = Math.sin(
-    (seconds / (cycleSeconds * 2.7)) * Math.PI * 2 + phase * 0.41,
-  );
+const safeLightZones = (lighting.zones as LightZone[])
+  .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
+  .slice(0, MAX_LIGHTS);
+const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
-  return clamp(0.04 + switched * 0.92 + slowDrift * 0.025, 0.02, 1);
+// Two locations dim and one brightens. All events are sparse, non-overlapping,
+// and use different gaps and durations so the 30-second loop has no steady beat.
+const flickerSchedules: Flicker[][] = [
+  [
+    {start: 0.85, end: 0.99, level: 0.76},
+    {start: 5.95, end: 6.28, level: 0.80},
+    {start: 18.40, end: 18.71, level: 0.74},
+  ],
+  [
+    {start: 3.45, end: 4.05, level: 0.72},
+    {start: 23.10, end: 23.53, level: 0.78},
+  ],
+  [
+    {start: 2.90, end: 3.10, level: 1.35},
+    {start: 7.15, end: 7.56, level: 1.28},
+    {start: 13.60, end: 13.87, level: 1.32},
+    {start: 27.35, end: 27.83, level: 1.30},
+  ],
+];
+
+const getBrightness = (seconds: number, flickers: Flicker[]) => {
+  let brightness = 1;
+  for (const flicker of flickers) {
+    const fade = Math.min(0.07, (flicker.end - flicker.start) / 3);
+    const level = interpolate(
+      seconds,
+      [flicker.start, flicker.start + fade, flicker.end - fade, flicker.end],
+      [1, flicker.level, flicker.level, 1],
+      {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
+    );
+    if (Math.abs(level - 1) > Math.abs(brightness - 1)) brightness = level;
+  }
+  return brightness;
 };
 
 export const NightLightingLoop: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const zones = lighting.zones as LightZone[];
+  const seconds = frame / fps;
 
   return (
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
@@ -54,43 +80,24 @@ export const NightLightingLoop: React.FC = () => {
         style={{height: '100%', objectFit: 'cover', width: '100%'}}
       />
 
-      {lighting.animate && zones.map((zone) => {
-        const level = getLightLevel(zone, frame, fps);
-        const left = (zone.x - zone.width / 2) * 100;
-        const top = (zone.y - zone.height / 2) * 100;
-        const right = 100 - (zone.x + zone.width / 2) * 100;
-        const bottom = 100 - (zone.y + zone.height / 2) * 100;
-        const brightness = 0.36 + level * zone.strength * 1.5;
-        const glowOpacity = level * zone.strength * (0.24 + zone.warmth * 0.18);
+      {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
+        const brightness = getBrightness(seconds, flickerSchedules[index]);
+        const mask = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)`;
 
         return (
-          <div key={zone.id}>
-            <AbsoluteFill
-              style={{
-                clipPath: `inset(${top}% ${right}% ${bottom}% ${left}% round 14%)`,
-                filter: `brightness(${brightness}) saturate(${0.72 + level * zone.warmth * 0.48})`,
-                maskImage: `radial-gradient(ellipse at ${zone.x * 100}% ${zone.y * 100}%, black 0%, transparent 74%)`,
-                WebkitMaskImage: `radial-gradient(ellipse at ${zone.x * 100}% ${zone.y * 100}%, black 0%, transparent 74%)`,
-              }}
-            >
-              <Img
-                src={staticFile('background.png')}
-                style={{height: '100%', objectFit: 'cover', width: '100%'}}
-              />
-            </AbsoluteFill>
-            <div
-              style={{
-                background: `radial-gradient(ellipse, rgba(255, ${Math.round(185 + zone.warmth * 35)}, 128, ${glowOpacity}) 0%, rgba(255, 174, 96, 0) 72%)`,
-                height: `${zone.height * 126}%`,
-                left: `${zone.x * 100}%`,
-                mixBlendMode: 'screen',
-                position: 'absolute',
-                top: `${zone.y * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                width: `${zone.width * 126}%`,
-              }}
+          <AbsoluteFill
+            key={zone.id}
+            style={{
+              filter: `brightness(${brightness}) saturate(${0.9 + brightness * 0.1})`,
+              maskImage: mask,
+              WebkitMaskImage: mask,
+            }}
+          >
+            <Img
+              src={staticFile('background.png')}
+              style={{height: '100%', objectFit: 'cover', width: '100%'}}
             />
-          </div>
+          </AbsoluteFill>
         );
       })}
     </AbsoluteFill>
