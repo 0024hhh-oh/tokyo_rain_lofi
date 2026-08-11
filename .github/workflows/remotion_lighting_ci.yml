@@ -44,8 +44,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          node scripts/create_remotion_fixture.mjs
           mkdir -p video_assets/tracks dist
+          cat test_assets/lighting-real-scene.jpg.b64.* | base64 --decode > video_assets/background.jpg
           ffmpeg -y -f lavfi -i "sine=frequency=440:duration=6" \
             -c:a libmp3lame video_assets/tracks/night-test.mp3
           NIGHT_TEST_SECONDS=6 REMOTION_FRAMES=0-179 \
