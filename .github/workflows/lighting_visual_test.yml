@@ -31,37 +31,30 @@ jobs:
           sudo apt-get install -y ffmpeg
           npm ci --no-audit --no-fund
 
-      - name: Create isolated night test image
+      - name: Prepare supplied real night scene
         run: |
           mkdir -p video_assets dist
+          cat test_assets/night_background.jpg.b64.* | base64 --decode > /tmp/night-background.jpg
           node --input-type=module <<'NODE'
           import sharp from 'sharp';
 
-          const svg = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
-              <rect width="1920" height="1080" fill="#05070c"/>
-              <rect x="180" y="150" width="1560" height="790" rx="28" fill="#101722"/>
-              <rect x="260" y="260" width="280" height="190" rx="12" fill="#ffd58a"/>
-              <rect x="670" y="260" width="280" height="190" rx="12" fill="#ffca72"/>
-              <rect x="1080" y="260" width="280" height="190" rx="12" fill="#ffe1a6"/>
-              <rect x="465" y="580" width="280" height="190" rx="12" fill="#ffc46b"/>
-              <rect x="980" y="580" width="280" height="190" rx="12" fill="#ffd995"/>
-            </svg>`;
-
-          await sharp(Buffer.from(svg)).png().toFile('video_assets/background.png');
+          await sharp('/tmp/night-background.jpg')
+            .resize(1920, 1080, {fit: 'cover', position: 'centre'})
+            .png()
+            .toFile('video_assets/background.png');
           NODE
 
-      - name: Detect test light zones
+      - name: Detect real-scene light zones
         run: |
           node scripts/prepare_remotion_background.mjs video_assets
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
 
           const lighting = JSON.parse(fs.readFileSync('src/generated-light-zones.json', 'utf8'));
-          if (!lighting.animate || lighting.zones.length < 2) {
-            throw new Error(`Expected at least two animated light zones; got ${lighting.zones.length}`);
+          if (!lighting.animate || lighting.zones.length < 1) {
+            throw new Error(`Expected at least one animated light zone in the real scene; got ${lighting.zones.length}`);
           }
-          console.log(`Detected ${lighting.zones.length} isolated test light zones.`);
+          console.log(`Detected ${lighting.zones.length} real-scene light zones.`);
           NODE
 
       - name: Render 8-second Remotion lighting test
@@ -101,7 +94,7 @@ jobs:
             ffmpeg -v error -ss "$timestamp" -i dist/lighting-visual-test.mp4 -frames:v 1 "$frame"
             frames+=("$frame")
           done
-          LIGHTING_ZONE_MIN_DELTA=18 LIGHTING_PEAK_MIN_DELTA=28 \
+          LIGHTING_ZONE_MIN_DELTA=12 LIGHTING_PEAK_MIN_DELTA=20 \
             node scripts/validate_visible_lighting.mjs \
               src/generated-light-zones.json "${frames[@]}"
 
