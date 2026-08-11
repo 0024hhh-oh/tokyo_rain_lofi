@@ -74,7 +74,7 @@ jobs:
             --frames=0-239 \
             --log=verbose
 
-      - name: Verify 1080p, duration, and three independent light flickers
+      - name: Verify 1080p, duration, and sparse mixed light changes
         run: |
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
@@ -97,10 +97,10 @@ jobs:
           validation_dir="$(mktemp -d)"
           trap 'rm -rf "$validation_dir"' EXIT
           ffmpeg -v error -ss 0.30 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/steady.png"
-          ffmpeg -v error -ss 0.82 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-1.png"
-          ffmpeg -v error -ss 1.44 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-2.png"
-          ffmpeg -v error -ss 2.20 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-3.png"
-          ffmpeg -v error -ss 2.70 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/recovered.png"
+          ffmpeg -v error -ss 0.92 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-1.png"
+          ffmpeg -v error -ss 3.75 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-2.png"
+          ffmpeg -v error -ss 3.00 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-3.png"
+          ffmpeg -v error -ss 4.80 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/recovered.png"
           node --input-type=module - \
             "$validation_dir/steady.png" \
             "$validation_dir/light-1.png" \
@@ -182,7 +182,7 @@ jobs:
           if (Math.max(...recovery.inside) > 1.2 || recovery.outside > 0.25) {
             throw new Error(`Lights did not recover naturally: inside=${recovery.inside.map((value) => value.toFixed(2)).join(',')} outside=${recovery.outside.toFixed(2)}`);
           }
-          console.log(`Three independent flickers verified: ${flickers.map((flicker, index) =>
+          console.log(`Sparse independent light changes verified: ${flickers.map((flicker, index) =>
             `light-${index + 1}=${flicker.inside[index].toFixed(2)}`).join(' ')} outside<=${Math.max(...flickers.map((flicker) => flicker.outside)).toFixed(2)}`);
           NODE
 
