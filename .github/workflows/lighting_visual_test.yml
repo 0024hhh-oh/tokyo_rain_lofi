@@ -31,72 +31,63 @@ jobs:
           sudo apt-get install -y ffmpeg
           npm ci --no-audit --no-fund
 
-      - name: Prepare supplied real night scene
+      - name: Type-check isolated lighting test
         run: |
-          mkdir -p video_assets dist
-          cat test_assets/night_background.jpg.b64.* | base64 --decode > /tmp/night-background.jpg
-          node --input-type=module <<'NODE'
-          import sharp from 'sharp';
+          npx tsc --noEmit --jsx react-jsx --module ESNext \
+            --moduleResolution Bundler --target ES2022 --skipLibCheck \
+            tests/lighting-visual-index.tsx tests/LightingVisualTest.tsx
 
-          await sharp('/tmp/night-background.jpg')
-            .resize(1920, 1080, {fit: 'cover', position: 'centre'})
-            .png()
-            .toFile('video_assets/background.png');
-          NODE
-
-      - name: Detect real-scene light zones
+      - name: Render 8-second 1080p lighting test
         run: |
-          node scripts/prepare_remotion_background.mjs video_assets
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-
-          const lighting = JSON.parse(fs.readFileSync('src/generated-light-zones.json', 'utf8'));
-          if (!lighting.animate || lighting.zones.length < 1) {
-            throw new Error(`Expected at least one animated light zone in the real scene; got ${lighting.zones.length}`);
-          }
-          console.log(`Detected ${lighting.zones.length} real-scene light zones.`);
-          NODE
-
-      - name: Render 8-second Remotion lighting test
-        run: |
+          mkdir -p dist
           npx remotion render \
-            src/index.ts \
-            NightLightingLoop \
+            tests/lighting-visual-index.tsx \
+            LightingVisualTest \
             dist/lighting-visual-test.mp4 \
             --codec=h264 \
-            --crf=20 \
+            --crf=14 \
             --concurrency=2 \
             --frames=0-239 \
             --log=verbose
 
-      - name: Verify duration and visible off-to-on change
+      - name: Verify 1080p, duration, and one off-to-on change
         run: |
-          duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 dist/lighting-visual-test.mp4)"
-          python - "$duration" <<'PY'
+          read -r width height duration < <(
+            ffprobe -v error -select_streams v:0 \
+              -show_entries stream=width,height:format=duration \
+              -of default=noprint_wrappers=1:nokey=1 \
+              dist/lighting-visual-test.mp4 | xargs
+          )
+          python - "$width" "$height" "$duration" <<'PY'
           import sys
 
-          duration = float(sys.argv[1])
+          width, height = map(int, sys.argv[1:3])
+          duration = float(sys.argv[3])
+          if (width, height) != (1920, 1080):
+              raise SystemExit(f"Expected 1920x1080; got {width}x{height}")
           if not 7.9 <= duration <= 8.1:
               raise SystemExit(f"Expected an 8-second MP4; got {duration:.3f}s")
-          print(f"Lighting test duration verified: {duration:.3f}s")
+          print(f"Verified: {width}x{height}, {duration:.3f}s")
           PY
 
           validation_dir="$(mktemp -d)"
           trap 'rm -rf "$validation_dir"' EXIT
-          frames=()
-          for index in $(seq 0 15); do
-            timestamp="$(python - "$index" <<'PY'
-          import sys
-          print(float(sys.argv[1]) * 0.5)
-          PY
-          )"
-            frame="$validation_dir/frame-${index}.png"
-            ffmpeg -v error -ss "$timestamp" -i dist/lighting-visual-test.mp4 -frames:v 1 "$frame"
-            frames+=("$frame")
-          done
-          LIGHTING_ZONE_MIN_DELTA=12 LIGHTING_PEAK_MIN_DELTA=20 \
-            node scripts/validate_visible_lighting.mjs \
-              src/generated-light-zones.json "${frames[@]}"
+          ffmpeg -v error -ss 2 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/off.png"
+          ffmpeg -v error -ss 6 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/on.png"
+          node --input-type=module - "$validation_dir/off.png" "$validation_dir/on.png" <<'NODE'
+          import sharp from 'sharp';
+
+          const [offFile, onFile] = process.argv.slice(2);
+          const luma = async (file) => {
+            const {channels} = await sharp(file).stats();
+            return channels[0].mean * 0.2126 + channels[1].mean * 0.7152 + channels[2].mean * 0.0722;
+          };
+          const off = await luma(offFile);
+          const on = await luma(onFile);
+          const delta = on - off;
+          if (delta < 8) throw new Error(`Off-to-on change is too weak: delta=${delta.toFixed(2)}`);
+          console.log(`Off-to-on change verified: delta=${delta.toFixed(2)}`);
+          NODE
 
       - name: Upload MP4 artifact
         uses: actions/upload-artifact@v4

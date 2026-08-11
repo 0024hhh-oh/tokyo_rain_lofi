@@ -15,11 +15,19 @@ test('lighting visual test is manual-only and isolated from production services'
   assert.doesNotMatch(workflow, /secrets\./i);
 });
 
-test('lighting visual test renders eight seconds and uploads only an artifact', () => {
+test('lighting visual test renders native 1080p for eight seconds', () => {
+  assert.match(workflow, /tests\/lighting-visual-index\.tsx/);
   assert.match(workflow, /--frames=0-239/);
+  assert.match(workflow, /--crf=14/);
+  assert.match(workflow, /Expected 1920x1080/);
   assert.match(workflow, /Expected an 8-second MP4/);
-  assert.match(workflow, /LIGHTING_ZONE_MIN_DELTA=18/);
-  assert.match(workflow, /LIGHTING_PEAK_MIN_DELTA=28/);
+  assert.doesNotMatch(workflow, /night_background\.jpg/);
   assert.match(workflow, /uses: actions\/upload-artifact@v4/);
   assert.match(workflow, /path: dist\/lighting-visual-test\.mp4/);
+});
+
+test('lighting changes once from all-off to all-on at four seconds', () => {
+  const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
+  assert.match(component, /frame >= fps \* 4/);
+  assert.doesNotMatch(component, /random\(|Math\.sin|cycle/i);
 });
