@@ -77,15 +77,15 @@ test('production night renderer uses the approved three-light sparse mixed behav
   assert.match(renderer, /rain animation will still be rendered/);
 });
 
-test('visible moderate deterministic rain is shared by day and night compositions', () => {
+test('visible heavy deterministic rain is shared by day and night compositions', () => {
   const rain = fs.readFileSync('src/RainLayer.tsx', 'utf8');
   const day = fs.readFileSync('src/DayRainLoop.tsx', 'utf8');
   const night = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
   const dayRenderer = fs.readFileSync('scripts/render_day_background.sh', 'utf8');
 
-  assert.match(rain, /const DROP_COUNT = 220/);
+  assert.match(rain, /const DROP_COUNT = 720/);
   assert.match(rain, /const LOOP_FRAMES = 900/);
-  assert.match(rain, /opacity = 0\.16 \+ drop\.depth \* 0\.32/);
+  assert.match(rain, /opacity = 0\.32 \+ drop\.depth \* 0\.5/);
   assert.doesNotMatch(rain, /Math\.random|random\(/);
   assert.match(day, /<RainLayer \/>/);
   assert.match(night, /<RainLayer \/>/);
