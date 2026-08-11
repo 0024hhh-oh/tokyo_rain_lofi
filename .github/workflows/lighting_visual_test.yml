@@ -46,7 +46,7 @@ jobs:
           const lighting = JSON.parse(await import('node:fs/promises').then(({readFile}) =>
             readFile('src/generated-light-zones.json', 'utf8')));
           const safeZones = lighting.zones
-            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.8)
+            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.72)
             .slice(0, 3);
           if (!lighting.animate || safeZones.length !== 3) {
             throw new Error(`Expected exactly three safe warm lights; got ${safeZones.length}`);
@@ -124,7 +124,7 @@ jobs:
           const recovered = changedAndRecovered.pop();
           const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
           const zones = lighting.zones
-            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.8)
+            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.72)
             .slice(0, 3)
             .map((zone) => ({
               left: Math.max(0, Math.floor((zone.x - zone.width / 2) * 1920)),
