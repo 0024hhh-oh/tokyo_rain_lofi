@@ -57,7 +57,7 @@ jobs:
             RainVideoLightingTest \
             dist/rain-video-lighting-test.mp4 \
             --codec=h264 \
-            --crf=18 \
+            --crf=14 \
             --concurrency=2 \
             --muted \
             --frames=0-899 \
