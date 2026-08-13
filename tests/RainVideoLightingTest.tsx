@@ -31,6 +31,8 @@ const SAFE_MAX_Y = 0.72;
 const SOURCE_DURATION_IN_FRAMES = 242;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
+const MAX_DIM_OPACITY = 0.52;
+const MAX_GLOW_OPACITY = 0.38;
 
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
@@ -70,6 +72,13 @@ const getBrightness = (seconds: number, flickers: Flicker[]) => {
   return brightness;
 };
 
+const getOverlayOpacity = (brightness: number) => {
+  if (brightness < 1) {
+    return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 1.9);
+  }
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 1.05);
+};
+
 const MutedRainVideo: React.FC = () => (
   <Loop durationInFrames={LOOP_DURATION_IN_FRAMES}>
     <OffthreadVideo
@@ -93,8 +102,7 @@ export const RainVideoLightingTest: React.FC = () => {
       {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
         const brightening = Math.max(0, brightness - 1);
-        const dimming = Math.max(0, 1 - brightness);
-        const opacity = brightening * 0.22 + dimming * 0.35;
+        const opacity = getOverlayOpacity(brightness);
         const color = brightening > 0 ? '255, 194, 122' : '0, 0, 0';
         const glow = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(${color}, ${opacity}) 0%, rgba(${color}, ${opacity * 0.55}) 58%, rgba(${color}, ${opacity * 0.18}) 80%, transparent 100%)`;
 

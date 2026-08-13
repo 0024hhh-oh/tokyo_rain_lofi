@@ -24,7 +24,7 @@ test('the supplied rain video is slowed, looped, center-cropped, and always mute
   assert.doesNotMatch(component, /volume=/);
 });
 
-test('lighting uses gentle overlays instead of replaying and filtering the rain video', () => {
+test('lighting uses visible local overlays instead of replaying and filtering the rain video', () => {
   assert.match(component, /const MAX_LIGHTS = 3/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
@@ -34,6 +34,10 @@ test('lighting uses gentle overlays instead of replaying and filtering the rain 
   assert.match(component, /level: 1\.35/);
   assert.match(component, /level: 1\.28/);
   assert.match(component, /Math\.min\(0\.18/);
+  assert.match(component, /const MAX_DIM_OPACITY = 0\.52/);
+  assert.match(component, /const MAX_GLOW_OPACITY = 0\.38/);
+  assert.match(component, /\(1 - brightness\) \* 1\.9/);
+  assert.match(component, /\(brightness - 1\) \* 1\.05/);
   assert.match(component, /background: glow/);
   assert.doesNotMatch(component, /filter: `brightness/);
   assert.equal(component.match(/<MutedRainVideo \/>/g)?.length, 1);
