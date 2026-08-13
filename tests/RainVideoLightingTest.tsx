@@ -31,8 +31,8 @@ const SAFE_MAX_Y = 0.72;
 const SOURCE_DURATION_IN_FRAMES = 242;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
-const MAX_DIM_OPACITY = 0.52;
-const MAX_GLOW_OPACITY = 0.38;
+const MAX_DIM_OPACITY = 0.72;
+const MAX_GLOW_OPACITY = 0.58;
 
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
@@ -41,19 +41,19 @@ const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
 const flickerSchedules: Flicker[][] = [
   [
-    {start: 0.85, end: 0.99, level: 0.76},
-    {start: 5.95, end: 6.28, level: 0.80},
-    {start: 18.40, end: 18.71, level: 0.74},
+    {start: 0.85, end: 1.12, level: 0.25},
+    {start: 5.95, end: 6.42, level: 0.32},
+    {start: 18.40, end: 18.78, level: 0.22},
   ],
   [
-    {start: 3.45, end: 4.05, level: 0.72},
-    {start: 23.10, end: 23.53, level: 0.78},
+    {start: 3.45, end: 4.05, level: 0.30},
+    {start: 23.10, end: 23.53, level: 0.35},
   ],
   [
-    {start: 2.90, end: 3.10, level: 1.35},
-    {start: 7.15, end: 7.56, level: 1.28},
-    {start: 13.60, end: 13.87, level: 1.32},
-    {start: 27.35, end: 27.83, level: 1.30},
+    {start: 2.90, end: 3.32, level: 1.65},
+    {start: 7.15, end: 7.68, level: 1.55},
+    {start: 13.60, end: 13.95, level: 1.60},
+    {start: 27.35, end: 27.91, level: 1.50},
   ],
 ];
 
@@ -74,9 +74,9 @@ const getBrightness = (seconds: number, flickers: Flicker[]) => {
 
 const getOverlayOpacity = (brightness: number) => {
   if (brightness < 1) {
-    return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 1.9);
+    return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 1.1);
   }
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 1.05);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 0.9);
 };
 
 const MutedRainVideo: React.FC = () => (
@@ -103,16 +103,29 @@ export const RainVideoLightingTest: React.FC = () => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
-        const color = brightening > 0 ? '255, 194, 122' : '0, 0, 0';
-        const glow = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(${color}, ${opacity}) 0%, rgba(${color}, ${opacity * 0.55}) 58%, rgba(${color}, ${opacity * 0.18}) 80%, transparent 100%)`;
+        const isBrightening = brightening > 0;
+        const width = zone.width * 1.14;
+        const height = zone.height * 1.14;
 
         return (
-          <AbsoluteFill
+          <div
             key={zone.id}
             style={{
-              background: glow,
-              mixBlendMode: brightening > 0 ? 'screen' : 'normal',
+              backgroundColor: isBrightening
+                ? `rgba(255, 188, 105, ${opacity})`
+                : `rgba(0, 0, 0, ${opacity})`,
+              borderRadius: '26%',
+              boxShadow: isBrightening
+                ? `0 0 34px 20px rgba(255, 155, 70, ${opacity * 0.72})`
+                : 'none',
+              filter: 'blur(10px)',
+              height: `${height * 100}%`,
+              left: `${(zone.x - width / 2) * 100}%`,
+              mixBlendMode: isBrightening ? 'screen' : 'normal',
               pointerEvents: 'none',
+              position: 'absolute',
+              top: `${(zone.y - height / 2) * 100}%`,
+              width: `${width * 100}%`,
             }}
           />
         );
