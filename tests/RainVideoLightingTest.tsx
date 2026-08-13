@@ -33,6 +33,7 @@ const SOURCE_PLAYBACK_RATE = 0.5;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_DIM_OPACITY = 0.72;
 const MAX_GLOW_OPACITY = 0.92;
+const DIM_FLICKER_PATTERN = [1, 0.58, 0.90, 0.42, 1] as const;
 
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
@@ -57,24 +58,15 @@ const flickerSchedules: Flicker[][] = [
   ],
 ];
 
-const getBrightness = (seconds: number, flickers: Flicker[]) => {
+const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
+  const seconds = frame / fps;
   let brightness = 1;
   for (const flicker of flickers) {
     if (flicker.level < 1) {
-      const duration = flicker.end - flicker.start;
-      const level = interpolate(
-        seconds,
-        [
-          flicker.start,
-          flicker.start + duration * 0.18,
-          flicker.start + duration * 0.36,
-          flicker.start + duration * 0.54,
-          flicker.start + duration * 0.74,
-          flicker.end,
-        ],
-        [1, 0.55, 0.82, flicker.level, 0.74, 1],
-        {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
-      );
+      const startFrame = Math.round(flicker.start * fps);
+      const patternFrame = frame - startFrame;
+      if (patternFrame < 0 || patternFrame >= DIM_FLICKER_PATTERN.length) continue;
+      const level = DIM_FLICKER_PATTERN[patternFrame];
       if (Math.abs(level - 1) > Math.abs(brightness - 1)) brightness = level;
       continue;
     }
@@ -112,14 +104,13 @@ const MutedRainVideo: React.FC = () => (
 export const RainVideoLightingTest: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const seconds = frame / fps;
 
   return (
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
       <MutedRainVideo />
 
       {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
-        const brightness = getBrightness(seconds, flickerSchedules[index]);
+        const brightness = getBrightness(frame, fps, flickerSchedules[index]);
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
