@@ -32,7 +32,7 @@ const SOURCE_DURATION_IN_FRAMES = 242;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_DIM_OPACITY = 0.72;
-const MAX_GLOW_OPACITY = 0.92;
+const MAX_GLOW_OPACITY = 0.72;
 const DIM_FLICKER_PATTERN = [1, 0.58, 0.90, 0.42, 1] as const;
 
 const safeLightZones = (lighting.zones as LightZone[])
@@ -51,10 +51,10 @@ const flickerSchedules: Flicker[][] = [
     {start: 23.10, end: 23.25, level: 0.50},
   ],
   [
-    {start: 2.90, end: 3.18, level: 2.30},
-    {start: 7.15, end: 7.47, level: 2.10},
-    {start: 13.60, end: 13.84, level: 2.20},
-    {start: 27.35, end: 27.69, level: 2.00},
+    {start: 2.90, end: 3.18, level: 1.80},
+    {start: 7.15, end: 7.47, level: 1.70},
+    {start: 13.60, end: 13.84, level: 1.75},
+    {start: 27.35, end: 27.69, level: 1.65},
   ],
 ];
 
@@ -87,7 +87,7 @@ const getOverlayOpacity = (brightness: number) => {
   if (brightness < 1) {
     return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 1.1);
   }
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 1.35);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 1.1);
 };
 
 const MutedRainVideo: React.FC = () => (
@@ -114,8 +114,8 @@ export const RainVideoLightingTest: React.FC = () => {
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
-        const width = zone.width * 0.8;
-        const height = zone.height * 0.8;
+        const width = zone.width * 0.6;
+        const height = zone.height * 0.6;
 
         return (
           <div
@@ -128,7 +128,7 @@ export const RainVideoLightingTest: React.FC = () => {
               boxShadow: isBrightening
                 ? `0 0 34px 20px rgba(255, 155, 70, ${opacity * 0.72})`
                 : 'none',
-              filter: 'blur(6px)',
+              filter: 'blur(4px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: isBrightening ? 'screen' : 'normal',
