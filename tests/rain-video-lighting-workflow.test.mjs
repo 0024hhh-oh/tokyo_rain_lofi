@@ -29,11 +29,12 @@ test('lighting uses visible local overlays instead of replaying and filtering th
   assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
   assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
-  assert.match(component, /level: 0\.25/);
-  assert.match(component, /level: 0\.30/);
+  assert.match(component, /level: 0\.42/);
+  assert.match(component, /level: 0\.45/);
   assert.match(component, /level: 2\.30/);
   assert.match(component, /level: 2\.10/);
   assert.match(component, /Math\.min\(0\.18/);
+  assert.match(component, /\[1, 0\.55, 0\.82, flicker\.level, 0\.74, 1\]/);
   assert.match(component, /const MAX_DIM_OPACITY = 0\.72/);
   assert.match(component, /const MAX_GLOW_OPACITY = 0\.92/);
   assert.match(component, /\(1 - brightness\) \* 1\.1/);

@@ -41,13 +41,13 @@ const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
 const flickerSchedules: Flicker[][] = [
   [
-    {start: 0.85, end: 0.97, level: 0.25},
-    {start: 5.95, end: 6.13, level: 0.32},
-    {start: 18.40, end: 18.55, level: 0.22},
+    {start: 0.85, end: 0.98, level: 0.42},
+    {start: 5.95, end: 6.11, level: 0.48},
+    {start: 18.40, end: 18.54, level: 0.40},
   ],
   [
-    {start: 3.45, end: 3.67, level: 0.30},
-    {start: 23.10, end: 23.27, level: 0.35},
+    {start: 3.45, end: 3.62, level: 0.45},
+    {start: 23.10, end: 23.25, level: 0.50},
   ],
   [
     {start: 2.90, end: 3.18, level: 2.30},
@@ -60,6 +60,25 @@ const flickerSchedules: Flicker[][] = [
 const getBrightness = (seconds: number, flickers: Flicker[]) => {
   let brightness = 1;
   for (const flicker of flickers) {
+    if (flicker.level < 1) {
+      const duration = flicker.end - flicker.start;
+      const level = interpolate(
+        seconds,
+        [
+          flicker.start,
+          flicker.start + duration * 0.18,
+          flicker.start + duration * 0.36,
+          flicker.start + duration * 0.54,
+          flicker.start + duration * 0.74,
+          flicker.end,
+        ],
+        [1, 0.55, 0.82, flicker.level, 0.74, 1],
+        {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
+      );
+      if (Math.abs(level - 1) > Math.abs(brightness - 1)) brightness = level;
+      continue;
+    }
+
     const fade = Math.min(0.18, (flicker.end - flicker.start) / 3);
     const level = interpolate(
       seconds,
