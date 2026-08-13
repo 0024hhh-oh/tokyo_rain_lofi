@@ -34,6 +34,7 @@ const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE
 const MAX_DIM_OPACITY = 0.72;
 const MAX_GLOW_OPACITY = 0.72;
 const DIM_FLICKER_PATTERN = [1, 0.58, 0.90, 0.42, 1] as const;
+const DIM_ZONE_SCALES = [1.15, 1.30] as const;
 
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
@@ -114,7 +115,7 @@ export const RainVideoLightingTest: React.FC = () => {
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
-        const sizeScale = isBrightening ? 0.6 : 1.0;
+        const sizeScale = isBrightening ? 0.6 : DIM_ZONE_SCALES[index] ?? 1.15;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
 
@@ -129,7 +130,7 @@ export const RainVideoLightingTest: React.FC = () => {
               boxShadow: isBrightening
                 ? `0 0 34px 20px rgba(255, 155, 70, ${opacity * 0.72})`
                 : 'none',
-              filter: isBrightening ? 'blur(4px)' : 'blur(3px)',
+              filter: isBrightening ? 'blur(4px)' : 'blur(8px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: isBrightening ? 'screen' : 'normal',
