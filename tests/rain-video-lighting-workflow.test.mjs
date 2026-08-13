@@ -41,7 +41,8 @@ test('lighting uses visible local overlays instead of replaying and filtering th
   assert.match(component, /\(1 - brightness\) \* 1\.1/);
   assert.match(component, /\(brightness - 1\) \* 1\.1/);
   assert.match(component, /backgroundColor: isBrightening/);
-  assert.match(component, /filter: 'blur\(4px\)'/);
+  assert.match(component, /const sizeScale = isBrightening \? 0\.6 : 1\.0/);
+  assert.match(component, /filter: isBrightening \? 'blur\(4px\)' : 'blur\(3px\)'/);
   assert.doesNotMatch(component, /filter: `brightness/);
   assert.equal(component.match(/<MutedRainVideo \/>/g)?.length, 1);
 });

@@ -114,8 +114,9 @@ export const RainVideoLightingTest: React.FC = () => {
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
-        const width = zone.width * 0.6;
-        const height = zone.height * 0.6;
+        const sizeScale = isBrightening ? 0.6 : 1.0;
+        const width = zone.width * sizeScale;
+        const height = zone.height * sizeScale;
 
         return (
           <div
@@ -124,11 +125,11 @@ export const RainVideoLightingTest: React.FC = () => {
               backgroundColor: isBrightening
                 ? `rgba(255, 188, 105, ${opacity})`
                 : `rgba(0, 0, 0, ${opacity})`,
-              borderRadius: '26%',
+              borderRadius: isBrightening ? '26%' : '14%',
               boxShadow: isBrightening
                 ? `0 0 34px 20px rgba(255, 155, 70, ${opacity * 0.72})`
                 : 'none',
-              filter: 'blur(4px)',
+              filter: isBrightening ? 'blur(4px)' : 'blur(3px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: isBrightening ? 'screen' : 'normal',
