@@ -27,7 +27,9 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const SAFE_MIN_WARMTH = 0.55;
+// Video compression and rain mute warm pixels more than the still reference.
+// 0.4 keeps the accepted vending/sign/lantern trio without admitting cool lights.
+const SAFE_MIN_WARMTH = 0.4;
 const SAFE_MAX_Y = 0.72;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;

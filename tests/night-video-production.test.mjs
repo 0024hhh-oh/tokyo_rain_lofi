@@ -9,6 +9,7 @@ const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 
 test('production night video keeps the accepted v10 lighting behavior', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
+  assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
   assert.match(component, /DIM_FLICKER_PATTERN = \[1, 0\.58, 0\.90, 0\.42, 1\]/);
   assert.match(component, /DIM_ZONE_SCALES = \[1\.15, 1\.30\]/);
   assert.match(component, /level: 1\.80/);
@@ -22,6 +23,7 @@ test('production night video keeps the accepted v10 lighting behavior', () => {
 
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
+  assert.match(renderer, /z\.warmth >= 0\.4/);
   assert.match(renderer, /-map 0:v:0 -an -c:v copy/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);
