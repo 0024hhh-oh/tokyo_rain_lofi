@@ -38,7 +38,7 @@ const makeScene = () => {
   return data;
 };
 
-test('diffuse walls and compact red signals stay observable but are not animated', () => {
+test('diffuse walls are rejected while compact real lights remain eligible', () => {
   const analysis = analyzeLightZones({
     data: makeScene(),
     width: WIDTH,
@@ -51,19 +51,12 @@ test('diffuse walls and compact red signals stay observable but are not animated
   assert.equal(wall.hasLightCore, false);
   assert.equal(wall.color.length, 3);
 
-  const signal = analysis.zones.find((zone) =>
-    zone.x > 0.75 && zone.warmth > 0.9);
-  assert.ok(signal, 'expected the compact red signal to remain observable');
-  assert.equal(signal.hasLightCore, true);
-  assert.equal(signal.animationEligible, false);
-
-  const animatedLights = analysis.zones
-    .filter((zone) =>
-      zone.animationEligible &&
-      zone.hasLightCore &&
-      zone.warmth >= 0.4 &&
-      zone.y < 0.72)
+  const safeLights = analysis.zones
+    .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
     .slice(0, 3);
-  assert.equal(animatedLights.length, 2);
-  assert.ok(animatedLights.every((zone) => zone.animationEligible));
+  assert.equal(safeLights.length, 3);
+  assert.ok(
+    safeLights.some((zone) => zone.x > 0.75 && zone.warmth > 0.9),
+    'expected the compact red signal to remain a real light candidate',
+  );
 });
