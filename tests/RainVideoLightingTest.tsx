@@ -18,7 +18,6 @@ type LightZone = {
   warmth: number;
   strength: number;
   hasLightCore: boolean;
-  animationEligible: boolean;
   color: [number, number, number];
 };
 
@@ -35,12 +34,11 @@ const SOURCE_DURATION_IN_FRAMES = 242;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_DIM_OPACITY = 0.40;
-const MAX_GLOW_OPACITY = 0.38;
+const MAX_GLOW_OPACITY = 0.34;
 const DIM_ZONE_SCALES = [1.05, 1.10] as const;
 
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) =>
-    zone.animationEligible &&
     zone.hasLightCore &&
     zone.warmth >= SAFE_MIN_WARMTH &&
     zone.y < SAFE_MAX_Y)
@@ -57,10 +55,10 @@ const flickerSchedules: Flicker[][] = [
     {start: 23.10, end: 23.82, level: 0.65},
   ],
   [
-    {start: 2.90, end: 3.62, level: 1.50},
-    {start: 7.15, end: 7.90, level: 1.42},
-    {start: 13.60, end: 14.34, level: 1.46},
-    {start: 27.35, end: 28.08, level: 1.42},
+    {start: 2.90, end: 3.62, level: 1.38},
+    {start: 7.15, end: 7.90, level: 1.34},
+    {start: 13.60, end: 14.34, level: 1.36},
+    {start: 27.35, end: 28.08, level: 1.34},
   ],
 ];
 
@@ -111,7 +109,7 @@ export const RainVideoLightingTest: React.FC = () => {
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
-        const sizeScale = isBrightening ? 0.68 : DIM_ZONE_SCALES[index] ?? 1.05;
+        const sizeScale = isBrightening ? 0.58 : DIM_ZONE_SCALES[index] ?? 1.05;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
@@ -125,7 +123,7 @@ export const RainVideoLightingTest: React.FC = () => {
                 : `rgba(0, 0, 0, ${opacity})`,
               borderRadius: '50%',
               boxShadow: isBrightening
-                ? `0 0 18px 9px rgba(${red}, ${green}, ${blue}, ${opacity * 0.5})`
+                ? `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`
                 : 'none',
               filter: isBrightening ? 'blur(2px)' : 'blur(6px)',
               height: `${height * 100}%`,
