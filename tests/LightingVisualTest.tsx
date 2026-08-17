@@ -16,6 +16,7 @@ type LightZone = {
   height: number;
   warmth: number;
   strength: number;
+  hasLightCore: boolean;
 };
 
 type Flicker = {
@@ -32,7 +33,8 @@ const SAFE_MAX_Y = 0.72;
 // Keep only warm, independently bounded lights above the reflection-heavy
 // lower 28% of the image, then cap the animation at three locations.
 const safeLightZones = (lighting.zones as LightZone[])
-  .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
+  .filter((zone) =>
+    zone.hasLightCore && zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
 const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 

@@ -33,6 +33,7 @@ test('two lights dim and one brightens on sparse irregular schedules', () => {
   assert.match(component, /const MAX_LIGHTS = 3/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
+  assert.match(component, /zone\.hasLightCore/);
   assert.match(component, /slice\(0, MAX_LIGHTS\)/);
   assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
   assert.match(component, /lighting\.animate && hasThreeSafeLights/);
@@ -65,6 +66,7 @@ test('production night renderer uses the approved three-light sparse mixed behav
   assert.match(component, /const MAX_LIGHTS = 3/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
+  assert.match(component, /zone\.hasLightCore/);
   assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
   assert.match(component, /level: 0\.76/);
   assert.match(component, /level: 0\.72/);
