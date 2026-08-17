@@ -60,7 +60,7 @@ test('three masks are feathered and never change global light regions', () => {
   assert.doesNotMatch(component, /mixBlendMode|screen|glowOpacity/);
 });
 
-test('production night renderer uses the approved three-light sparse mixed behavior', () => {
+test('production night renderer accepts zero to three prominent video lights', () => {
   const component = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
   const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
   assert.match(component, /const MAX_LIGHTS = 3/);
@@ -76,5 +76,6 @@ test('production night renderer uses the approved three-light sparse mixed behav
   assert.doesNotMatch(component, /random\(|Math\.random|Math\.sin|cycle/i);
   assert.doesNotMatch(component, /clipPath|mixBlendMode|glowOpacity/);
   assert.match(renderer, /safe_zone_count/);
-  assert.match(renderer, /safe_zone_count" != "3"/);
+  assert.match(renderer, /z\.isCompactSource/);
+  assert.doesNotMatch(renderer, /safe_zone_count" != "3"/);
 });
