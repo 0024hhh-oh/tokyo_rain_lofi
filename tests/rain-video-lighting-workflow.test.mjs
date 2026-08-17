@@ -24,30 +24,28 @@ test('the supplied rain video is slowed, looped, center-cropped, and always mute
   assert.doesNotMatch(component, /volume=/);
 });
 
-test('lighting uses visible local overlays instead of replaying and filtering the rain video', () => {
+test('lighting uses smooth source-colored local overlays', () => {
   assert.match(component, /const MAX_LIGHTS = 3/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
   assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
-  assert.match(component, /level: 0\.42/);
-  assert.match(component, /level: 0\.45/);
-  assert.match(component, /level: 1\.80/);
-  assert.match(component, /level: 1\.70/);
-  assert.match(component, /Math\.min\(0\.18/);
-  assert.match(component, /DIM_FLICKER_PATTERN = \[1, 0\.58, 0\.90, 0\.42, 1\]/);
-  assert.match(component, /const patternFrame = frame - startFrame/);
-  assert.match(component, /const MAX_DIM_OPACITY = 0\.72/);
-  assert.match(component, /const MAX_GLOW_OPACITY = 0\.72/);
-  assert.match(component, /\(1 - brightness\) \* 1\.1/);
-  assert.match(component, /\(brightness - 1\) \* 1\.1/);
-  assert.match(component, /backgroundColor: isBrightening/);
-  assert.match(component, /DIM_ZONE_SCALES = \[1\.15, 1\.30\]/);
-  assert.match(component, /DIM_ZONE_SCALES\[index\] \?\? 1\.15/);
-  assert.match(component, /filter: isBrightening \? 'blur\(4px\)' : 'blur\(8px\)'/);
-  assert.doesNotMatch(component, /filter: `brightness/);
+  assert.match(component, /zone\.color/);
+  assert.match(component, /level: 0\.78/);
+  assert.match(component, /level: 0\.76/);
+  assert.match(component, /level: 1\.22/);
+  assert.match(component, /level: 1\.18/);
+  assert.match(component, /Math\.min\(0\.10/);
+  assert.doesNotMatch(component, /DIM_FLICKER_PATTERN/);
+  assert.match(component, /const MAX_DIM_OPACITY = 0\.28/);
+  assert.match(component, /const MAX_GLOW_OPACITY = 0\.20/);
+  assert.match(component, /\(1 - brightness\) \* 0\.9/);
+  assert.match(component, /\(brightness - 1\) \* 0\.9/);
+  assert.match(component, /rgba\(\$\{red\}, \$\{green\}, \$\{blue\}/);
+  assert.match(component, /DIM_ZONE_SCALES = \[1\.05, 1\.10\]/);
+  assert.match(component, /DIM_ZONE_SCALES\[index\] \?\? 1\.05/);
+  assert.match(component, /filter: isBrightening \? 'blur\(2px\)' : 'blur\(6px\)'/);
   assert.equal(component.match(/<MutedRainVideo \/>/g)?.length, 1);
 });
-
 test('CI renders a silent 30-second 1080p artifact', () => {
   assert.match(workflow, /--crf=14/);
   assert.match(workflow, /--frames=0-899/);
