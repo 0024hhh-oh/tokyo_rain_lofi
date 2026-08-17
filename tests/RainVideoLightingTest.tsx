@@ -18,6 +18,7 @@ type LightZone = {
   warmth: number;
   strength: number;
   hasLightCore: boolean;
+  color: [number, number, number];
 };
 
 type Flicker = {
@@ -32,32 +33,32 @@ const SAFE_MAX_Y = 0.72;
 const SOURCE_DURATION_IN_FRAMES = 242;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
-const MAX_DIM_OPACITY = 0.72;
-const MAX_GLOW_OPACITY = 0.72;
-const DIM_FLICKER_PATTERN = [1, 0.58, 0.90, 0.42, 1] as const;
-const DIM_ZONE_SCALES = [1.15, 1.30] as const;
+const MAX_DIM_OPACITY = 0.40;
+const MAX_GLOW_OPACITY = 0.34;
+const DIM_ZONE_SCALES = [1.05, 1.10] as const;
 
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) =>
-    zone.hasLightCore && zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
+    zone.hasLightCore &&
+    zone.warmth >= SAFE_MIN_WARMTH &&
+    zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
-const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
 const flickerSchedules: Flicker[][] = [
   [
-    {start: 0.85, end: 0.98, level: 0.42},
-    {start: 5.95, end: 6.11, level: 0.48},
-    {start: 18.40, end: 18.54, level: 0.40},
+    {start: 0.85, end: 1.55, level: 0.58},
+    {start: 5.70, end: 6.38, level: 0.64},
+    {start: 18.40, end: 19.12, level: 0.60},
   ],
   [
-    {start: 3.45, end: 3.62, level: 0.45},
-    {start: 23.10, end: 23.25, level: 0.50},
+    {start: 3.45, end: 4.20, level: 0.60},
+    {start: 23.10, end: 23.82, level: 0.65},
   ],
   [
-    {start: 2.90, end: 3.18, level: 1.80},
-    {start: 7.15, end: 7.47, level: 1.70},
-    {start: 13.60, end: 13.84, level: 1.75},
-    {start: 27.35, end: 27.69, level: 1.65},
+    {start: 2.90, end: 3.62, level: 1.38},
+    {start: 7.15, end: 7.90, level: 1.34},
+    {start: 13.60, end: 14.34, level: 1.36},
+    {start: 27.35, end: 28.08, level: 1.34},
   ],
 ];
 
@@ -65,16 +66,7 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
   const seconds = frame / fps;
   let brightness = 1;
   for (const flicker of flickers) {
-    if (flicker.level < 1) {
-      const startFrame = Math.round(flicker.start * fps);
-      const patternFrame = frame - startFrame;
-      if (patternFrame < 0 || patternFrame >= DIM_FLICKER_PATTERN.length) continue;
-      const level = DIM_FLICKER_PATTERN[patternFrame];
-      if (Math.abs(level - 1) > Math.abs(brightness - 1)) brightness = level;
-      continue;
-    }
-
-    const fade = Math.min(0.18, (flicker.end - flicker.start) / 3);
+    const fade = Math.min(0.16, (flicker.end - flicker.start) / 3);
     const level = interpolate(
       seconds,
       [flicker.start, flicker.start + fade, flicker.end - fade, flicker.end],
@@ -88,9 +80,9 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
 
 const getOverlayOpacity = (brightness: number) => {
   if (brightness < 1) {
-    return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 1.1);
+    return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 0.9);
   }
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 1.1);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 0.9);
 };
 
 const MutedRainVideo: React.FC = () => (
@@ -112,27 +104,28 @@ export const RainVideoLightingTest: React.FC = () => {
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
       <MutedRainVideo />
 
-      {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
+      {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
-        const sizeScale = isBrightening ? 0.6 : DIM_ZONE_SCALES[index] ?? 1.15;
+        const sizeScale = isBrightening ? 0.58 : DIM_ZONE_SCALES[index] ?? 1.05;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
+        const [red, green, blue] = zone.color;
 
         return (
           <div
             key={zone.id}
             style={{
               backgroundColor: isBrightening
-                ? `rgba(255, 188, 105, ${opacity})`
+                ? `rgba(${red}, ${green}, ${blue}, ${opacity})`
                 : `rgba(0, 0, 0, ${opacity})`,
-              borderRadius: isBrightening ? '26%' : '14%',
+              borderRadius: '50%',
               boxShadow: isBrightening
-                ? `0 0 34px 20px rgba(255, 155, 70, ${opacity * 0.72})`
+                ? `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`
                 : 'none',
-              filter: isBrightening ? 'blur(4px)' : 'blur(8px)',
+              filter: isBrightening ? 'blur(2px)' : 'blur(6px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: isBrightening ? 'screen' : 'normal',

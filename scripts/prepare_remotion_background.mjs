@@ -70,6 +70,9 @@ export const analyzeLightZones = ({data, width, height}) => {
     let warmthTotal = 0;
     let peakLuma = 0;
     let warmCorePixels = 0;
+    let weightedRed = 0;
+    let weightedGreen = 0;
+    let weightedBlue = 0;
 
     while (cursor < queue.length) {
       const index = queue[cursor++];
@@ -84,6 +87,9 @@ export const analyzeLightZones = ({data, width, height}) => {
       weightedX += x * weight;
       weightedY += y * weight;
       totalWeight += weight;
+      weightedRed += pixel.red * weight;
+      weightedGreen += pixel.green * weight;
+      weightedBlue += pixel.blue * weight;
       warmthTotal += clamp((pixel.red - pixel.blue + 30) / 110, 0, 1);
       peakLuma = Math.max(peakLuma, pixel.luma);
       if (
@@ -112,6 +118,10 @@ export const analyzeLightZones = ({data, width, height}) => {
       continue;
     }
 
+    const averageRed = weightedRed / totalWeight;
+    const averageGreen = weightedGreen / totalWeight;
+    const averageBlue = weightedBlue / totalWeight;
+
     components.push({
       area,
       x: weightedX / totalWeight / width,
@@ -120,6 +130,11 @@ export const analyzeLightZones = ({data, width, height}) => {
       height: clamp((boxHeight + 5) / height, 0.055, 0.22),
       warmth: warmthTotal / area,
       hasLightCore: peakLuma >= 205 || warmCorePixels >= 2,
+      color: [
+        Math.round(averageRed),
+        Math.round(averageGreen),
+        Math.round(averageBlue),
+      ],
       score: totalWeight * Math.sqrt(area),
     });
   }
@@ -143,6 +158,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     height: Number(zone.height.toFixed(5)),
     warmth: Number(zone.warmth.toFixed(4)),
     hasLightCore: zone.hasLightCore,
+    color: zone.color,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
 

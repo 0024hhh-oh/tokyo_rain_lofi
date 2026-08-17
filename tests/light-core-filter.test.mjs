@@ -38,7 +38,7 @@ const makeScene = () => {
   return data;
 };
 
-test('diffuse walls are rejected while compact lights and red signals remain eligible', () => {
+test('diffuse walls are rejected while compact real lights remain eligible', () => {
   const analysis = analyzeLightZones({
     data: makeScene(),
     width: WIDTH,
@@ -49,6 +49,7 @@ test('diffuse walls are rejected while compact lights and red signals remain eli
     Math.abs(zone.x - 0.5) < 0.12 && Math.abs(zone.y - 0.47) < 0.15);
   assert.ok(wall, 'expected the diffuse wall to remain observable in detector output');
   assert.equal(wall.hasLightCore, false);
+  assert.equal(wall.color.length, 3);
 
   const safeLights = analysis.zones
     .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
@@ -56,6 +57,6 @@ test('diffuse walls are rejected while compact lights and red signals remain eli
   assert.equal(safeLights.length, 3);
   assert.ok(
     safeLights.some((zone) => zone.x > 0.75 && zone.warmth > 0.9),
-    'expected the compact red signal to survive even below the normal luma threshold',
+    'expected the compact red signal to remain a real light candidate',
   );
 });
