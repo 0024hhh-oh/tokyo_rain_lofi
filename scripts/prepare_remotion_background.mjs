@@ -121,20 +121,9 @@ export const analyzeLightZones = ({data, width, height}) => {
     const averageRed = weightedRed / totalWeight;
     const averageGreen = weightedGreen / totalWeight;
     const averageBlue = weightedBlue / totalWeight;
-    const aspectRatio = boxWidth / boxHeight;
-    const isCompactRedSignal =
-      area <= 14 &&
-      boxWidth <= 4 &&
-      boxHeight <= 4 &&
-      aspectRatio >= 0.55 &&
-      aspectRatio <= 1.8 &&
-      averageRed >= 145 &&
-      averageRed >= averageGreen * 1.5 &&
-      averageRed >= averageBlue * 1.7;
 
     components.push({
       area,
-      animationEligible: !isCompactRedSignal,
       x: weightedX / totalWeight / width,
       y: weightedY / totalWeight / height,
       width: clamp((boxWidth + 7) / width, 0.045, 0.2),
@@ -169,7 +158,6 @@ export const analyzeLightZones = ({data, width, height}) => {
     height: Number(zone.height.toFixed(5)),
     warmth: Number(zone.warmth.toFixed(4)),
     hasLightCore: zone.hasLightCore,
-    animationEligible: zone.animationEligible,
     color: zone.color,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
