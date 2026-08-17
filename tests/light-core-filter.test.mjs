@@ -49,6 +49,7 @@ test('diffuse walls are rejected while compact lights and red signals remain eli
     Math.abs(zone.x - 0.5) < 0.12 && Math.abs(zone.y - 0.47) < 0.15);
   assert.ok(wall, 'expected the diffuse wall to remain observable in detector output');
   assert.equal(wall.hasLightCore, false);
+  assert.equal(wall.color.length, 3);
 
   const safeLights = analysis.zones
     .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
