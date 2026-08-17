@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import sharp from 'sharp';
 
 const [sourceFile = 'public/background.png', outputFile = 'dist/problem-light-targets.png'] =
@@ -53,7 +54,7 @@ const svg = `
     fill="#00f5ff">${escapeXml(details)}</text>
 </svg>`;
 
-await fs.mkdir(new URL('.', `file://${outputFile}`).pathname, {recursive: true});
+await fs.mkdir(path.dirname(outputFile), {recursive: true});
 await image
   .composite([{input: Buffer.from(svg)}])
   .png()
