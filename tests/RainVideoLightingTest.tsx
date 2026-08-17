@@ -18,6 +18,9 @@ type LightZone = {
   warmth: number;
   strength: number;
   hasLightCore: boolean;
+  isCompactSource: boolean;
+  contrast: number;
+  selectionScore: number;
   color: [number, number, number];
 };
 
@@ -28,7 +31,6 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const SAFE_MIN_WARMTH = 0.55;
 const SAFE_MAX_Y = 0.72;
 const SOURCE_DURATION_IN_FRAMES = 242;
 const SOURCE_PLAYBACK_RATE = 0.5;
@@ -40,7 +42,7 @@ const DIM_ZONE_SCALES = [1.05, 1.10] as const;
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) =>
     zone.hasLightCore &&
-    zone.warmth >= SAFE_MIN_WARMTH &&
+    zone.isCompactSource &&
     zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
 
