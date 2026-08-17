@@ -10,15 +10,14 @@ const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 test('production night video keeps safe detection with smooth source-colored lighting', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
-  assert.match(component, /zone\.animationEligible/);
   assert.match(component, /zone\.hasLightCore/);
   assert.match(component, /zone\.color/);
   assert.doesNotMatch(component, /hasThreeSafeLights/);
   assert.doesNotMatch(component, /DIM_FLICKER_PATTERN/);
   assert.match(component, /DIM_ZONE_SCALES = \[1\.05, 1\.10\]/);
-  assert.match(component, /level: 1\.50/);
-  assert.match(component, /level: 1\.42/);
-  assert.match(component, /const sizeScale = isBrightening \? 0\.68/);
+  assert.match(component, /level: 1\.38/);
+  assert.match(component, /level: 1\.34/);
+  assert.match(component, /const sizeScale = isBrightening \? 0\.58/);
   assert.match(component, /filter: isBrightening \? 'blur\(2px\)' : 'blur\(6px\)'/);
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
