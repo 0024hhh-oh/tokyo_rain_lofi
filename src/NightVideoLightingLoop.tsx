@@ -19,6 +19,9 @@ type LightZone = {
   warmth: number;
   strength: number;
   hasLightCore: boolean;
+  isCompactSource: boolean;
+  contrast: number;
+  selectionScore: number;
   color: [number, number, number];
 };
 
@@ -29,9 +32,6 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-// Video compression and rain mute warm pixels more than the still reference.
-// 0.4 keeps the accepted vending/sign/lantern trio without admitting cool lights.
-const SAFE_MIN_WARMTH = 0.4;
 const SAFE_MAX_Y = 0.72;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
@@ -43,7 +43,7 @@ const DIM_ZONE_SCALES = [1.05, 1.10] as const;
 const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) =>
     zone.hasLightCore &&
-    zone.warmth >= SAFE_MIN_WARMTH &&
+    zone.isCompactSource &&
     zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
 
