@@ -26,7 +26,8 @@ test('the supplied rain video is slowed, looped, center-cropped, and always mute
 
 test('lighting uses smooth source-colored local overlays', () => {
   assert.match(component, /const MAX_LIGHTS = 3/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
+  assert.doesNotMatch(component, /SAFE_MIN_WARMTH/);
+  assert.match(component, /zone\.isCompactSource/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
   assert.doesNotMatch(component, /hasThreeSafeLights/);
   assert.match(component, /zone\.color/);
