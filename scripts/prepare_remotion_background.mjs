@@ -69,6 +69,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     let totalWeight = 0;
     let warmthTotal = 0;
     let peakLuma = 0;
+    let lumaTotal = 0;
     let warmCorePixels = 0;
     let weightedRed = 0;
     let weightedGreen = 0;
@@ -92,6 +93,7 @@ export const analyzeLightZones = ({data, width, height}) => {
       weightedBlue += pixel.blue * weight;
       warmthTotal += clamp((pixel.red - pixel.blue + 30) / 110, 0, 1);
       peakLuma = Math.max(peakLuma, pixel.luma);
+      lumaTotal += pixel.luma;
       if (
         pixel.red >= 150 &&
         pixel.red - Math.max(pixel.green, pixel.blue) >= 45
@@ -121,15 +123,49 @@ export const analyzeLightZones = ({data, width, height}) => {
     const averageRed = weightedRed / totalWeight;
     const averageGreen = weightedGreen / totalWeight;
     const averageBlue = weightedBlue / totalWeight;
+    const fillRatio = area / (boxWidth * boxHeight);
+    const hasLightCore = peakLuma >= 205 || warmCorePixels >= 2;
+    const isCompactSource =
+      hasLightCore &&
+      boxWidth <= 10 &&
+      boxHeight <= 9 &&
+      area <= 45 &&
+      fillRatio >= 0.2;
+
+    const ringLeft = Math.max(0, minX - Math.max(3, boxWidth));
+    const ringRight = Math.min(width - 1, maxX + Math.max(3, boxWidth));
+    const ringTop = Math.max(0, minY - Math.max(3, boxHeight));
+    const ringBottom = Math.min(height - 1, maxY + Math.max(3, boxHeight));
+    let surroundingLumaTotal = 0;
+    let surroundingPixelCount = 0;
+    for (let ringY = ringTop; ringY <= ringBottom; ringY += 1) {
+      for (let ringX = ringLeft; ringX <= ringRight; ringX += 1) {
+        if (ringX >= minX && ringX <= maxX && ringY >= minY && ringY <= maxY) {
+          continue;
+        }
+        surroundingLumaTotal += pixels[ringY * width + ringX].luma;
+        surroundingPixelCount += 1;
+      }
+    }
+    const surroundingLuma = surroundingPixelCount > 0
+      ? surroundingLumaTotal / surroundingPixelCount
+      : averageLuma;
+    const contrast = Math.max(0, lumaTotal / area - surroundingLuma);
+    const selectionScore = isCompactSource
+      ? contrast * Math.sqrt(area) * (0.5 + fillRatio) * (0.7 + peakLuma / 850)
+      : 0;
 
     components.push({
       area,
+      contrast,
+      isCompactSource,
+      selectionScore,
       x: weightedX / totalWeight / width,
       y: weightedY / totalWeight / height,
       width: clamp((boxWidth + 7) / width, 0.045, 0.2),
       height: clamp((boxHeight + 5) / height, 0.055, 0.22),
       warmth: warmthTotal / area,
-      hasLightCore: peakLuma >= 205 || warmCorePixels >= 2,
+      hasLightCore,
       color: [
         Math.round(averageRed),
         Math.round(averageGreen),
@@ -140,7 +176,8 @@ export const analyzeLightZones = ({data, width, height}) => {
   }
 
   const selected = [];
-  for (const component of components.sort((a, b) => b.score - a.score)) {
+  for (const component of components.sort((a, b) =>
+    b.selectionScore - a.selectionScore || b.score - a.score)) {
     const overlaps = selected.some((zone) => {
       const dx = (component.x - zone.x) / Math.max(component.width, zone.width);
       const dy = (component.y - zone.y) / Math.max(component.height, zone.height);
@@ -158,6 +195,9 @@ export const analyzeLightZones = ({data, width, height}) => {
     height: Number(zone.height.toFixed(5)),
     warmth: Number(zone.warmth.toFixed(4)),
     hasLightCore: zone.hasLightCore,
+    isCompactSource: zone.isCompactSource,
+    contrast: Number(zone.contrast.toFixed(2)),
+    selectionScore: Number(zone.selectionScore.toFixed(2)),
     color: zone.color,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
