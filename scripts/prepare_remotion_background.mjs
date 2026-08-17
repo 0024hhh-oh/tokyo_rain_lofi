@@ -6,7 +6,7 @@ import sharp from 'sharp';
 
 const WIDTH = 160;
 const HEIGHT = 90;
-const MAX_ZONES = 14;
+const MAX_ZONES = 50;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -35,7 +35,13 @@ export const analyzeLightZones = ({data, width, height}) => {
       const pixel = pixels[index];
       const warmEnough = pixel.red >= pixel.blue * 0.88;
       const unmistakablyBright = pixel.luma >= 225;
-      if (pixel.luma >= threshold && (warmEnough || unmistakablyBright)) {
+      const saturatedWarmCore = pixel.red >= 150 &&
+        pixel.red - Math.max(pixel.green, pixel.blue) >= 45 &&
+        pixel.luma >= 80;
+      if (
+        (pixel.luma >= threshold && (warmEnough || unmistakablyBright)) ||
+        saturatedWarmCore
+      ) {
         active[index] = 1;
       }
     }
@@ -62,6 +68,8 @@ export const analyzeLightZones = ({data, width, height}) => {
     let weightedY = 0;
     let totalWeight = 0;
     let warmthTotal = 0;
+    let peakLuma = 0;
+    let warmCorePixels = 0;
 
     while (cursor < queue.length) {
       const index = queue[cursor++];
@@ -77,6 +85,13 @@ export const analyzeLightZones = ({data, width, height}) => {
       weightedY += y * weight;
       totalWeight += weight;
       warmthTotal += clamp((pixel.red - pixel.blue + 30) / 110, 0, 1);
+      peakLuma = Math.max(peakLuma, pixel.luma);
+      if (
+        pixel.red >= 150 &&
+        pixel.red - Math.max(pixel.green, pixel.blue) >= 45
+      ) {
+        warmCorePixels += 1;
+      }
 
       for (const [dx, dy] of neighbors) {
         const nx = x + dx;
@@ -104,6 +119,7 @@ export const analyzeLightZones = ({data, width, height}) => {
       width: clamp((boxWidth + 7) / width, 0.045, 0.2),
       height: clamp((boxHeight + 5) / height, 0.055, 0.22),
       warmth: warmthTotal / area,
+      hasLightCore: peakLuma >= 220 || warmCorePixels >= 2,
       score: totalWeight * Math.sqrt(area),
     });
   }
@@ -126,6 +142,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     width: Number(zone.width.toFixed(5)),
     height: Number(zone.height.toFixed(5)),
     warmth: Number(zone.warmth.toFixed(4)),
+    hasLightCore: zone.hasLightCore,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
 
