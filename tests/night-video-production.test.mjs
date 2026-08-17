@@ -7,16 +7,17 @@ const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
 const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'utf8');
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 
-test('production night video keeps the accepted v10 lighting behavior', () => {
+test('production night video keeps safe detection with smooth source-colored lighting', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
   assert.match(component, /zone\.hasLightCore/);
-  assert.match(component, /DIM_FLICKER_PATTERN = \[1, 0\.58, 0\.90, 0\.42, 1\]/);
-  assert.match(component, /DIM_ZONE_SCALES = \[1\.15, 1\.30\]/);
-  assert.match(component, /level: 1\.80/);
-  assert.match(component, /level: 1\.70/);
-  assert.match(component, /const sizeScale = isBrightening \? 0\.6/);
-  assert.match(component, /filter: isBrightening \? 'blur\(4px\)' : 'blur\(8px\)'/);
+  assert.match(component, /zone\.color/);
+  assert.doesNotMatch(component, /DIM_FLICKER_PATTERN/);
+  assert.match(component, /DIM_ZONE_SCALES = \[1\.05, 1\.10\]/);
+  assert.match(component, /level: 1\.22/);
+  assert.match(component, /level: 1\.18/);
+  assert.match(component, /const sizeScale = isBrightening \? 0\.45/);
+  assert.match(component, /filter: isBrightening \? 'blur\(2px\)' : 'blur\(6px\)'/);
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
   assert.equal(component.match(/<OffthreadVideo/g)?.length, 1);
