@@ -31,7 +31,8 @@ const makeScene = () => {
 
   // Two compact bright sources and one compact red signal.
   paint(7, 6, 2, 2, [250, 235, 215]);
-  paint(45, 8, 2, 2, [245, 230, 210]);
+  // Deliberately sits between the rejected 220 boundary and the safe 215 boundary.
+  paint(45, 8, 2, 2, [230, 215, 195]);
   paint(52, 15, 2, 2, [230, 70, 50]);
 
   return data;
