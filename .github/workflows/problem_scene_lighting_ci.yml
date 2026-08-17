@@ -6,6 +6,7 @@ on:
       - "src/NightVideoLightingLoop.tsx"
       - "scripts/prepare_remotion_background.mjs"
       - "scripts/validate_problem_scene_lighting.mjs"
+      - "scripts/render_light_zone_preview.mjs"
       - "test_assets/problem-scene.jpg.b64"
       - "tests/**"
       - ".github/workflows/problem_scene_lighting_ci.yml"
@@ -37,6 +38,8 @@ jobs:
           ffmpeg -y -loop 1 -i video_assets/background.jpg \
             -t 4 -r 30 -c:v libx264 -pix_fmt yuv420p public/night-source.mp4
           node scripts/prepare_remotion_background.mjs video_assets
+          node scripts/render_light_zone_preview.mjs \
+            public/background.png dist/problem-light-targets.png
           printf '{\n  "sourceDurationInFrames": 120\n}\n' > src/generated-video-metadata.json
       - name: Render the exact production component for eight seconds
         run: |
@@ -50,14 +53,14 @@ jobs:
             --muted \
             --frames=0-239 \
             --log=verbose
-      - name: Verify the pillar stays stable and the signal changes
+      - name: Verify the prominent streetlamp changes and the pillar stays stable
         run: |
           ffmpeg -v error -ss 0.30 -i dist/problem-scene-lighting-sample.mp4 \
             -frames:v 1 dist/problem-steady.png
-          ffmpeg -v error -ss 3.05 -i dist/problem-scene-lighting-sample.mp4 \
-            -frames:v 1 dist/problem-boost.png
+          ffmpeg -v error -ss 1.20 -i dist/problem-scene-lighting-sample.mp4 \
+            -frames:v 1 dist/problem-dim.png
           node scripts/validate_problem_scene_lighting.mjs \
-            dist/problem-steady.png dist/problem-boost.png
+            dist/problem-steady.png dist/problem-dim.png
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
               -show_entries stream=width,height:format=duration \
@@ -80,6 +83,7 @@ jobs:
           path: |
             dist/problem-scene-lighting-sample.mp4
             dist/problem-steady.png
-            dist/problem-boost.png
+            dist/problem-dim.png
+            dist/problem-light-targets.png
           if-no-files-found: error
           retention-days: 7

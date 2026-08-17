@@ -30,10 +30,13 @@ const makeScene = () => {
   paint(28, 13, 9, 9, [175, 160, 145]);
 
   // Two compact bright sources and one compact red signal.
-  paint(7, 6, 2, 2, [250, 235, 215]);
+  paint(7, 6, 2, 2, [225, 240, 255]);
   // Deliberately sits between the rejected 220 boundary and the compressed-video-safe 205 boundary.
   paint(45, 8, 2, 2, [220, 205, 185]);
   paint(52, 15, 2, 2, [230, 70, 50]);
+
+  // A broad bright reflection must not outrank compact fixtures.
+  paint(4, 28, 24, 4, [230, 235, 240]);
 
   return data;
 };
@@ -52,11 +55,21 @@ test('diffuse walls are rejected while compact real lights remain eligible', () 
   assert.equal(wall.color.length, 3);
 
   const safeLights = analysis.zones
-    .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
+    .filter((zone) => zone.hasLightCore && zone.isCompactSource && zone.y < 0.72)
     .slice(0, 3);
   assert.equal(safeLights.length, 3);
   assert.ok(
     safeLights.some((zone) => zone.x > 0.75 && zone.warmth > 0.9),
     'expected the compact red signal to remain a real light candidate',
+  );
+  assert.ok(
+    safeLights.some((zone) => zone.x < 0.2 && zone.warmth < 0.2),
+    'expected a prominent cool-white lamp to remain eligible',
+  );
+  const broadReflection = analysis.zones.find((zone) =>
+    Math.abs(zone.x - 0.25) < 0.2 && zone.y > 0.72);
+  assert.ok(
+    !broadReflection || !broadReflection.isCompactSource,
+    'expected the broad reflection to be rejected as a light source',
   );
 });

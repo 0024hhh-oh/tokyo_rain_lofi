@@ -29,11 +29,8 @@ if [[ -n "$video_source" ]]; then
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
   animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
-  safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.hasLightCore && z.warmth >= 0.4 && z.y < 0.72).slice(0, 3).length)")"
-  if [[ "$animate" != "true" || "$safe_zone_count" != "3" ]]; then
-    echo "Night video lighting requires exactly three safe warm light candidates." >&2
-    exit 1
-  fi
+  safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.hasLightCore && z.isCompactSource && z.y < 0.72).slice(0, 3).length)")"
+  echo "Night video lighting selected $safe_zone_count prominent compact light(s)."
 
   source_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 public/night-source.mp4)"
   source_frames="$(python - "$source_duration" <<'PY_VIDEO_FRAMES'
@@ -84,11 +81,12 @@ fi
 
 node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
-safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.hasLightCore && z.warmth >= 0.55 && z.y < 0.72).slice(0, 3).length)")"
-if [[ "$animate" != "true" || "$safe_zone_count" != "3" ]]; then
-  echo "Remotion lighting skipped: the supplied image did not contain exactly three safe warm light candidates."
+safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.hasLightCore && z.isCompactSource && z.y < 0.72).slice(0, 3).length)")"
+if [[ "$animate" != "true" || "$safe_zone_count" == "0" ]]; then
+  echo "Remotion lighting skipped: no prominent compact light source was detected."
   exit 0
 fi
+echo "Remotion lighting selected $safe_zone_count prominent compact light(s)."
 
 rm -f "$ASSET_DIR/background.mp4"
 render_args=(
