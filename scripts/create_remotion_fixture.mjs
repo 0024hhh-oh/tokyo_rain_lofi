@@ -4,10 +4,10 @@ import sharp from 'sharp';
 
 await fs.mkdir('video_assets', {recursive: true});
 const windows = [
-  '<rect x="330" y="420" width="150" height="90" fill="#ffc16b"/>',
-  '<rect x="690" y="340" width="120" height="80" fill="#ffd89b"/>',
-  '<rect x="1180" y="480" width="190" height="105" fill="#ffb657"/>',
-  '<rect x="1500" y="390" width="110" height="75" fill="#ffe1aa"/>',
+  '<rect x="365" y="438" width="80" height="55" fill="#ffc16b"/>',
+  '<rect x="710" y="350" width="78" height="58" fill="#ffd89b"/>',
+  '<rect x="1230" y="500" width="88" height="62" fill="#ffb657"/>',
+  '<rect x="1515" y="400" width="76" height="54" fill="#ffe1aa"/>',
 ].join('');
 const svg = `<svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
   <rect width="1920" height="1080" fill="#0b1220"/>
