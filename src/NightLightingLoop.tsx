@@ -16,6 +16,7 @@ type LightZone = {
   height: number;
   warmth: number;
   strength: number;
+  hasLightCore: boolean;
 };
 
 type Flicker = {
@@ -29,7 +30,8 @@ const SAFE_MIN_WARMTH = 0.55;
 const SAFE_MAX_Y = 0.72;
 
 const safeLightZones = (lighting.zones as LightZone[])
-  .filter((zone) => zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
+  .filter((zone) =>
+    zone.hasLightCore && zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
 const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
