@@ -119,7 +119,7 @@ export const analyzeLightZones = ({data, width, height}) => {
       width: clamp((boxWidth + 7) / width, 0.045, 0.2),
       height: clamp((boxHeight + 5) / height, 0.055, 0.22),
       warmth: warmthTotal / area,
-      hasLightCore: peakLuma >= 220 || warmCorePixels >= 2,
+      hasLightCore: peakLuma >= 215 || warmCorePixels >= 2,
       score: totalWeight * Math.sqrt(area),
     });
   }
