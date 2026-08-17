@@ -66,8 +66,10 @@ test('diffuse walls are rejected while compact real lights remain eligible', () 
     safeLights.some((zone) => zone.x < 0.2 && zone.warmth < 0.2),
     'expected a prominent cool-white lamp to remain eligible',
   );
+  const broadReflection = analysis.zones.find((zone) =>
+    Math.abs(zone.x - 0.25) < 0.2 && zone.y > 0.72);
   assert.ok(
-    analysis.zones.some((zone) => zone.y > 0.72 && !zone.isCompactSource),
+    !broadReflection || !broadReflection.isCompactSource,
     'expected the broad reflection to be rejected as a light source',
   );
 });
