@@ -38,7 +38,7 @@ jobs:
           import fs from 'node:fs/promises';
           const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
           const safeZones = lighting.zones
-            .filter((zone) => zone.warmth >= 0.55 && zone.y < 0.72)
+            .filter((zone) => zone.hasLightCore && zone.warmth >= 0.55 && zone.y < 0.72)
             .slice(0, 3);
           if (!lighting.animate || safeZones.length !== 3) {
             throw new Error(`Expected the approved three light zones; got ${safeZones.length}`);
