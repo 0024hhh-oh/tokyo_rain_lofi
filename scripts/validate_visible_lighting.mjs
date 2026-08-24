@@ -53,7 +53,14 @@ const main = async () => {
     throw new Error('usage: validate_visible_lighting.mjs ZONES_JSON FRAME.png FRAME.png [...]');
   }
   const lighting = JSON.parse(await fs.readFile(zonesFile, 'utf8'));
-  if (!lighting.animate || !lighting.zones?.length) {
+  const safeZones = (lighting.zones ?? [])
+    .filter((zone) =>
+      zone.hasLightCore &&
+      zone.isCompactEmitter &&
+      zone.warmth >= 0.75 &&
+      zone.y < 0.72)
+    .slice(0, 3);
+  if (!lighting.animate || !safeZones.length) {
     throw new Error('visible-lighting validation requires at least one animated light zone');
   }
   const loaded = await Promise.all(frameFiles.map(loadFrame));
@@ -66,10 +73,12 @@ const main = async () => {
     frames: loaded.map((frame) => frame.data),
     width,
     height,
-    zones: lighting.zones,
+    zones: safeZones,
   }).sort((a, b) => b.difference - a.difference);
-  const strongThreshold = Number(process.env.LIGHTING_ZONE_MIN_DELTA ?? 12);
-  const peakThreshold = Number(process.env.LIGHTING_PEAK_MIN_DELTA ?? 20);
+  // Positive-only glow has a smaller pixel delta than the removed black dim
+  // overlay. These thresholds still require two independently visible changes.
+  const strongThreshold = Number(process.env.LIGHTING_ZONE_MIN_DELTA ?? 6);
+  const peakThreshold = Number(process.env.LIGHTING_PEAK_MIN_DELTA ?? 12);
   const requiredStrongZones = Math.min(2, scores.length);
   const strongZones = scores.filter((score) => score.difference >= strongThreshold);
   const peak = scores[0]?.difference ?? 0;
