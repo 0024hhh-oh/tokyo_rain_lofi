@@ -25,6 +25,10 @@ jobs:
           python-version: "3.12"
       - run: npm ci --no-audit --no-fund
       - run: pip install -r requirements.txt
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
       - name: Download four latest completed source videos read-only
         run: |
           mkdir -p diagnostic
