@@ -39,11 +39,12 @@ test('detects separated warm lights in a dark scene', () => {
   assert.ok(result.zones.every((zone) => zone.strength <= 1));
 });
 
-test('does not animate a bright daytime scene', () => {
+test('night-folder analysis keeps illuminated targets in a bright daytime scene', () => {
   const width = 160;
   const height = 90;
   const data = image(width, height, [205, 210, 216]);
-  paint(data, width, 50, 35, 8, 8, [255, 220, 150]);
+  paint(data, width, 50, 35, 8, 8, [255, 245, 225]);
   const result = analyzeLightZones({data, width, height});
-  assert.equal(result.animate, false);
+  assert.equal(result.animate, true);
+  assert.ok(result.zones.length >= 1);
 });
