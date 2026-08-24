@@ -33,7 +33,7 @@ test('bright scenes use a feathered exposure mask instead of a black disc', () =
   assert.match(component, /WebkitMaskImage: mask/);
   assert.match(profile, /BRIGHT_SCENE_LUMA = 110/);
   assert.match(profile, /\(1 - brightness\) \* 0\.18/);
-  assert.match(profile, /\(brightness - 1\) \* 0\.58/);
+  assert.match(profile, /1 \+ \(brightness - 1\);/);
 });
 
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {

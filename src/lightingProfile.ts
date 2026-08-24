@@ -13,5 +13,5 @@ export const adaptBrightnessForScene = (
   // Keep the same irregular timing but reduce the exposure swing.
   return brightness < 1
     ? 1 - (1 - brightness) * 0.18
-    : 1 + (brightness - 1) * 0.58;
+    : 1 + (brightness - 1);
 };
