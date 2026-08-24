@@ -26,7 +26,6 @@ export const analyzeLightZones = ({data, width, height}) => {
     sortedLuma.length;
   const p90 = sortedLuma[Math.floor(sortedLuma.length * 0.9)];
   const threshold = clamp(Math.max(145, p90 + 10), 145, 225);
-  const isNight = averageLuma < 142;
   const active = new Uint8Array(width * height);
 
   for (let y = Math.floor(height * 0.06); y < height; y += 1) {
@@ -163,7 +162,10 @@ export const analyzeLightZones = ({data, width, height}) => {
   }));
 
   return {
-    animate: isNight && zones.length > 0,
+    // This analyzer is only called by the explicit Projects/night route.
+    // The parent folder is authoritative: bright daytime or dusk images may still
+    // contain illuminated signs or lamps that should animate.
+    animate: zones.length > 0,
     averageLuma: Number(averageLuma.toFixed(2)),
     threshold: Number(threshold.toFixed(2)),
     zones,
