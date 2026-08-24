@@ -32,7 +32,7 @@ test('bright scenes use a feathered exposure mask instead of a black disc', () =
   assert.match(component, /radial-gradient\(ellipse/);
   assert.match(component, /WebkitMaskImage: mask/);
   assert.match(profile, /BRIGHT_SCENE_LUMA = 110/);
-  assert.match(profile, /\(1 - brightness\) \* 0\.36/);
+  assert.match(profile, /\(1 - brightness\) \* 0\.18/);
   assert.match(profile, /\(brightness - 1\) \* 0\.58/);
 });
 
