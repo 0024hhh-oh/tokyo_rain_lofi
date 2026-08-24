@@ -27,20 +27,21 @@ test('lighting visual test uses the supplied real scene at native 1080p', () => 
   assert.match(workflow, /path: dist\/lighting-visual-test\.mp4/);
 });
 
-test('two lights dim and one brightens on sparse irregular schedules', () => {
+test('three compact emitters use positive-only sparse schedules', () => {
   const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
   assert.match(component, /generated-light-zones\.json/);
   assert.match(component, /const MAX_LIGHTS = 3/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
+  assert.match(component, /SAFE_MIN_WARMTH = 0\.75/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
   assert.match(component, /zone\.hasLightCore/);
+  assert.match(component, /zone\.isCompactEmitter/);
   assert.match(component, /slice\(0, MAX_LIGHTS\)/);
-  assert.match(component, /safeLightZones\.length === MAX_LIGHTS/);
-  assert.match(component, /lighting\.animate && hasThreeSafeLights/);
+  assert.doesNotMatch(component, /safeLightZones\.length === MAX_LIGHTS|hasThreeSafeLights/);
+  assert.match(component, /lighting\.animate && safeLightZones\.map/);
   assert.match(component, /interpolate\(/);
-  assert.match(component, /start: 0\.85, end: 0\.99, level: 0\.76/);
-  assert.match(component, /start: 5\.95, end: 6\.28, level: 0\.80/);
-  assert.match(component, /start: 3\.45, end: 4\.05, level: 0\.72/);
+  assert.match(component, /start: 0\.85, end: 0\.99, level: 1\.18/);
+  assert.match(component, /start: 5\.95, end: 6\.28, level: 1\.15/);
+  assert.match(component, /start: 3\.45, end: 4\.05, level: 1\.16/);
   assert.match(component, /start: 2\.90, end: 3\.10, level: 1\.35/);
   assert.match(component, /start: 7\.15, end: 7\.56, level: 1\.28/);
   assert.match(component, /Math\.abs\(level - 1\)/);
@@ -49,41 +50,39 @@ test('two lights dim and one brightens on sparse irregular schedules', () => {
   assert.doesNotMatch(component, /random\(|Math\.random|Math\.sin|cycle/i);
 });
 
-test('three masks are feathered and never change global light regions', () => {
+test('three overlays are source-colored and can never darken the image', () => {
   const component = fs.readFileSync('tests/LightingVisualTest.tsx', 'utf8');
-  assert.match(component, /zone\.width \* 50/);
-  assert.match(component, /zone\.height \* 50/);
-  assert.match(component, /rgba\(0, 0, 0, 0\.48\) 80%, transparent 100%/);
-  assert.match(component, /windows, street lamps, and wet-road reflections/);
-  assert.match(component, /non-overlapping/);
+  assert.match(component, /zone\.color/);
+  assert.match(component, /mixBlendMode: 'screen'/);
+  assert.match(component, /Math\.max\(0, brightness - 1\)/);
+  assert.doesNotMatch(component, /rgba\(0, 0, 0|level: 0\./);
   assert.doesNotMatch(component, /clipPath|inset\(/);
-  assert.doesNotMatch(component, /mixBlendMode|screen|glowOpacity/);
+  assert.doesNotMatch(component, /backdropFilter|brightness\(/);
 });
 
 test('production night renderer animates zero to three safe lights without blocking video generation', () => {
   const component = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
   const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
   assert.match(component, /const MAX_LIGHTS = 3/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.55/);
+  assert.match(component, /SAFE_MIN_WARMTH = 0\.75/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
   assert.match(component, /zone\.hasLightCore/);
+  assert.match(component, /zone\.isCompactEmitter/);
   assert.doesNotMatch(component, /safeLightZones\.length === MAX_LIGHTS|hasThreeSafeLights/);
-  assert.match(component, /level: 0\.76/);
-  assert.match(component, /level: 0\.72/);
+  assert.match(component, /level: 1\.18/);
+  assert.match(component, /level: 1\.16/);
   assert.match(component, /level: 1\.35/);
   assert.match(component, /level: 1\.28/);
   assert.match(component, /interpolate\(/);
   assert.doesNotMatch(component, /random\(|Math\.random|Math\.sin|cycle/i);
-  assert.doesNotMatch(component, /clipPath|mixBlendMode|glowOpacity/);
+  assert.doesNotMatch(component, /clipPath|rgba\(0, 0, 0|level: 0\./);
   assert.match(renderer, /safe_zone_count/);
   assert.doesNotMatch(renderer, /safe_zone_count" != "3"|requires exactly three/);
   assert.match(renderer, /rendering continues with zero to three lights/);
 });
 
-test('static bright scenes keep the source exposure and use the softer profile', () => {
+test('static scenes never use negative exposure', () => {
   const component = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
-  assert.match(component, /isBrightLightingScene\(lighting\.averageLuma\)/);
-  assert.match(component, /adaptBrightnessForScene\(brightness, isBrightScene\)/);
-  assert.match(component, /brightness\(\$\{sceneBrightness\}\)/);
-  assert.doesNotMatch(component, /filter:.*nightGrade|day-to-night/);
+  assert.doesNotMatch(component, /isBrightLightingScene|adaptBrightnessForScene/);
+  assert.doesNotMatch(component, /brightness\(|rgba\(0, 0, 0|level: 0\./);
 });

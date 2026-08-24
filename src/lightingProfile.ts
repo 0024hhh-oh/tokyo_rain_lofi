@@ -5,13 +5,8 @@ export const isBrightLightingScene = (averageLuma: number) =>
 
 export const adaptBrightnessForScene = (
   brightness: number,
-  isBrightScene: boolean,
+  _isBrightScene: boolean,
 ) => {
-  if (!isBrightScene) return brightness;
-
-  // Daylight makes a full night-style dim look like a black pasted-on disc.
-  // Keep the same irregular timing but reduce the exposure swing.
-  return brightness < 1
-    ? 1 - (1 - brightness) * 0.18
-    : 1 + (brightness - 1);
+  // Negative exposure changes are forbidden: they create pasted-on dark discs.
+  return Math.max(1, brightness);
 };

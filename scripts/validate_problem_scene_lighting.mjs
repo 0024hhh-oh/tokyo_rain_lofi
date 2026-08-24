@@ -9,7 +9,11 @@ if (!steadyFile || !boostFile) {
 
 const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
 const safeZones = lighting.zones
-  .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
+  .filter((zone) =>
+    zone.hasLightCore &&
+    zone.isCompactEmitter &&
+    zone.warmth >= 0.75 &&
+    zone.y < 0.72)
   .slice(0, 3);
 if (safeZones.length !== 3) {
   throw new Error(`Expected three safe problem-scene lights; got ${safeZones.length}`);

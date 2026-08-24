@@ -69,6 +69,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     let warmthTotal = 0;
     let peakLuma = 0;
     let warmCorePixels = 0;
+    let hardCorePixels = 0;
     let weightedRed = 0;
     let weightedGreen = 0;
     let weightedBlue = 0;
@@ -97,6 +98,9 @@ export const analyzeLightZones = ({data, width, height}) => {
       ) {
         warmCorePixels += 1;
       }
+      if (pixel.luma >= Math.max(220, threshold + 28)) {
+        hardCorePixels += 1;
+      }
 
       for (const [dx, dy] of neighbors) {
         const nx = x + dx;
@@ -120,6 +124,27 @@ export const analyzeLightZones = ({data, width, height}) => {
     const averageRed = weightedRed / totalWeight;
     const averageGreen = weightedGreen / totalWeight;
     const averageBlue = weightedBlue / totalWeight;
+    const boxArea = boxWidth * boxHeight;
+    const fillRatio = area / boxArea;
+    const aspectRatio = Math.max(boxWidth / boxHeight, boxHeight / boxWidth);
+
+    // A real lamp is normally a compact cluster with a small, very bright core.
+    // Broad bright surfaces and elongated clusters are much more likely to be
+    // windows, walls, roads, water reflections, or vehicles. False animation is
+    // worse than no animation, so uncertain regions deliberately fail closed.
+    const isCompactEmitter =
+      boxWidth <= 8 &&
+      boxHeight <= 8 &&
+      area <= 40 &&
+      aspectRatio <= 1.6 &&
+      fillRatio >= 0.18 &&
+      hardCorePixels >= 1 &&
+      peakLuma >= 225;
+
+    const compactness = clamp(1 - (boxArea - area) / Math.max(1, boxArea), 0, 1);
+    const emitterScore = isCompactEmitter
+      ? totalWeight * (0.65 + compactness * 0.35) / Math.sqrt(area)
+      : 0;
 
     components.push({
       area,
@@ -129,12 +154,13 @@ export const analyzeLightZones = ({data, width, height}) => {
       height: clamp((boxHeight + 5) / height, 0.055, 0.22),
       warmth: warmthTotal / area,
       hasLightCore: peakLuma >= 205 || warmCorePixels >= 2,
+      isCompactEmitter,
       color: [
         Math.round(averageRed),
         Math.round(averageGreen),
         Math.round(averageBlue),
       ],
-      score: totalWeight * Math.sqrt(area),
+      score: emitterScore,
     });
   }
 
@@ -157,6 +183,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     height: Number(zone.height.toFixed(5)),
     warmth: Number(zone.warmth.toFixed(4)),
     hasLightCore: zone.hasLightCore,
+    isCompactEmitter: zone.isCompactEmitter,
     color: zone.color,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
@@ -165,7 +192,11 @@ export const analyzeLightZones = ({data, width, height}) => {
     // This analyzer is only called by the explicit Projects/night route.
     // The parent folder is authoritative: bright daytime or dusk images may still
     // contain illuminated signs or lamps that should animate.
-    animate: zones.length > 0,
+    animate: zones.some((zone) =>
+      zone.hasLightCore &&
+      zone.isCompactEmitter &&
+      zone.warmth >= 0.75 &&
+      zone.y < 0.72),
     averageLuma: Number(averageLuma.toFixed(2)),
     threshold: Number(threshold.toFixed(2)),
     zones,
