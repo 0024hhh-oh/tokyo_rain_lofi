@@ -1,0 +1,100 @@
+name: ShinSUNA bright night-folder verification
+
+on:
+  pull_request:
+    paths:
+      - "scripts/prepare_remotion_background.mjs"
+      - "scripts/render_night_background.sh"
+      - "src/NightLightingLoop.tsx"
+      - ".github/workflows/shinsuna_bright_night_verification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  render-shinsuna:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci --no-audit --no-fund
+      - run: pip install -r requirements.txt
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Download only the completed ShinSUNA source MOV
+        run: |
+          mkdir -p video_assets dist
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaIoBaseDownload
+
+          info = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
+          credentials = service_account.Credentials.from_service_account_info(
+              info,
+              scopes=["https://www.googleapis.com/auth/drive.readonly"],
+          )
+          service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+          request = service.files().get_media(
+              fileId="1R6pwTz2LsNXwFvBxux-QnM5cal5tjBTn",
+              supportsAllDrives=True,
+          )
+          destination = Path("video_assets/background.mov")
+          with destination.open("wb") as handle:
+              downloader = MediaIoBaseDownload(handle, request)
+              done = False
+              while not done:
+                  _, done = downloader.next_chunk()
+          print(f"Downloaded ShinSUNA source: {destination.stat().st_size} bytes")
+          PY
+      - name: Render through the production night background path
+        env:
+          ASSET_DIR: video_assets
+        run: bash scripts/render_night_background.sh
+      - name: Verify the bright source animated at least one safe light
+        run: |
+          node - <<'NODE'
+          const lighting = require('./src/generated-light-zones.json');
+          const safe = lighting.zones
+            .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
+            .slice(0, 3);
+          console.log({
+            animate: lighting.animate,
+            averageLuma: lighting.averageLuma,
+            safeLightCount: safe.length,
+            safeLights: safe.map(({id, x, y, warmth}) => ({id, x, y, warmth})),
+          });
+          if (!lighting.animate || safe.length < 1) {
+            throw new Error('ShinSUNA did not animate any safe light in the night route.');
+          }
+          NODE
+          ffmpeg -y -i video_assets/night_source_input.mov -frames:v 1 dist/shinsuna-source-frame.png
+          ffprobe -v error \
+            -show_entries stream=codec_name,width,height,r_frame_rate \
+            -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 \
+            video_assets/background.mp4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shinsuna-bright-night-folder-sample
+          path: |
+            video_assets/background.mp4
+            dist/shinsuna-source-frame.png
+            src/generated-light-zones.json
+          if-no-files-found: error
+          retention-days: 7
