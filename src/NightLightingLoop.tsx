@@ -33,7 +33,6 @@ const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) =>
     zone.hasLightCore && zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
-const hasThreeSafeLights = safeLightZones.length === MAX_LIGHTS;
 
 // Two locations dim and one brightens. All events are sparse, non-overlapping,
 // and use different gaps and durations so the 30-second loop has no steady beat.
@@ -82,7 +81,7 @@ export const NightLightingLoop: React.FC = () => {
         style={{height: '100%', objectFit: 'cover', width: '100%'}}
       />
 
-      {lighting.animate && hasThreeSafeLights && safeLightZones.map((zone, index) => {
+      {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
         const mask = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)`;
 
