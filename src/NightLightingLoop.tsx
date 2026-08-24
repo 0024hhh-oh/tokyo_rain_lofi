@@ -7,6 +7,10 @@ import {
   useVideoConfig,
 } from 'remotion';
 import lighting from './generated-light-zones.json';
+import {
+  adaptBrightnessForScene,
+  isBrightLightingScene,
+} from './lightingProfile';
 
 type LightZone = {
   id: string;
@@ -33,6 +37,7 @@ const safeLightZones = (lighting.zones as LightZone[])
   .filter((zone) =>
     zone.hasLightCore && zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
+const isBrightScene = isBrightLightingScene(lighting.averageLuma);
 
 // Two locations dim and one brightens. All events are sparse, non-overlapping,
 // and use different gaps and durations so the 30-second loop has no steady beat.
@@ -83,13 +88,14 @@ export const NightLightingLoop: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
+        const sceneBrightness = adaptBrightnessForScene(brightness, isBrightScene);
         const mask = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 58%, rgba(0, 0, 0, 0.48) 80%, transparent 100%)`;
 
         return (
           <AbsoluteFill
             key={zone.id}
             style={{
-              filter: `brightness(${brightness}) saturate(${0.9 + brightness * 0.1})`,
+              filter: `brightness(${sceneBrightness}) saturate(${0.9 + sceneBrightness * 0.1})`,
               maskImage: mask,
               WebkitMaskImage: mask,
             }}

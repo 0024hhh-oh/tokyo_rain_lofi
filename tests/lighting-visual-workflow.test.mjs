@@ -79,3 +79,11 @@ test('production night renderer animates zero to three safe lights without block
   assert.doesNotMatch(renderer, /safe_zone_count" != "3"|requires exactly three/);
   assert.match(renderer, /rendering continues with zero to three lights/);
 });
+
+test('static bright scenes keep the source exposure and use the softer profile', () => {
+  const component = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
+  assert.match(component, /isBrightLightingScene\(lighting\.averageLuma\)/);
+  assert.match(component, /adaptBrightnessForScene\(brightness, isBrightScene\)/);
+  assert.match(component, /brightness\(\$\{sceneBrightness\}\)/);
+  assert.doesNotMatch(component, /filter:.*nightGrade|day-to-night/);
+});

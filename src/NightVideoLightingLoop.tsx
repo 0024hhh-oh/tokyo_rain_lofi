@@ -9,6 +9,10 @@ import {
 } from 'remotion';
 import lighting from './generated-light-zones.json';
 import videoMetadata from './generated-video-metadata.json';
+import {
+  adaptBrightnessForScene,
+  isBrightLightingScene,
+} from './lightingProfile';
 
 type LightZone = {
   id: string;
@@ -46,6 +50,7 @@ const safeLightZones = (lighting.zones as LightZone[])
     zone.warmth >= SAFE_MIN_WARMTH &&
     zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
+const isBrightScene = isBrightLightingScene(lighting.averageLuma);
 
 const flickerSchedules: Flicker[][] = [
   [
@@ -105,6 +110,7 @@ export const NightVideoLightingLoop: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
+        const sceneBrightness = adaptBrightnessForScene(brightness, isBrightScene);
         const brightening = Math.max(0, brightness - 1);
         const opacity = getOverlayOpacity(brightness);
         const isBrightening = brightening > 0;
@@ -112,6 +118,23 @@ export const NightVideoLightingLoop: React.FC = () => {
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
+
+        if (isBrightScene) {
+          const mask = `radial-gradient(ellipse ${zone.width * 50}% ${zone.height * 50}% at ${zone.x * 100}% ${zone.y * 100}%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.94) 46%, rgba(0, 0, 0, 0.42) 74%, transparent 100%)`;
+
+          return (
+            <AbsoluteFill
+              key={zone.id}
+              style={{
+                backdropFilter: `brightness(${sceneBrightness}) saturate(${0.96 + sceneBrightness * 0.04})`,
+                maskImage: mask,
+                pointerEvents: 'none',
+                WebkitBackdropFilter: `brightness(${sceneBrightness}) saturate(${0.96 + sceneBrightness * 0.04})`,
+                WebkitMaskImage: mask,
+              }}
+            />
+          );
+        }
 
         return (
           <div

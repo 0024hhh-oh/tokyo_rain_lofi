@@ -6,6 +6,7 @@ const component = fs.readFileSync('src/NightVideoLightingLoop.tsx', 'utf8');
 const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
 const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'utf8');
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
+const profile = fs.readFileSync('src/lightingProfile.ts', 'utf8');
 
 test('production night video keeps safe detection with smooth source-colored lighting', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
@@ -22,6 +23,17 @@ test('production night video keeps safe detection with smooth source-colored lig
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
   assert.equal(component.match(/<OffthreadVideo/g)?.length, 1);
+});
+
+test('bright scenes use a feathered exposure mask instead of a black disc', () => {
+  assert.match(component, /isBrightLightingScene\(lighting\.averageLuma\)/);
+  assert.match(component, /if \(isBrightScene\)/);
+  assert.match(component, /backdropFilter: `brightness\(\$\{sceneBrightness\}\)/);
+  assert.match(component, /radial-gradient\(ellipse/);
+  assert.match(component, /WebkitMaskImage: mask/);
+  assert.match(profile, /BRIGHT_SCENE_LUMA = 110/);
+  assert.match(profile, /\(1 - brightness\) \* 0\.36/);
+  assert.match(profile, /\(brightness - 1\) \* 0\.58/);
 });
 
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
