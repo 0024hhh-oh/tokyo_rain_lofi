@@ -24,8 +24,8 @@ jobs:
       - name: Prepare ShinSUNA overlay sample
         run: |
           mkdir -p video_assets dist
-          cp test_assets/shinsuna-daylight-regression.png video_assets/background.png
-          cp test_assets/shinsuna-light-overlay.png video_assets/light_overlay.png
+          cp test_assets/night-shinsuna-background.jpeg video_assets/background.jpeg
+          cp test_assets/night-shinsuna-light-overlay.png video_assets/light_overlay.png
           node scripts/prepare_remotion_background.mjs video_assets
           node --input-type=module <<'NODE'
           import fs from 'node:fs/promises';

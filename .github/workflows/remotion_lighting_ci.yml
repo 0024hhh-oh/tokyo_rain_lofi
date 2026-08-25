@@ -10,8 +10,8 @@ on:
       - "scripts/prepare_remotion_background.mjs"
       - "scripts/render_night_background.sh"
       - "tests/**"
-      - "test_assets/shinsuna-daylight-regression.png"
-      - "test_assets/shinsuna-light-overlay.png"
+      - "test_assets/night-shinsuna-background.jpeg"
+      - "test_assets/night-shinsuna-light-overlay.png"
       - ".github/workflows/remotion_lighting_ci.yml"
 
 permissions:
@@ -37,8 +37,8 @@ jobs:
       - name: Prepare explicit ShinSUNA overlay sample
         run: |
           mkdir -p video_assets dist
-          cp test_assets/shinsuna-daylight-regression.png video_assets/background.png
-          cp test_assets/shinsuna-light-overlay.png video_assets/light_overlay.png
+          cp test_assets/night-shinsuna-background.jpeg video_assets/background.jpeg
+          cp test_assets/night-shinsuna-light-overlay.png video_assets/light_overlay.png
           node scripts/prepare_remotion_background.mjs video_assets
           node --input-type=module <<'NODE'
           import fs from 'node:fs/promises';
