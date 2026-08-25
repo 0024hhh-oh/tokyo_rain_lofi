@@ -57,7 +57,7 @@ jobs:
           mkdir -p video_assets dist
           cp test_assets/night-shinsuna-background.jpeg video_assets/night-source-still.jpeg
           ffmpeg -y -loop 1 -i video_assets/night-source-still.jpeg \
-            -t 10 -r 30 -c:v libx264 -pix_fmt yuv420p video_assets/background.mp4
+            -vf scale=1920:1080 -t 10 -r 30 -c:v libx264 -pix_fmt yuv420p video_assets/background.mp4
           bash scripts/render_night_background.sh
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
