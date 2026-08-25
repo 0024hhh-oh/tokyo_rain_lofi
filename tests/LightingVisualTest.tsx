@@ -84,9 +84,9 @@ export const LightingVisualTest: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
-        const opacity = Math.min(0.30, Math.max(0, brightness - 1) * 0.9);
-        const width = zone.width * 0.58;
-        const height = zone.height * 0.58;
+        const opacity = Math.min(0.58, Math.max(0, brightness - 1) * 2.0);
+        const width = zone.width * 0.86;
+        const height = zone.height * 0.86;
         const [red, green, blue] = zone.color;
         return (
           <div
@@ -94,8 +94,8 @@ export const LightingVisualTest: React.FC = () => {
             style={{
               backgroundColor: `rgba(${red}, ${green}, ${blue}, ${opacity})`,
               borderRadius: '50%',
-              boxShadow: `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`,
-              filter: 'blur(2px)',
+              boxShadow: `0 0 24px 12px rgba(${red}, ${green}, ${blue}, ${opacity * 0.6})`,
+              filter: 'blur(1px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: 'screen',

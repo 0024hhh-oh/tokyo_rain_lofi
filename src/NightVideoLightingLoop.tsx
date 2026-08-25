@@ -76,7 +76,7 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
 };
 
 const getOverlayOpacity = (brightness: number) => {
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 0.9);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 2.0);
 };
 
 export const NightVideoLightingLoop: React.FC = () => {
@@ -98,9 +98,9 @@ export const NightVideoLightingLoop: React.FC = () => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
         const isDaylightAccent = zone.selectionMode === 'daylight-accent';
         const opacity = isDaylightAccent
-          ? Math.min(0.38, (brightness - 1) * 1.6)
+          ? Math.min(0.62, Math.max(0, brightness - 1) * 2.4)
           : getOverlayOpacity(brightness);
-        const sizeScale = isDaylightAccent ? 0.32 : 0.58;
+        const sizeScale = isDaylightAccent ? 0.46 : 0.86;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
@@ -111,8 +111,8 @@ export const NightVideoLightingLoop: React.FC = () => {
             style={{
               backgroundColor: `rgba(${red}, ${green}, ${blue}, ${opacity})`,
               borderRadius: '50%',
-              boxShadow: `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`,
-              filter: 'blur(2px)',
+              boxShadow: `0 0 24px 12px rgba(${red}, ${green}, ${blue}, ${opacity * 0.6})`,
+              filter: 'blur(1px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: 'screen',

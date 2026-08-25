@@ -39,10 +39,10 @@ test('lighting uses smooth source-colored local overlays', () => {
   assert.doesNotMatch(component, /DIM_FLICKER_PATTERN/);
   assert.doesNotMatch(component, /MAX_DIM_OPACITY/);
   assert.match(component, /const MAX_GLOW_OPACITY = 0\.34/);
-  assert.match(component, /\(brightness - 1\) \* 0\.9/);
+  assert.match(component, /\(brightness - 1\) \* 2\.0/);
   assert.match(component, /rgba\(\$\{red\}, \$\{green\}, \$\{blue\}/);
   assert.doesNotMatch(component, /DIM_ZONE_SCALES|rgba\(0, 0, 0/);
-  assert.match(component, /filter: 'blur\(2px\)'/);
+  assert.match(component, /filter: 'blur\(1px\)'/);
   assert.equal(component.match(/<MutedRainVideo \/>/g)?.length, 1);
 });
 test('CI renders a silent 30-second 1080p artifact', () => {

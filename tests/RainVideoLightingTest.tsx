@@ -79,7 +79,7 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
 };
 
 const getOverlayOpacity = (brightness: number) => {
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 0.9);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 2.0);
 };
 
 const MutedRainVideo: React.FC = () => (
@@ -104,7 +104,7 @@ export const RainVideoLightingTest: React.FC = () => {
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
         const opacity = getOverlayOpacity(brightness);
-        const sizeScale = 0.58;
+        const sizeScale = 0.86;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
@@ -115,8 +115,8 @@ export const RainVideoLightingTest: React.FC = () => {
             style={{
               backgroundColor: `rgba(${red}, ${green}, ${blue}, ${opacity})`,
               borderRadius: '50%',
-              boxShadow: `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`,
-              filter: 'blur(2px)',
+              boxShadow: `0 0 24px 12px rgba(${red}, ${green}, ${blue}, ${opacity * 0.6})`,
+              filter: 'blur(1px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: 'screen',
