@@ -14,6 +14,7 @@ on:
       - "scripts/validate_visible_lighting.mjs"
       - "scripts/create_remotion_fixture.mjs"
       - "tests/**"
+      - "test_assets/night-shinsuna-background.jpeg"
       - ".github/workflows/generate_lofi_video.yml"
       - ".github/workflows/remotion_lighting_ci.yml"
 
@@ -54,7 +55,9 @@ jobs:
         run: |
           rm -rf video_assets public dist
           mkdir -p video_assets dist
-          cp test_assets/rain-video-fixture.mp4 video_assets/background.mp4
+          cp test_assets/night-shinsuna-background.jpeg video_assets/night-source-still.jpeg
+          ffmpeg -y -loop 1 -i video_assets/night-source-still.jpeg \
+            -t 10 -r 30 -c:v libx264 -pix_fmt yuv420p video_assets/background.mp4
           bash scripts/render_night_background.sh
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
