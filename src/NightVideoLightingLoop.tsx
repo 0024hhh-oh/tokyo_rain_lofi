@@ -37,7 +37,7 @@ const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_GLOW_OPACITY = 0.34;
 
-const safeLightZones = (lighting.zones as LightZone[])
+const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
   .slice(0, MAX_LIGHTS);
 

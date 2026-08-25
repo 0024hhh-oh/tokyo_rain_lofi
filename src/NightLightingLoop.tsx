@@ -30,7 +30,7 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const safeLightZones = (lighting.zones as LightZone[])
+const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
   .slice(0, MAX_LIGHTS);
 

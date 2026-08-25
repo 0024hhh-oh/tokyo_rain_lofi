@@ -32,7 +32,7 @@ const SAFE_MIN_WARMTH = 0.75;
 const SAFE_MAX_Y = 0.72;
 
 // Only compact, warm emitters are eligible. Uncertain scenes render unchanged.
-const safeLightZones = (lighting.zones as LightZone[])
+const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) =>
     zone.hasLightCore && zone.isCompactEmitter &&
     zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
