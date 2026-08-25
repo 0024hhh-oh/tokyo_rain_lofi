@@ -56,8 +56,11 @@ jobs:
           rm -rf video_assets public dist
           mkdir -p video_assets dist
           cp test_assets/night-shinsuna-background.jpeg video_assets/night-source-still.jpeg
+          cp test_assets/rain-video-fixture.mp4 video_assets/rain-motion.mp4
           ffmpeg -y -loop 1 -i video_assets/night-source-still.jpeg \
-            -vf scale=1920:1080 -t 10 -r 30 -c:v libx264 -pix_fmt yuv420p video_assets/background.mp4
+            -stream_loop -1 -i video_assets/rain-motion.mp4 \
+            -filter_complex "[0:v]scale=1920:1080,fps=30,format=rgba[base];[1:v]scale=1920:1080,fps=30,format=gray,tblend=all_mode=difference,eq=contrast=8:brightness=-0.2[mask];color=c=white@0.0:s=1920x1080:r=30,format=rgba[blank];[blank][mask]alphamerge[rain];[base][rain]overlay=shortest=1,format=yuv420p" \
+            -t 10 -r 30 -c:v libx264 video_assets/background.mp4
           bash scripts/render_night_background.sh
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
