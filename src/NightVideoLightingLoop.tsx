@@ -20,6 +20,8 @@ type LightZone = {
   strength: number;
   hasLightCore: boolean;
   isCompactEmitter: boolean;
+  eligible: boolean;
+  selectionMode: 'strict-emitter' | 'daylight-accent' | 'rejected';
   color: [number, number, number];
 };
 
@@ -30,21 +32,13 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-// Reflections and cool illuminated surfaces are intentionally excluded. Missing
-// an uncertain light is safer than animating a wall, road, river, or vehicle.
-const SAFE_MIN_WARMTH = 0.75;
-const SAFE_MAX_Y = 0.72;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_GLOW_OPACITY = 0.34;
 
 const safeLightZones = (lighting.zones as LightZone[])
-  .filter((zone) =>
-    zone.hasLightCore &&
-    zone.isCompactEmitter &&
-    zone.warmth >= SAFE_MIN_WARMTH &&
-    zone.y < SAFE_MAX_Y)
+  .filter((zone) => zone.eligible)
   .slice(0, MAX_LIGHTS);
 
 const flickerSchedules: Flicker[][] = [
@@ -102,8 +96,11 @@ export const NightVideoLightingLoop: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
-        const opacity = getOverlayOpacity(brightness);
-        const sizeScale = 0.58;
+        const isDaylightAccent = zone.selectionMode === 'daylight-accent';
+        const opacity = isDaylightAccent
+          ? Math.min(0.38, (brightness - 1) * 1.6)
+          : getOverlayOpacity(brightness);
+        const sizeScale = isDaylightAccent ? 0.32 : 0.58;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;

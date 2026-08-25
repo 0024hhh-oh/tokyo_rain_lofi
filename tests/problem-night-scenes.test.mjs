@@ -37,3 +37,18 @@ test('river scene selects three lamps and excludes the river reflection', async 
   assert.ok(safe.every((zone) =>
     Math.hypot(zone.x - 0.447, zone.y - 0.581) > 0.12));
 });
+
+test('ShinSUNA daylight selects one additive accent at the existing central light', async () => {
+  const {data, info} = await sharp('test_assets/shinsuna-daylight-regression.png')
+    .removeAlpha()
+    .raw()
+    .toBuffer({resolveWithObject: true});
+  const lighting = analyzeLightZones({data, width: info.width, height: info.height});
+  const eligible = lighting.zones.filter((zone) => zone.eligible);
+
+  assert.equal(lighting.animate, true);
+  assert.equal(eligible.length, 1);
+  assert.equal(eligible[0].selectionMode, 'daylight-accent');
+  assert.ok(Math.abs(eligible[0].x - 0.58) < 0.02);
+  assert.ok(Math.abs(eligible[0].y - 0.53) < 0.02);
+});

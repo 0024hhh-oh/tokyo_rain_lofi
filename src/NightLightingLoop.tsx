@@ -18,6 +18,8 @@ type LightZone = {
   strength: number;
   hasLightCore: boolean;
   isCompactEmitter: boolean;
+  eligible: boolean;
+  selectionMode: 'strict-emitter' | 'daylight-accent' | 'rejected';
   color: [number, number, number];
 };
 
@@ -28,13 +30,8 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const SAFE_MIN_WARMTH = 0.75;
-const SAFE_MAX_Y = 0.72;
-
 const safeLightZones = (lighting.zones as LightZone[])
-  .filter((zone) =>
-    zone.hasLightCore && zone.isCompactEmitter &&
-    zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
+  .filter((zone) => zone.eligible)
   .slice(0, MAX_LIGHTS);
 
 // Positive glow only. The source image is never made darker.
@@ -85,9 +82,13 @@ export const NightLightingLoop: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
-        const opacity = Math.min(0.30, Math.max(0, brightness - 1) * 0.9);
-        const width = zone.width * 0.58;
-        const height = zone.height * 0.58;
+        const isDaylightAccent = zone.selectionMode === 'daylight-accent';
+        const opacity = isDaylightAccent
+          ? Math.min(0.38, Math.max(0, brightness - 1) * 1.6)
+          : Math.min(0.30, Math.max(0, brightness - 1) * 0.9);
+        const sizeScale = isDaylightAccent ? 0.32 : 0.58;
+        const width = zone.width * sizeScale;
+        const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
 
         return (

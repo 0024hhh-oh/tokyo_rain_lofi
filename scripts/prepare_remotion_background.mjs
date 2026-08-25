@@ -7,6 +7,9 @@ import sharp from 'sharp';
 const WIDTH = 160;
 const HEIGHT = 90;
 const MAX_ZONES = 50;
+const DAYLIGHT_LUMA = 120;
+const DAYLIGHT_MIN_WARMTH = 0.4;
+const SAFE_MAX_Y = 0.72;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -175,7 +178,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     if (selected.length >= MAX_ZONES) break;
   }
 
-  const zones = selected.map((zone, index) => ({
+  const analyzedZones = selected.map((zone, index) => ({
     id: `light-${index + 1}`,
     x: Number(zone.x.toFixed(5)),
     y: Number(zone.y.toFixed(5)),
@@ -188,15 +191,42 @@ export const analyzeLightZones = ({data, width, height}) => {
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
 
+  const strictZones = analyzedZones.filter((zone) =>
+    zone.hasLightCore &&
+    zone.isCompactEmitter &&
+    zone.warmth >= 0.75 &&
+    zone.y < SAFE_MAX_Y);
+
+  // Daylight sources often compress a real lamp/sign into a neutral, slightly
+  // elongated highlight. If the strict night rules find nothing, permit only
+  // the single warmest highlight. The renderer keeps this fallback very small
+  // and additive-only, so it cannot dim the source or animate a broad surface.
+  const daylightFallback = averageLuma >= DAYLIGHT_LUMA && strictZones.length === 0
+    ? analyzedZones
+      .filter((zone) =>
+        zone.hasLightCore &&
+        zone.warmth >= DAYLIGHT_MIN_WARMTH &&
+        zone.width <= 0.07 &&
+        zone.height <= 0.09 &&
+        zone.y < SAFE_MAX_Y)
+      .sort((a, b) => b.warmth - a.warmth)[0]
+    : null;
+
+  const zones = analyzedZones.map((zone) => ({
+    ...zone,
+    eligible: strictZones.includes(zone) || zone === daylightFallback,
+    selectionMode: strictZones.includes(zone)
+      ? 'strict-emitter'
+      : zone === daylightFallback
+        ? 'daylight-accent'
+        : 'rejected',
+  }));
+
   return {
     // This analyzer is only called by the explicit Projects/night route.
     // The parent folder is authoritative: bright daytime or dusk images may still
     // contain illuminated signs or lamps that should animate.
-    animate: zones.some((zone) =>
-      zone.hasLightCore &&
-      zone.isCompactEmitter &&
-      zone.warmth >= 0.75 &&
-      zone.y < 0.72),
+    animate: zones.some((zone) => zone.eligible),
     averageLuma: Number(averageLuma.toFixed(2)),
     threshold: Number(threshold.toFixed(2)),
     zones,

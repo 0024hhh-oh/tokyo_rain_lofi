@@ -8,11 +8,10 @@ const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'u
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 const profile = fs.readFileSync('src/lightingProfile.ts', 'utf8');
 
-test('production night video uses positive-only glow on compact emitters', () => {
+test('production night video uses positive-only glow on eligible emitters', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.75/);
-  assert.match(component, /zone\.hasLightCore/);
-  assert.match(component, /zone\.isCompactEmitter/);
+  assert.match(component, /zone\.eligible/);
+  assert.match(component, /selectionMode/);
   assert.match(component, /zone\.color/);
   assert.doesNotMatch(component, /hasThreeSafeLights/);
   assert.doesNotMatch(component, /DIM_FLICKER_PATTERN/);
@@ -21,7 +20,7 @@ test('production night video uses positive-only glow on compact emitters', () =>
   assert.doesNotMatch(component, /rgba\(0, 0, 0/);
   assert.match(component, /level: 1\.38/);
   assert.match(component, /level: 1\.34/);
-  assert.match(component, /const sizeScale = 0\.58/);
+  assert.match(component, /isDaylightAccent \? 0\.32 : 0\.58/);
   assert.match(component, /filter: 'blur\(2px\)'/);
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
@@ -36,9 +35,7 @@ test('legacy brightness helper also forbids negative exposure', () => {
 
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
-  assert.match(renderer, /z\.warmth >= 0\.75/);
-  assert.match(renderer, /z\.hasLightCore/);
-  assert.match(renderer, /z\.isCompactEmitter/);
+  assert.match(renderer, /z\.eligible/);
   assert.match(renderer, /-map 0:v:0 -an -c:v copy/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);

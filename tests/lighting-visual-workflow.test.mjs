@@ -64,10 +64,8 @@ test('production night renderer animates zero to three safe lights without block
   const component = fs.readFileSync('src/NightLightingLoop.tsx', 'utf8');
   const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
   assert.match(component, /const MAX_LIGHTS = 3/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.75/);
-  assert.match(component, /SAFE_MAX_Y = 0\.72/);
-  assert.match(component, /zone\.hasLightCore/);
-  assert.match(component, /zone\.isCompactEmitter/);
+  assert.match(component, /zone\.eligible/);
+  assert.match(component, /selectionMode/);
   assert.doesNotMatch(component, /safeLightZones\.length === MAX_LIGHTS|hasThreeSafeLights/);
   assert.match(component, /level: 1\.18/);
   assert.match(component, /level: 1\.16/);
