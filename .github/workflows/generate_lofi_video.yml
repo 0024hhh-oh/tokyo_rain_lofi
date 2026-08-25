@@ -111,7 +111,7 @@ jobs:
               export OUTPUT_FILE="${output_file}"
               echo "Output file: dist/${OUTPUT_FILE}"
               if [[ "${project_mode}" == "night" ]]; then
-                echo "Night project: applying irregular animation to up to three detected lights."
+                echo "Night project: applying the supplied light_overlay.png when present."
                 bash scripts/render_night_background.sh
               elif [[ "${project_mode}" == "day" ]]; then
                 echo "Day project: keeping the supplied background unchanged."
