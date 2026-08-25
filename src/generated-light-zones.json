@@ -1,6 +1,6 @@
 {
   "animate": false,
-  "overlay": null,
-  "width": 1920,
-  "height": 1080
+  "averageLuma": 0,
+  "threshold": 145,
+  "zones": []
 }

@@ -6,7 +6,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import lighting from './generated-light-zones.json';
+import lighting from '../src/generated-light-zones.json';
 
 type LightZone = {
   id: string;
@@ -18,8 +18,6 @@ type LightZone = {
   strength: number;
   hasLightCore: boolean;
   isCompactEmitter: boolean;
-  eligible: boolean;
-  selectionMode: 'strict-emitter' | 'daylight-accent' | 'rejected';
   color: [number, number, number];
 };
 
@@ -30,26 +28,28 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
+const SAFE_MIN_WARMTH = 0.75;
+const SAFE_MAX_Y = 0.72;
+
+// Only compact, warm emitters are eligible. Uncertain scenes render unchanged.
 const safeLightZones = (lighting.zones as unknown as LightZone[])
-  .filter((zone) => zone.eligible)
+  .filter((zone) =>
+    zone.hasLightCore && zone.isCompactEmitter &&
+    zone.warmth >= SAFE_MIN_WARMTH && zone.y < SAFE_MAX_Y)
   .slice(0, MAX_LIGHTS);
 
-// Positive glow only. The source image is never made darker.
+// Positive glow only; the source is never darkened.
 const flickerSchedules: Flicker[][] = [
   [
     {start: 0.85, end: 0.99, level: 1.18},
     {start: 5.95, end: 6.28, level: 1.15},
-    {start: 18.40, end: 18.71, level: 1.17},
   ],
   [
     {start: 3.45, end: 4.05, level: 1.16},
-    {start: 23.10, end: 23.53, level: 1.14},
   ],
   [
     {start: 2.90, end: 3.10, level: 1.35},
     {start: 7.15, end: 7.56, level: 1.28},
-    {start: 13.60, end: 13.87, level: 1.32},
-    {start: 27.35, end: 27.83, level: 1.30},
   ],
 ];
 
@@ -63,12 +63,14 @@ const getBrightness = (seconds: number, flickers: Flicker[]) => {
       [1, flicker.level, flicker.level, 1],
       {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
     );
-    if (Math.abs(level - 1) > Math.abs(brightness - 1)) brightness = level;
+    if (Math.abs(level - 1) > Math.abs(brightness - 1)) {
+      brightness = level;
+    }
   }
   return brightness;
 };
 
-export const NightLightingLoop: React.FC = () => {
+export const LightingVisualTest: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const seconds = frame / fps;
@@ -82,15 +84,10 @@ export const NightLightingLoop: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(seconds, flickerSchedules[index]);
-        const isDaylightAccent = zone.selectionMode === 'daylight-accent';
-        const opacity = isDaylightAccent
-          ? Math.min(0.38, Math.max(0, brightness - 1) * 1.6)
-          : Math.min(0.30, Math.max(0, brightness - 1) * 0.9);
-        const sizeScale = isDaylightAccent ? 0.32 : 0.58;
-        const width = zone.width * sizeScale;
-        const height = zone.height * sizeScale;
+        const opacity = Math.min(0.30, Math.max(0, brightness - 1) * 0.9);
+        const width = zone.width * 0.58;
+        const height = zone.height * 0.58;
         const [red, green, blue] = zone.color;
-
         return (
           <div
             key={zone.id}
@@ -102,7 +99,6 @@ export const NightLightingLoop: React.FC = () => {
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: 'screen',
-              pointerEvents: 'none',
               position: 'absolute',
               top: `${(zone.y - height / 2) * 100}%`,
               width: `${width * 100}%`,

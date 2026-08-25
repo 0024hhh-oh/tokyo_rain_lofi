@@ -6,26 +6,28 @@ FFmpeg video generator. The phone workflow stays the same:
 1. Put one `background.png`, `background.jpg`, or `background.jpeg` and the MP3
    tracks in a Google Drive project folder.
 2. `Generate LOFI video` detects the project on its existing 30-minute schedule.
-3. If the folder contains `light_overlay.png`, Remotion uses that supplied
-   transparent light-only layer. No wall, road, river, reflection, or other
-   image region is detected automatically.
+3. The lighting analyzer finds bright, warm regions in the supplied image.
+   Bright daytime/dusk sources keep their original exposure and automatically
+   use a softer feathered light profile; darker sources use the night profile.
 4. Remotion creates a deterministic 30-second, 1920x1080 H.264 loop at
    `video_assets/background.mp4`.
 5. The existing FFmpeg audio, rain, duration, and YouTube upload stages continue
    unchanged.
 
-If `light_overlay.png` is absent, the background is rendered without lighting
-processing. The source is never darkened, and black, gray, dimming, or
-extinguishing overlays are not generated.
+Bright daytime sources are not converted into night scenes. The day/night
+lighting profile is selected automatically from average image luma, so the
+Google Drive folder workflow does not change. Images with no safe lighting
+regions still render without local light animation.
 
-The overlay opacity follows a deterministic irregular 0 → peak → 0 schedule.
-The overlay itself remains spatially fixed, so buildings, roads, water, rain,
-and reflections cannot move or flicker independently.
+The animation deliberately avoids hard on/off flashes. Each detected light uses
+slow periodic drift plus one to three soft dimming events per 30-second loop.
+All pseudo-random values use fixed Remotion seeds, so parallel renders are stable
+and the loop is reproducible.
 
 Useful Actions log line:
 
 ```text
-Remotion lighting: overlay=light_overlay.png animate=true (no image light detection)
+Remotion lighting analysis: animate=true average_luma=... threshold=... zones=...
 ```
 
 Local checks:

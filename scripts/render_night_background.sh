@@ -29,8 +29,8 @@ if [[ -n "$video_source" ]]; then
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
   animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
-  overlay="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).overlay || 'none'")"
-  echo "Night video lighting: overlay=${overlay} animate=${animate}."
+  safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.eligible).slice(0, 3).length)")"
+  echo "Night video lighting: animate=${animate} safe_light_count=${safe_zone_count} (rendering continues with zero to three lights)."
 
   source_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 public/night-source.mp4)"
   source_frames="$(python - "$source_duration" <<'PY_VIDEO_FRAMES'
@@ -81,8 +81,8 @@ fi
 
 node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
-overlay="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).overlay || 'none'")"
-echo "Night image lighting: overlay=${overlay} animate=${animate}."
+safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.eligible).slice(0, 3).length)")"
+echo "Night image lighting: animate=${animate} safe_light_count=${safe_zone_count} (rendering continues with zero to three lights)."
 
 rm -f "$ASSET_DIR/background.mp4"
 render_args=(

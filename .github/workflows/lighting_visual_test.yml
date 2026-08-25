@@ -1,4 +1,4 @@
-name: Lighting overlay visual test
+name: Lighting visual test
 
 on:
   workflow_dispatch:
@@ -6,79 +6,190 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: lighting-visual-test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  render-overlay-sample:
+  render-lighting-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node for Remotion
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           npm ci --no-audit --no-fund
-      - name: Prepare ShinSUNA overlay sample
+
+      - name: Prepare supplied real night scene
         run: |
           mkdir -p video_assets dist
-          cp test_assets/night-shinsuna-background.jpeg video_assets/background.jpeg
-          cp test_assets/night-shinsuna-light-overlay.png video_assets/light_overlay.png
+          cat test_assets/lighting-real-scene.jpg.b64.* | base64 --decode > video_assets/background.jpg
           node scripts/prepare_remotion_background.mjs video_assets
           node --input-type=module <<'NODE'
-          import fs from 'node:fs/promises';
           import sharp from 'sharp';
-          const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
-          if (lighting.overlay !== 'light_overlay.png' || lighting.animate !== true) {
-            throw new Error('Explicit light_overlay.png was not selected.');
+
+          const metadata = await sharp('public/background.png').metadata();
+          if (metadata.width !== 1920 || metadata.height !== 1080) {
+            throw new Error(`Expected prepared 1920x1080 background; got ${metadata.width}x${metadata.height}`);
           }
-          for (const file of ['public/background.png', 'public/light_overlay.png']) {
-            const metadata = await sharp(file).metadata();
-            if (metadata.width !== 1920 || metadata.height !== 1080) throw new Error(`${file} is not 1920x1080`);
+          const lighting = JSON.parse(await import('node:fs/promises').then(({readFile}) =>
+            readFile('src/generated-light-zones.json', 'utf8')));
+          const safeZones = lighting.zones
+            .filter((zone) => zone.hasLightCore && zone.isCompactEmitter && zone.warmth >= 0.75 && zone.y < 0.72)
+            .slice(0, 3);
+          if (safeZones.length > 3) {
+            throw new Error(`Expected no more than three safe warm lights; got ${safeZones.length}`);
           }
-          console.log('ShinSUNA overlay selected; no image light detection was used.');
+          console.log('Prepared real-scene background at 1920x1080.');
+          console.log(`Selected ${safeZones.length} safe lights: ${safeZones.map((zone) => zone.id).join(', ')}`);
           NODE
-      - name: Type-check
-        run: npm run typecheck
-      - name: Render 10-second Remotion sample
+
+      - name: Type-check isolated lighting test
         run: |
-          npx remotion render src/index.ts NightLightingLoop dist/shinsuna-light-overlay-sample.mp4 \
-            --codec=h264 --crf=14 --concurrency=2 --frames=0-299 --log=verbose
-      - name: Verify sample and upload Artifact
+          npx tsc --noEmit --jsx react-jsx --module ESNext \
+            --moduleResolution Bundler --target ES2022 --skipLibCheck \
+            --resolveJsonModule --allowSyntheticDefaultImports \
+            tests/lighting-visual-index.tsx tests/LightingVisualTest.tsx
+
+      - name: Render 8-second 1080p lighting test
+        run: |
+          npx remotion render \
+            tests/lighting-visual-index.tsx \
+            LightingVisualTest \
+            dist/lighting-visual-test.mp4 \
+            --codec=h264 \
+            --crf=14 \
+            --concurrency=2 \
+            --frames=0-239 \
+            --log=verbose
+
+      - name: Verify 1080p, duration, and sparse mixed light changes
         run: |
           read -r width height duration < <(
             ffprobe -v error -select_streams v:0 \
               -show_entries stream=width,height:format=duration \
-              -of default=noprint_wrappers=1:nokey=1 dist/shinsuna-light-overlay-sample.mp4 | xargs
+              -of default=noprint_wrappers=1:nokey=1 \
+              dist/lighting-visual-test.mp4 | xargs
           )
           python - "$width" "$height" "$duration" <<'PY'
           import sys
-          if tuple(map(int, sys.argv[1:3])) != (1920, 1080): raise SystemExit('sample is not 1920x1080')
-          if not 9.9 <= float(sys.argv[3]) <= 10.1: raise SystemExit('sample is not 10 seconds')
-          print(f'Verified sample: {sys.argv[1]}x{sys.argv[2]}, {float(sys.argv[3]):.3f}s')
+
+          width, height = map(int, sys.argv[1:3])
+          duration = float(sys.argv[3])
+          if (width, height) != (1920, 1080):
+              raise SystemExit(f"Expected 1920x1080; got {width}x{height}")
+          if not 7.9 <= duration <= 8.1:
+              raise SystemExit(f"Expected an 8-second MP4; got {duration:.3f}s")
+          print(f"Verified: {width}x{height}, {duration:.3f}s")
           PY
-          ffmpeg -v error -ss 0.30 -i dist/shinsuna-light-overlay-sample.mp4 -frames:v 1 dist/steady.png
-          ffmpeg -v error -ss 0.92 -i dist/shinsuna-light-overlay-sample.mp4 -frames:v 1 dist/boost.png
-          ffmpeg -v error -ss 4.80 -i dist/shinsuna-light-overlay-sample.mp4 -frames:v 1 dist/recovered.png
-          node --input-type=module <<'NODE'
+
+          validation_dir="$(mktemp -d)"
+          trap 'rm -rf "$validation_dir"' EXIT
+          ffmpeg -v error -ss 0.30 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/steady.png"
+          ffmpeg -v error -ss 0.92 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-1.png"
+          ffmpeg -v error -ss 3.75 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-2.png"
+          ffmpeg -v error -ss 3.00 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/light-3.png"
+          ffmpeg -v error -ss 4.80 -i dist/lighting-visual-test.mp4 -frames:v 1 "$validation_dir/recovered.png"
+          node --input-type=module - \
+            "$validation_dir/steady.png" \
+            "$validation_dir/light-1.png" \
+            "$validation_dir/light-2.png" \
+            "$validation_dir/light-3.png" \
+            "$validation_dir/recovered.png" <<'NODE'
+          import fs from 'node:fs/promises';
           import sharp from 'sharp';
-          const decode = file => sharp(file).removeAlpha().raw().toBuffer({resolveWithObject: true});
-          const [steady, boost, recovered] = await Promise.all(['dist/steady.png','dist/boost.png','dist/recovered.png'].map(decode));
-          const meanDelta = (a,b) => a.data.reduce((sum,v,i) => sum + Math.abs(v-b.data[i]),0) / a.data.length;
-          const changed = meanDelta(steady, boost);
-          const recovery = meanDelta(steady, recovered);
-          if (changed < 0.1) throw new Error(`overlay did not change sample: ${changed}`);
-          if (recovery > changed * 0.35) throw new Error(`overlay did not return near zero: ${recovery}`);
-          console.log(`Verified positive overlay change=${changed.toFixed(2)} recovery=${recovery.toFixed(2)}; no black layer is rendered.`);
+
+          const [steadyFile, ...changedFiles] = process.argv.slice(2);
+          const recoveredFile = changedFiles.pop();
+          const decode = async (file) => sharp(file)
+            .removeAlpha()
+            .raw()
+            .toBuffer({resolveWithObject: true});
+          const [steady, ...changedAndRecovered] = await Promise.all([
+            decode(steadyFile),
+            ...changedFiles.map(decode),
+            decode(recoveredFile),
+          ]);
+          const recovered = changedAndRecovered.pop();
+          const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
+          const zones = lighting.zones
+            .filter((zone) => zone.hasLightCore && zone.isCompactEmitter && zone.warmth >= 0.75 && zone.y < 0.72)
+            .slice(0, 3)
+            .map((zone) => ({
+              left: Math.max(0, Math.floor((zone.x - zone.width / 2) * 1920)),
+              top: Math.max(0, Math.floor((zone.y - zone.height / 2) * 1080)),
+              right: Math.min(1920, Math.ceil((zone.x + zone.width / 2) * 1920)),
+              bottom: Math.min(1080, Math.ceil((zone.y + zone.height / 2) * 1080)),
+            }));
+          if (zones.length !== 3) throw new Error(`Expected 3 validation zones; got ${zones.length}`);
+
+          const compare = (first, second) => {
+            const inside = zones.map(() => 0);
+            const insidePixels = zones.map(() => 0);
+            let outside = 0;
+            let outsidePixels = 0;
+            const {width, height, channels} = first.info;
+            for (let y = 0; y < height; y += 1) {
+              for (let x = 0; x < width; x += 1) {
+                const offset = (y * width + x) * channels;
+                const delta = (
+                  Math.abs(first.data[offset] - second.data[offset]) +
+                  Math.abs(first.data[offset + 1] - second.data[offset + 1]) +
+                  Math.abs(first.data[offset + 2] - second.data[offset + 2])
+                ) / 3;
+                const zoneIndex = zones.findIndex((zone) =>
+                  x >= zone.left && x < zone.right && y >= zone.top && y < zone.bottom);
+                if (zoneIndex >= 0) {
+                  inside[zoneIndex] += delta;
+                  insidePixels[zoneIndex] += 1;
+                } else {
+                  outside += delta;
+                  outsidePixels += 1;
+                }
+              }
+            }
+            return {
+              inside: inside.map((sum, index) => sum / insidePixels[index]),
+              outside: outside / outsidePixels,
+            };
+          };
+          const flickers = changedAndRecovered.map((frame) => compare(steady, frame));
+          const recovery = compare(steady, recovered);
+          flickers.forEach((flicker, targetIndex) => {
+            const target = flicker.inside[targetIndex];
+            const otherPeak = Math.max(...flicker.inside.filter((_, index) => index !== targetIndex));
+            if (target < 1) {
+              throw new Error(`Light ${targetIndex + 1} flicker is too weak: ${target.toFixed(2)}`);
+            }
+            if (otherPeak > Math.max(0.8, target * 0.15)) {
+              throw new Error(`Light ${targetIndex + 1} changed another light: target=${target.toFixed(2)} other=${otherPeak.toFixed(2)}`);
+            }
+            if (flicker.outside > Math.max(0.35, target * 0.08)) {
+              throw new Error(`Light ${targetIndex + 1} escaped its ROI: target=${target.toFixed(2)} outside=${flicker.outside.toFixed(2)}`);
+            }
+          });
+          if (Math.max(...recovery.inside) > 1.2 || recovery.outside > 0.25) {
+            throw new Error(`Lights did not recover naturally: inside=${recovery.inside.map((value) => value.toFixed(2)).join(',')} outside=${recovery.outside.toFixed(2)}`);
+          }
+          console.log(`Sparse independent light changes verified: ${flickers.map((flicker, index) =>
+            `light-${index + 1}=${flicker.inside[index].toFixed(2)}`).join(' ')} outside<=${Math.max(...flickers.map((flicker) => flicker.outside)).toFixed(2)}`);
           NODE
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload MP4 artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: shinsuna-light-overlay-sample
-          path: |
-            dist/shinsuna-light-overlay-sample.mp4
-            dist/steady.png
-            dist/boost.png
-            dist/recovered.png
+          name: lighting-visual-test-${{ github.run_id }}
+          path: dist/lighting-visual-test.mp4
           if-no-files-found: error
+          retention-days: 7

@@ -9,9 +9,12 @@ on:
       - "src/**"
       - "scripts/prepare_remotion_background.mjs"
       - "scripts/render_night_background.sh"
+      - "scripts/night_test_drive.py"
+      - "scripts/render_night_test_video.sh"
+      - "scripts/validate_visible_lighting.mjs"
+      - "scripts/create_remotion_fixture.mjs"
       - "tests/**"
-      - "test_assets/night-shinsuna-background.jpeg"
-      - "test_assets/night-shinsuna-light-overlay.png"
+      - ".github/workflows/generate_lofi_video.yml"
       - ".github/workflows/remotion_lighting_ci.yml"
 
 permissions:
@@ -30,30 +33,55 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run typecheck
-      - name: Install FFmpeg
+      - name: Test Drive workflow separation
+        run: |
+          python -m pip install pytest
+          python -m pytest \
+            tests/test_drive_night_test.py \
+            tests/test_generate_lofi_video_workflow.py
+      - name: Render a six-second visibly changing lighting sample
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-      - name: Prepare explicit ShinSUNA overlay sample
+          node scripts/create_remotion_fixture.mjs
+          mkdir -p video_assets/tracks dist
+          ffmpeg -y -f lavfi -i "sine=frequency=440:duration=6" \
+            -c:a libmp3lame video_assets/tracks/night-test.mp3
+          NIGHT_TEST_SECONDS=6 REMOTION_FRAMES=0-179 \
+            bash scripts/render_night_test_video.sh
+          ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/night-test.mp4
+      - name: Render accepted v10 lighting through the production night-video path
         run: |
+          rm -rf video_assets public dist
           mkdir -p video_assets dist
-          cp test_assets/night-shinsuna-background.jpeg video_assets/background.jpeg
-          cp test_assets/night-shinsuna-light-overlay.png video_assets/light_overlay.png
-          node scripts/prepare_remotion_background.mjs video_assets
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs/promises';
-          const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
-          if (lighting.animate !== true || lighting.overlay !== 'light_overlay.png') throw new Error('overlay was not selected');
-          NODE
-      - name: Render 10-second sample and upload Artifact
-        run: |
-          npx remotion render src/index.ts NightLightingLoop dist/shinsuna-light-overlay-sample.mp4 \
-            --codec=h264 --crf=14 --concurrency=2 --frames=0-299 --log=verbose
-          ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
-            -of default=noprint_wrappers=1 dist/shinsuna-light-overlay-sample.mp4
+          cp test_assets/rain-video-fixture.mp4 video_assets/background.mp4
+          bash scripts/render_night_background.sh
+          read -r width height duration < <(
+            ffprobe -v error -select_streams v:0 \
+              -show_entries stream=width,height:format=duration \
+              -of default=noprint_wrappers=1:nokey=1 \
+              video_assets/background.mp4 | xargs
+          )
+          audio_streams="$(ffprobe -v error -select_streams a \
+            -show_entries stream=index -of csv=p=0 \
+            video_assets/background.mp4 | wc -l)"
+          python - "$width" "$height" "$duration" "$audio_streams" <<'PY'
+          import sys
+
+          width, height = map(int, sys.argv[1:3])
+          duration = float(sys.argv[3])
+          audio_streams = int(sys.argv[4])
+          if (width, height) != (1920, 1080):
+              raise SystemExit(f"Expected 1920x1080; got {width}x{height}")
+          if not 29.9 <= duration <= 30.1:
+              raise SystemExit(f"Expected 30 seconds; got {duration:.3f}")
+          if audio_streams != 0:
+              raise SystemExit(f"Expected zero audio streams; got {audio_streams}")
+          PY
       - uses: actions/upload-artifact@v4
         with:
-          name: shinsuna-light-overlay-sample
-          path: dist/shinsuna-light-overlay-sample.mp4
-          if-no-files-found: error
+          name: remotion-lighting-test
+          path: |
+            dist/night-test.mp4
+            video_assets/background.mp4
           retention-days: 7
