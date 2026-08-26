@@ -39,7 +39,7 @@ const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
   .filter((zone) => zone.y < REAR_MAX_Y)
   .sort((first, second) => first.y - second.y)
-  .slice(0, 1);
+  .slice(0, 2);
 
 const flickerSchedules: Flicker[][] = [
   [
