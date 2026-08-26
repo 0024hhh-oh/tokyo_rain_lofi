@@ -12,7 +12,7 @@ test('production night video uses positive-only glow on eligible emitters', () =
   assert.match(component, /zone\.eligible/);
   assert.match(component, /const REAR_MAX_Y = 0\.40/);
   assert.match(component, /zone\.y < REAR_MAX_Y/);
-  assert.match(component, /slice\(0, 1\)/);
+  assert.match(component, /slice\(0, 2\)/);
   assert.match(component, /selectionMode/);
   assert.match(component, /zone\.color/);
   assert.doesNotMatch(component, /hasThreeSafeLights/);
