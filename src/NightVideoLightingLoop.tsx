@@ -32,7 +32,7 @@ type Flicker = {
 
 const MAX_LIGHTS = 3;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
-const MAX_GLOW_OPACITY = 0.34;
+const MAX_GLOW_OPACITY = 0.52;
 
 const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
@@ -74,7 +74,7 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
 };
 
 const getOverlayOpacity = (brightness: number) => {
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 2.0);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 3.0);
 };
 
 export const NightVideoLightingLoop: React.FC = () => {
@@ -94,7 +94,7 @@ export const NightVideoLightingLoop: React.FC = () => {
         const opacity = isDaylightAccent
           ? Math.min(0.62, Math.max(0, brightness - 1) * 2.4)
           : getOverlayOpacity(brightness);
-        const sizeScale = isDaylightAccent ? 0.46 : 0.86;
+        const sizeScale = isDaylightAccent ? 0.46 : 0.98;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
@@ -105,7 +105,7 @@ export const NightVideoLightingLoop: React.FC = () => {
             style={{
               backgroundColor: `rgba(${red}, ${green}, ${blue}, ${opacity})`,
               borderRadius: '50%',
-              boxShadow: `0 0 24px 12px rgba(${red}, ${green}, ${blue}, ${opacity * 0.6})`,
+              boxShadow: `0 0 30px 15px rgba(${red}, ${green}, ${blue}, ${opacity * 0.6})`,
               filter: 'blur(1px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
