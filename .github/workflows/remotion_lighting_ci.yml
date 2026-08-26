@@ -14,6 +14,7 @@ on:
       - "scripts/validate_visible_lighting.mjs"
       - "scripts/create_remotion_fixture.mjs"
       - "tests/**"
+      - "test_assets/rain-video-fixture.mp4"
       - ".github/workflows/generate_lofi_video.yml"
       - ".github/workflows/remotion_lighting_ci.yml"
 
