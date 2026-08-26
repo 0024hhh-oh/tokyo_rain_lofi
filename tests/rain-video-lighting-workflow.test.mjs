@@ -28,7 +28,7 @@ test('lighting uses smooth source-colored local overlays', () => {
   assert.match(component, /const MAX_LIGHTS = 3/);
   assert.match(component, /SAFE_MIN_WARMTH = 0\.75/);
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
-  assert.match(component, /REAR_MAX_Y = 0\.55/);
+  assert.match(component, /REAR_MAX_Y = 0\.40/);
   assert.doesNotMatch(component, /hasThreeSafeLights/);
   assert.match(component, /zone\.color/);
   assert.match(component, /zone\.isCompactEmitter/);

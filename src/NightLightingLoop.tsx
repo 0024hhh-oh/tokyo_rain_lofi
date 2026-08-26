@@ -30,7 +30,7 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const REAR_MAX_Y = 0.55;
+const REAR_MAX_Y = 0.40;
 const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
   .filter((zone) => zone.y < REAR_MAX_Y)

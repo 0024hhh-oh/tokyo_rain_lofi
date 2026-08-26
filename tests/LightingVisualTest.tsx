@@ -28,7 +28,7 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const REAR_MAX_Y = 0.55;
+const REAR_MAX_Y = 0.40;
 const SAFE_MIN_WARMTH = 0.75;
 const SAFE_MAX_Y = 0.72;
 

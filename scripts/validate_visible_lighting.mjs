@@ -58,7 +58,7 @@ const main = async () => {
       zone.hasLightCore &&
       zone.isCompactEmitter &&
       zone.warmth >= 0.75 &&
-      zone.y < 0.55)
+      zone.y < 0.40)
     .sort((first, second) => first.y - second.y)
     .slice(0, 1);
   if (!lighting.animate || !safeZones.length) {
