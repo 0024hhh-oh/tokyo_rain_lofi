@@ -31,7 +31,7 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const REAR_MAX_Y = 0.55;
+const REAR_MAX_Y = 0.72;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const MAX_GLOW_OPACITY = 0.34;
 
