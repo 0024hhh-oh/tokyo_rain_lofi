@@ -36,6 +36,9 @@ jobs:
           base64 --decode test_assets/problem-scene.jpg.b64 > video_assets/background.jpg
           ffmpeg -y -loop 1 -i video_assets/background.jpg \
             -t 4 -r 30 -c:v libx264 -pix_fmt yuv420p public/night-source.mp4
+          mkdir -p public/night-frames
+          ffmpeg -y -i public/night-source.mp4 -vf fps=30 -q:v 2 \
+            public/night-frames/frame-%04d.jpg
           node scripts/prepare_remotion_background.mjs video_assets
           printf '{\n  "sourceDurationInFrames": 120\n}\n' > src/generated-video-metadata.json
       - name: Render the exact production component for eight seconds
