@@ -21,7 +21,7 @@ test('production night video uses positive-only glow on eligible emitters', () =
   assert.doesNotMatch(component, /rgba\(0, 0, 0/);
   assert.match(component, /level: 1\.38/);
   assert.match(component, /level: 1\.34/);
-  assert.match(component, /isDaylightAccent \? 0\.46 : 0\.86/);
+  assert.match(component, /isDaylightAccent \? 0\.46 : 0\\.98/);
   assert.match(component, /filter: 'blur\(1px\)'/);
   assert.match(component, /<Img/);
   assert.match(component, /night-frames\/frame-/);
