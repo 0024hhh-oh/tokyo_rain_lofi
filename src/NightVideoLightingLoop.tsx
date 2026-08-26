@@ -116,7 +116,7 @@ export const NightVideoLightingLoop: React.FC = () => {
               filter: 'blur(2px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
-              mixBlendMode: isBrightening ? 'screen' : 'normal',
+              mixBlendMode: 'screen',
               pointerEvents: 'none',
               position: 'absolute',
               top: `${(zone.y - height / 2) * 100}%`,
