@@ -53,7 +53,7 @@ jobs:
           ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/night-test.mp4
       - name: Render accepted v10 lighting through the production night-video path
         run: |
-          rm -rf video_assets public dist
+          rm -rf video_assets public
           mkdir -p video_assets dist
           cp test_assets/night-shinsuna-background.jpeg video_assets/night-source-still.jpeg
           cp test_assets/rain-video-fixture.mp4 video_assets/rain-motion.mp4
