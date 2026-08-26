@@ -50,11 +50,11 @@ jobs:
             --muted \
             --frames=0-239 \
             --log=verbose
-      - name: Verify the pillar stays stable and the signal changes
+      - name: Verify the pillar stays stable and the compact emitter brightens
         run: |
           ffmpeg -v error -ss 0.30 -i dist/problem-scene-lighting-sample.mp4 \
             -frames:v 1 dist/problem-steady.png
-          ffmpeg -v error -ss 3.05 -i dist/problem-scene-lighting-sample.mp4 \
+          ffmpeg -v error -ss 1.10 -i dist/problem-scene-lighting-sample.mp4 \
             -frames:v 1 dist/problem-boost.png
           node scripts/validate_problem_scene_lighting.mjs \
             dist/problem-steady.png dist/problem-boost.png

@@ -29,10 +29,11 @@ const makeScene = () => {
   // without either a white-hot or saturated warm light core.
   paint(28, 13, 9, 9, [175, 160, 145]);
 
-  // Two compact bright sources and one compact red signal.
-  paint(7, 6, 2, 2, [250, 235, 215]);
+  // Two compact warm-white sources and one red signal. Traffic signals must
+  // not be made to flicker merely because they are saturated.
+  paint(7, 6, 2, 2, [255, 240, 190]);
   // Deliberately sits between the rejected 220 boundary and the compressed-video-safe 205 boundary.
-  paint(45, 8, 2, 2, [220, 205, 185]);
+  paint(45, 8, 2, 2, [255, 225, 170]);
   paint(52, 15, 2, 2, [230, 70, 50]);
 
   return data;
@@ -49,14 +50,19 @@ test('diffuse walls are rejected while compact real lights remain eligible', () 
     Math.abs(zone.x - 0.5) < 0.12 && Math.abs(zone.y - 0.47) < 0.15);
   assert.ok(wall, 'expected the diffuse wall to remain observable in detector output');
   assert.equal(wall.hasLightCore, false);
+  assert.equal(wall.isCompactEmitter, false);
   assert.equal(wall.color.length, 3);
 
   const safeLights = analysis.zones
-    .filter((zone) => zone.hasLightCore && zone.warmth >= 0.4 && zone.y < 0.72)
+    .filter((zone) =>
+      zone.hasLightCore &&
+      zone.isCompactEmitter &&
+      zone.warmth >= 0.75 &&
+      zone.y < 0.72)
     .slice(0, 3);
-  assert.equal(safeLights.length, 3);
+  assert.equal(safeLights.length, 2);
   assert.ok(
-    safeLights.some((zone) => zone.x > 0.75 && zone.warmth > 0.9),
-    'expected the compact red signal to remain a real light candidate',
+    safeLights.every((zone) => zone.x < 0.75),
+    'expected the red signal to remain ineligible for artificial flicker',
   );
 });

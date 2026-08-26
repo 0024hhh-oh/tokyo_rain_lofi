@@ -7,6 +7,9 @@ import sharp from 'sharp';
 const WIDTH = 160;
 const HEIGHT = 90;
 const MAX_ZONES = 50;
+const DAYLIGHT_LUMA = 120;
+const DAYLIGHT_MIN_WARMTH = 0.4;
+const SAFE_MAX_Y = 0.72;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -26,7 +29,6 @@ export const analyzeLightZones = ({data, width, height}) => {
     sortedLuma.length;
   const p90 = sortedLuma[Math.floor(sortedLuma.length * 0.9)];
   const threshold = clamp(Math.max(145, p90 + 10), 145, 225);
-  const isNight = averageLuma < 142;
   const active = new Uint8Array(width * height);
 
   for (let y = Math.floor(height * 0.06); y < height; y += 1) {
@@ -70,6 +72,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     let warmthTotal = 0;
     let peakLuma = 0;
     let warmCorePixels = 0;
+    let hardCorePixels = 0;
     let weightedRed = 0;
     let weightedGreen = 0;
     let weightedBlue = 0;
@@ -98,6 +101,9 @@ export const analyzeLightZones = ({data, width, height}) => {
       ) {
         warmCorePixels += 1;
       }
+      if (pixel.luma >= Math.max(220, threshold + 28)) {
+        hardCorePixels += 1;
+      }
 
       for (const [dx, dy] of neighbors) {
         const nx = x + dx;
@@ -121,6 +127,27 @@ export const analyzeLightZones = ({data, width, height}) => {
     const averageRed = weightedRed / totalWeight;
     const averageGreen = weightedGreen / totalWeight;
     const averageBlue = weightedBlue / totalWeight;
+    const boxArea = boxWidth * boxHeight;
+    const fillRatio = area / boxArea;
+    const aspectRatio = Math.max(boxWidth / boxHeight, boxHeight / boxWidth);
+
+    // A real lamp is normally a compact cluster with a small, very bright core.
+    // Broad bright surfaces and elongated clusters are much more likely to be
+    // windows, walls, roads, water reflections, or vehicles. False animation is
+    // worse than no animation, so uncertain regions deliberately fail closed.
+    const isCompactEmitter =
+      boxWidth <= 8 &&
+      boxHeight <= 8 &&
+      area <= 40 &&
+      aspectRatio <= 1.6 &&
+      fillRatio >= 0.18 &&
+      hardCorePixels >= 1 &&
+      peakLuma >= 225;
+
+    const compactness = clamp(1 - (boxArea - area) / Math.max(1, boxArea), 0, 1);
+    const emitterScore = isCompactEmitter
+      ? totalWeight * (0.65 + compactness * 0.35) / Math.sqrt(area)
+      : 0;
 
     components.push({
       area,
@@ -130,12 +157,13 @@ export const analyzeLightZones = ({data, width, height}) => {
       height: clamp((boxHeight + 5) / height, 0.055, 0.22),
       warmth: warmthTotal / area,
       hasLightCore: peakLuma >= 205 || warmCorePixels >= 2,
+      isCompactEmitter,
       color: [
         Math.round(averageRed),
         Math.round(averageGreen),
         Math.round(averageBlue),
       ],
-      score: totalWeight * Math.sqrt(area),
+      score: emitterScore,
     });
   }
 
@@ -150,7 +178,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     if (selected.length >= MAX_ZONES) break;
   }
 
-  const zones = selected.map((zone, index) => ({
+  const analyzedZones = selected.map((zone, index) => ({
     id: `light-${index + 1}`,
     x: Number(zone.x.toFixed(5)),
     y: Number(zone.y.toFixed(5)),
@@ -158,12 +186,47 @@ export const analyzeLightZones = ({data, width, height}) => {
     height: Number(zone.height.toFixed(5)),
     warmth: Number(zone.warmth.toFixed(4)),
     hasLightCore: zone.hasLightCore,
+    isCompactEmitter: zone.isCompactEmitter,
     color: zone.color,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
 
+  const strictZones = analyzedZones.filter((zone) =>
+    zone.hasLightCore &&
+    zone.isCompactEmitter &&
+    zone.warmth >= 0.75 &&
+    zone.y < SAFE_MAX_Y);
+
+  // Daylight sources often compress a real lamp/sign into a neutral, slightly
+  // elongated highlight. If the strict night rules find nothing, permit only
+  // the single warmest highlight. The renderer keeps this fallback very small
+  // and additive-only, so it cannot dim the source or animate a broad surface.
+  const daylightFallback = averageLuma >= DAYLIGHT_LUMA && strictZones.length === 0
+    ? analyzedZones
+      .filter((zone) =>
+        zone.hasLightCore &&
+        zone.warmth >= DAYLIGHT_MIN_WARMTH &&
+        zone.width <= 0.07 &&
+        zone.height <= 0.09 &&
+        zone.y < SAFE_MAX_Y)
+      .sort((a, b) => b.warmth - a.warmth)[0]
+    : null;
+
+  const zones = analyzedZones.map((zone) => ({
+    ...zone,
+    eligible: strictZones.includes(zone) || zone === daylightFallback,
+    selectionMode: strictZones.includes(zone)
+      ? 'strict-emitter'
+      : zone === daylightFallback
+        ? 'daylight-accent'
+        : 'rejected',
+  }));
+
   return {
-    animate: isNight && zones.length > 0,
+    // This analyzer is only called by the explicit Projects/night route.
+    // The parent folder is authoritative: bright daytime or dusk images may still
+    // contain illuminated signs or lamps that should animate.
+    animate: zones.some((zone) => zone.eligible),
     averageLuma: Number(averageLuma.toFixed(2)),
     threshold: Number(threshold.toFixed(2)),
     zones,

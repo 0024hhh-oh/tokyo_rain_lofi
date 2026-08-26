@@ -19,6 +19,9 @@ type LightZone = {
   warmth: number;
   strength: number;
   hasLightCore: boolean;
+  isCompactEmitter: boolean;
+  eligible: boolean;
+  selectionMode: 'strict-emitter' | 'daylight-accent' | 'rejected';
   color: [number, number, number];
 };
 
@@ -29,33 +32,27 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-// Video compression and rain mute warm pixels more than the still reference.
-// 0.4 keeps the accepted vending/sign/lantern trio without admitting cool lights.
-const SAFE_MIN_WARMTH = 0.4;
-const SAFE_MAX_Y = 0.72;
+const REAR_MAX_Y = 0.55;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
-const MAX_DIM_OPACITY = 0.40;
 const MAX_GLOW_OPACITY = 0.34;
-const DIM_ZONE_SCALES = [1.05, 1.10] as const;
 
-const safeLightZones = (lighting.zones as LightZone[])
-  .filter((zone) =>
-    zone.hasLightCore &&
-    zone.warmth >= SAFE_MIN_WARMTH &&
-    zone.y < SAFE_MAX_Y)
-  .slice(0, MAX_LIGHTS);
+const safeLightZones = (lighting.zones as unknown as LightZone[])
+  .filter((zone) => zone.eligible)
+  .filter((zone) => zone.y < REAR_MAX_Y)
+  .sort((first, second) => first.y - second.y)
+  .slice(0, 1);
 
 const flickerSchedules: Flicker[][] = [
   [
-    {start: 0.85, end: 1.55, level: 0.58},
-    {start: 5.70, end: 6.38, level: 0.64},
-    {start: 18.40, end: 19.12, level: 0.60},
+    {start: 0.85, end: 1.55, level: 1.18},
+    {start: 5.70, end: 6.38, level: 1.15},
+    {start: 18.40, end: 19.12, level: 1.17},
   ],
   [
-    {start: 3.45, end: 4.20, level: 0.60},
-    {start: 23.10, end: 23.82, level: 0.65},
+    {start: 3.45, end: 4.20, level: 1.16},
+    {start: 23.10, end: 23.82, level: 1.14},
   ],
   [
     {start: 2.90, end: 3.62, level: 1.38},
@@ -82,10 +79,7 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
 };
 
 const getOverlayOpacity = (brightness: number) => {
-  if (brightness < 1) {
-    return Math.min(MAX_DIM_OPACITY, (1 - brightness) * 0.9);
-  }
-  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 0.9);
+  return Math.min(MAX_GLOW_OPACITY, (brightness - 1) * 2.0);
 };
 
 export const NightVideoLightingLoop: React.FC = () => {
@@ -105,10 +99,11 @@ export const NightVideoLightingLoop: React.FC = () => {
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
-        const brightening = Math.max(0, brightness - 1);
-        const opacity = getOverlayOpacity(brightness);
-        const isBrightening = brightening > 0;
-        const sizeScale = isBrightening ? 0.58 : DIM_ZONE_SCALES[index] ?? 1.05;
+        const isDaylightAccent = zone.selectionMode === 'daylight-accent';
+        const opacity = isDaylightAccent
+          ? Math.min(0.62, Math.max(0, brightness - 1) * 2.4)
+          : getOverlayOpacity(brightness);
+        const sizeScale = isDaylightAccent ? 0.46 : 0.86;
         const width = zone.width * sizeScale;
         const height = zone.height * sizeScale;
         const [red, green, blue] = zone.color;
@@ -117,17 +112,13 @@ export const NightVideoLightingLoop: React.FC = () => {
           <div
             key={zone.id}
             style={{
-              backgroundColor: isBrightening
-                ? `rgba(${red}, ${green}, ${blue}, ${opacity})`
-                : `rgba(0, 0, 0, ${opacity})`,
+              backgroundColor: `rgba(${red}, ${green}, ${blue}, ${opacity})`,
               borderRadius: '50%',
-              boxShadow: isBrightening
-                ? `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`
-                : 'none',
-              filter: isBrightening ? 'blur(2px)' : 'blur(6px)',
+              boxShadow: `0 0 24px 12px rgba(${red}, ${green}, ${blue}, ${opacity * 0.6})`,
+              filter: 'blur(1px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
-              mixBlendMode: isBrightening ? 'screen' : 'normal',
+              mixBlendMode: 'screen',
               pointerEvents: 'none',
               position: 'absolute',
               top: `${(zone.y - height / 2) * 100}%`,

@@ -6,28 +6,39 @@ const component = fs.readFileSync('src/NightVideoLightingLoop.tsx', 'utf8');
 const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
 const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'utf8');
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
+const profile = fs.readFileSync('src/lightingProfile.ts', 'utf8');
 
-test('production night video keeps safe detection with smooth source-colored lighting', () => {
+test('production night video uses positive-only glow on eligible emitters', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
-  assert.match(component, /zone\.hasLightCore/);
+  assert.match(component, /zone\.eligible/);
+  assert.match(component, /const REAR_MAX_Y = 0\.55/);
+  assert.match(component, /zone\.y < REAR_MAX_Y/);
+  assert.match(component, /slice\(0, 1\)/);
+  assert.match(component, /selectionMode/);
   assert.match(component, /zone\.color/);
   assert.doesNotMatch(component, /hasThreeSafeLights/);
   assert.doesNotMatch(component, /DIM_FLICKER_PATTERN/);
-  assert.match(component, /DIM_ZONE_SCALES = \[1\.05, 1\.10\]/);
+  assert.doesNotMatch(component, /MAX_DIM_OPACITY|DIM_ZONE_SCALES/);
+  assert.doesNotMatch(component, /level: 0\./);
+  assert.doesNotMatch(component, /rgba\(0, 0, 0/);
   assert.match(component, /level: 1\.38/);
   assert.match(component, /level: 1\.34/);
-  assert.match(component, /const sizeScale = isBrightening \? 0\.58/);
-  assert.match(component, /filter: isBrightening \? 'blur\(2px\)' : 'blur\(6px\)'/);
+  assert.match(component, /isDaylightAccent \? 0\.46 : 0\.86/);
+  assert.match(component, /filter: 'blur\(1px\)'/);
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
   assert.equal(component.match(/<OffthreadVideo/g)?.length, 1);
 });
 
+test('legacy brightness helper also forbids negative exposure', () => {
+  assert.match(profile, /BRIGHT_SCENE_LUMA = 110/);
+  assert.match(profile, /Math\.max\(1, brightness\)/);
+  assert.doesNotMatch(profile, /brightness < 1/);
+});
+
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
-  assert.match(renderer, /z\.warmth >= 0\.4/);
-  assert.match(renderer, /z\.hasLightCore/);
+  assert.match(renderer, /z\.eligible/);
   assert.match(renderer, /-map 0:v:0 -an -c:v copy/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);
