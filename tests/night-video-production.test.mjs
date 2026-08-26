@@ -8,15 +8,15 @@ const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'u
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 
 test('production night video uses positive-only glow on eligible emitters', () => {
-  assert.match(component, /SOURCE_PLAYBACK_RATE = 0\\.5/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\\.4/);
-  assert.match(component, /zone\\.hasLightCore/);
-  assert.match(component, /zone\\.color/);
-  assert.match(component, /Math\\.max\\(0, brightness - 1\\)/);
-  assert.match(component, /if \\(brightness <= 1\\) return null/);
+  assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
+  assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
+  assert.match(component, /zone\.hasLightCore/);
+  assert.match(component, /zone\.color/);
+  assert.match(component, /Math\.max\(0, brightness - 1\)/);
+  assert.match(component, /if \(brightness <= 1\) return null/);
   assert.doesNotMatch(component, /MAX_DIM_OPACITY|DIM_ZONE_SCALES/);
-  assert.doesNotMatch(component, /level: 0\\./);
-  assert.doesNotMatch(component, /rgba\\(0, 0, 0/);
+  assert.doesNotMatch(component, /level: 0\./);
+  assert.doesNotMatch(component, /rgba\(0, 0, 0/);
   assert.doesNotMatch(component, /brightness < 1/);
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
