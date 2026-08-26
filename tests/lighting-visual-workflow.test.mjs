@@ -35,7 +35,7 @@ test('three compact emitters use positive-only sparse schedules', () => {
   assert.match(component, /SAFE_MAX_Y = 0\.72/);
   assert.match(component, /zone\.hasLightCore/);
   assert.match(component, /zone\.isCompactEmitter/);
-  assert.match(component, /slice\(0, MAX_LIGHTS\)/);
+  assert.match(component, /slice\(0, 1\)/);
   assert.doesNotMatch(component, /safeLightZones\.length === MAX_LIGHTS|hasThreeSafeLights/);
   assert.match(component, /lighting\.animate && safeLightZones\.map/);
   assert.match(component, /interpolate\(/);
