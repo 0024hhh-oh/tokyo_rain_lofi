@@ -58,8 +58,9 @@ const main = async () => {
       zone.hasLightCore &&
       zone.isCompactEmitter &&
       zone.warmth >= 0.75 &&
-      zone.y < 0.72)
-    .slice(0, 3);
+      zone.y < 0.55)
+    .sort((first, second) => first.y - second.y)
+    .slice(0, 1);
   if (!lighting.animate || !safeZones.length) {
     throw new Error('visible-lighting validation requires at least one animated light zone');
   }
@@ -76,10 +77,10 @@ const main = async () => {
     zones: safeZones,
   }).sort((a, b) => b.difference - a.difference);
   // Positive-only glow has a smaller pixel delta than the removed black dim
-  // overlay. These thresholds still require two independently visible changes.
+  // overlay. The current experiment intentionally animates one rear-area light.
   const strongThreshold = Number(process.env.LIGHTING_ZONE_MIN_DELTA ?? 6);
   const peakThreshold = Number(process.env.LIGHTING_PEAK_MIN_DELTA ?? 12);
-  const requiredStrongZones = Math.min(2, scores.length);
+  const requiredStrongZones = Math.min(1, scores.length);
   const strongZones = scores.filter((score) => score.difference >= strongThreshold);
   const peak = scores[0]?.difference ?? 0;
 
