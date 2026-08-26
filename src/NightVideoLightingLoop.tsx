@@ -90,7 +90,6 @@ export const NightVideoLightingLoop: React.FC = () => {
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
       <Loop durationInFrames={LOOP_DURATION_IN_FRAMES}>
         <OffthreadVideo
-          loop
           muted
           playbackRate={SOURCE_PLAYBACK_RATE}
           src={staticFile('night-source.mp4')}
