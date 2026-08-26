@@ -31,7 +31,7 @@ type Flicker = {
 };
 
 const MAX_LIGHTS = 3;
-const REAR_MAX_Y = 0.40;
+const REAR_MAX_Y = 0.55;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const MAX_GLOW_OPACITY = 0.34;
 
@@ -39,7 +39,7 @@ const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
   .filter((zone) => zone.y < REAR_MAX_Y)
   .sort((first, second) => first.y - second.y)
-  .slice(0, 2);
+  .slice(0, 1);
 
 const flickerSchedules: Flicker[][] = [
   [
