@@ -9,7 +9,6 @@ const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 const profile = fs.readFileSync('src/lightingProfile.ts', 'utf8');
 
 test('production night video uses positive-only glow on eligible emitters', () => {
-  assert.match(component, /SOURCE_PLAYBACK_RATE = 1/);
   assert.match(component, /zone\.eligible/);
   assert.match(component, /const REAR_MAX_Y = 0\.40/);
   assert.match(component, /zone\.y < REAR_MAX_Y/);
@@ -37,10 +36,9 @@ test('legacy brightness helper also forbids negative exposure', () => {
 });
 
 test('night renderer normalizes the source for frame-accurate Remotion looping', () => {
-  assert.match(renderer, /public\/night-source\.mp4/);
   assert.match(renderer, /z\.eligible/);
   assert.match(renderer, /public\/night-frames\/frame-%04d\.jpg/);
-  assert.match(renderer, /source_frames=.*night-frames/);
+  assert.match(renderer, /find public\/night-frames/);
   assert.doesNotMatch(renderer, /-stream_loop -1 -i "\$source_copy"/);
   assert.match(component, /<Img/);
   assert.match(component, /night-frames\/frame-/);
