@@ -10,7 +10,7 @@ const profile = fs.readFileSync('src/lightingProfile.ts', 'utf8');
 
 test('production night video uses positive-only glow on eligible emitters', () => {
   assert.match(component, /zone\.eligible/);
-  assert.match(component, /const REAR_MAX_Y = 0\.55/);
+  assert.match(component, /const REAR_MAX_Y = 0\.72/);
   assert.match(component, /zone\.y < REAR_MAX_Y/);
   assert.match(component, /slice\(0, 1\)/);
   assert.match(component, /selectionMode/);
