@@ -25,11 +25,10 @@ if [[ -n "$video_source" ]]; then
   source_copy="$ASSET_DIR/night_source_input.${video_source##*.}"
   mv "$video_source" "$source_copy"
   ffmpeg -y -i "$source_copy" -frames:v 1 -update 1 "$ASSET_DIR/background.png"
-  # Build a full 30-second looping source before Remotion renders lighting.
-  # This keeps rain playback independent from Remotion's composition loop.
-  ffmpeg -y -stream_loop -1 -i "$source_copy" \
-    -t 30 -map 0:v:0 -an -c:v libx264 -pix_fmt yuv420p \
-    public/night-source.mp4
+  # Keep the supplied source untouched. Remotion's Loop component repeats the
+  # original clip frame-accurately; pre-building a 30-second ffmpeg loop can
+  # create seek/decode smear artifacts in OffthreadVideo.
+  cp "$source_copy" public/night-source.mp4
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
   animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
