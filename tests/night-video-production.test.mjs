@@ -39,7 +39,8 @@ test('legacy brightness helper also forbids negative exposure', () => {
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
   assert.match(renderer, /z\.eligible/);
-  assert.match(renderer, /-map 0:v:0 -an -c:v copy/);
+  assert.match(renderer, /-stream_loop -1 -i "\$source_copy"/);
+  assert.match(renderer, /-t 15 -map 0:v:0 -an -c:v libx264/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);
   assert.match(renderer, /--crf=14/);

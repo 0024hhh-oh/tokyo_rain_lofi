@@ -25,7 +25,12 @@ if [[ -n "$video_source" ]]; then
   source_copy="$ASSET_DIR/night_source_input.${video_source##*.}"
   mv "$video_source" "$source_copy"
   ffmpeg -y -i "$source_copy" -frames:v 1 -update 1 "$ASSET_DIR/background.png"
-  ffmpeg -y -i "$source_copy" -map 0:v:0 -an -c:v copy public/night-source.mp4
+  # NightVideoLightingLoop plays the source at 0.5x for a 30-second output.
+  # Build a 15-second looping source first, so short rain clips cannot end
+  # before Remotion finishes its render.
+  ffmpeg -y -stream_loop -1 -i "$source_copy" \
+    -t 15 -map 0:v:0 -an -c:v libx264 -pix_fmt yuv420p \
+    public/night-source.mp4
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
   animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
