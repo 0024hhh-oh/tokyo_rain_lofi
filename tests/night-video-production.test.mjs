@@ -25,9 +25,9 @@ test('production night video uses positive-only glow on eligible emitters', () =
   assert.match(component, /level: 1\.34/);
   assert.match(component, /isDaylightAccent \? 0\.46 : 0\.86/);
   assert.match(component, /filter: 'blur\(1px\)'/);
-  assert.match(component, /<OffthreadVideo/);
-  assert.match(component, /muted/);
-  assert.equal(component.match(/<OffthreadVideo/g)?.length, 1);
+  assert.match(component, /<Img/);
+  assert.match(component, /night-frames\/frame-/);
+  assert.doesNotMatch(component, /<OffthreadVideo/);
 });
 
 test('legacy brightness helper also forbids negative exposure', () => {
@@ -39,9 +39,12 @@ test('legacy brightness helper also forbids negative exposure', () => {
 test('night renderer normalizes the source for frame-accurate Remotion looping', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
   assert.match(renderer, /z\.eligible/);
-  assert.match(renderer, /-map 0:v:0 -an -vf fps=30/);
-  assert.match(renderer, /-g 30 -keyint_min 30 -sc_threshold 0 -bf 0/);
+  assert.match(renderer, /public\/night-frames\/frame-%04d\.jpg/);
+  assert.match(renderer, /source_frames=.*night-frames/);
   assert.doesNotMatch(renderer, /-stream_loop -1 -i "\$source_copy"/);
+  assert.match(component, /<Img/);
+  assert.match(component, /night-frames\/frame-/);
+  assert.doesNotMatch(component, /<OffthreadVideo/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);
   assert.match(renderer, /--crf=14/);

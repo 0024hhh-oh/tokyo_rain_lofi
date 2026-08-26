@@ -25,32 +25,25 @@ if [[ -n "$video_source" ]]; then
   source_copy="$ASSET_DIR/night_source_input.${video_source##*.}"
   mv "$video_source" "$source_copy"
   ffmpeg -y -i "$source_copy" -frames:v 1 -update 1 "$ASSET_DIR/background.png"
-  # Normalize the supplied source for frame-accurate OffthreadVideo seeking.
-  # The source is not extended here: Remotion's Loop repeats this short clip.
-  # B-frame-heavy phone/app exports can produce vertical smear when Remotion
-  # seeks them directly, so use CFR, short GOPs, and no B-frames.
-  ffmpeg -y -i "$source_copy" \
-    -map 0:v:0 -an -vf fps=30 \
-    -c:v libx264 -preset medium -crf 14 -pix_fmt yuv420p \
-    -g 30 -keyint_min 30 -sc_threshold 0 -bf 0 \
-    public/night-source.mp4
+  # Decode the supplied rain video once into still frames. Remotion then reads
+  # deterministic JPEGs instead of seeking the source video with OffthreadVideo,
+  # which avoids the vertical smear seen in selected decoded video frames.
+  mkdir -p public/night-frames
+  find public/night-frames -type f -name 'frame-*.jpg' -delete
+  ffmpeg -y -i "$source_copy" -map 0:v:0 \
+    -vf "fps=30,scale=1920:1080:flags=lanczos,setsar=1" \
+    -q:v 2 public/night-frames/frame-%04d.jpg
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
   animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
   safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.eligible).slice(0, 3).length)")"
   echo "Night video lighting: animate=${animate} safe_light_count=${safe_zone_count} (rendering continues with zero to three lights)."
 
-  source_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 public/night-source.mp4)"
-  source_frames="$(python - "$source_duration" <<'PY_VIDEO_FRAMES'
-import sys
-
-duration = float(sys.argv[1])
-frames = round(duration * 30)
-if duration <= 0 or frames < 1:
-    raise SystemExit(f"Invalid night source duration: {duration}")
-print(frames)
-PY_VIDEO_FRAMES
-)"
+  source_frames="$(find public/night-frames -type f -name 'frame-*.jpg' | wc -l)"
+  if [[ "$source_frames" -lt 1 ]]; then
+    echo "No rain video frames were extracted." >&2
+    exit 1
+  fi
   printf '{\n  "sourceDurationInFrames": %s\n}\n' "$source_frames" > src/generated-video-metadata.json
 
   rm -f "$ASSET_DIR/background.mp4"

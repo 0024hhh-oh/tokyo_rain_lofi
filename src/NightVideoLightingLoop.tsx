@@ -1,7 +1,6 @@
 import {
   AbsoluteFill,
-  Loop,
-  OffthreadVideo,
+  Img,
   interpolate,
   staticFile,
   useCurrentFrame,
@@ -33,9 +32,7 @@ type Flicker = {
 
 const MAX_LIGHTS = 3;
 const REAR_MAX_Y = 0.40;
-const SOURCE_PLAYBACK_RATE = 1;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
-const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_GLOW_OPACITY = 0.34;
 
 const safeLightZones = (lighting.zones as unknown as LightZone[])
@@ -88,14 +85,10 @@ export const NightVideoLightingLoop: React.FC = () => {
 
   return (
     <AbsoluteFill style={{backgroundColor: '#050608'}}>
-      <Loop durationInFrames={LOOP_DURATION_IN_FRAMES}>
-        <OffthreadVideo
-          muted
-          playbackRate={SOURCE_PLAYBACK_RATE}
-          src={staticFile('night-source.mp4')}
-          style={{height: '100%', objectFit: 'cover', width: '100%'}}
-        />
-      </Loop>
+      <Img
+        src={staticFile(`night-frames/frame-${String(Math.floor(frame % SOURCE_DURATION_IN_FRAMES) + 1).padStart(4, '0')}.jpg`)}
+        style={{height: '100%', objectFit: 'cover', width: '100%'}}
+      />
 
       {lighting.animate && safeLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
