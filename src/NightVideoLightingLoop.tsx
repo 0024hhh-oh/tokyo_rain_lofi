@@ -33,7 +33,7 @@ type Flicker = {
 
 const MAX_LIGHTS = 3;
 const REAR_MAX_Y = 0.55;
-const SOURCE_PLAYBACK_RATE = 0.5;
+const SOURCE_PLAYBACK_RATE = 1;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_GLOW_OPACITY = 0.34;
