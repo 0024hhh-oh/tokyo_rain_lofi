@@ -36,10 +36,11 @@ test('legacy brightness helper also forbids negative exposure', () => {
   assert.doesNotMatch(profile, /brightness < 1/);
 });
 
-test('night renderer loops the original video in Remotion without a pre-loop transcode', () => {
+test('night renderer normalizes the source for frame-accurate Remotion looping', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
   assert.match(renderer, /z\.eligible/);
-  assert.match(renderer, /cp "\$source_copy" public\/night-source\.mp4/);
+  assert.match(renderer, /-map 0:v:0 -an -vf fps=30/);
+  assert.match(renderer, /-g 30 -keyint_min 30 -sc_threshold 0 -bf 0/);
   assert.doesNotMatch(renderer, /-stream_loop -1 -i "\$source_copy"/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);

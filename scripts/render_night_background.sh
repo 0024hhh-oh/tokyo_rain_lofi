@@ -25,10 +25,15 @@ if [[ -n "$video_source" ]]; then
   source_copy="$ASSET_DIR/night_source_input.${video_source##*.}"
   mv "$video_source" "$source_copy"
   ffmpeg -y -i "$source_copy" -frames:v 1 -update 1 "$ASSET_DIR/background.png"
-  # Keep the supplied source untouched. Remotion's Loop component repeats the
-  # original clip frame-accurately; pre-building a 30-second ffmpeg loop can
-  # create seek/decode smear artifacts in OffthreadVideo.
-  cp "$source_copy" public/night-source.mp4
+  # Normalize the supplied source for frame-accurate OffthreadVideo seeking.
+  # The source is not extended here: Remotion's Loop repeats this short clip.
+  # B-frame-heavy phone/app exports can produce vertical smear when Remotion
+  # seeks them directly, so use CFR, short GOPs, and no B-frames.
+  ffmpeg -y -i "$source_copy" \
+    -map 0:v:0 -an -vf fps=30 \
+    -c:v libx264 -preset medium -crf 14 -pix_fmt yuv420p \
+    -g 30 -keyint_min 30 -sc_threshold 0 -bf 0 \
+    public/night-source.mp4
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
   animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
