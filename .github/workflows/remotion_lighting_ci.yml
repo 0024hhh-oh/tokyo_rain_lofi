@@ -84,10 +84,15 @@ jobs:
           if audio_streams != 0:
               raise SystemExit(f"Expected zero audio streams; got {audio_streams}")
           PY
+          ffmpeg -y -v error \
+            -i video_assets/background.mp4 \
+            -t 8 -c copy -movflags +faststart \
+            dist/shinsuna-night-sample.mp4
       - uses: actions/upload-artifact@v4
         with:
           name: remotion-lighting-test
           path: |
             dist/night-test.mp4
+            dist/shinsuna-night-sample.mp4
             video_assets/background.mp4
           retention-days: 7
