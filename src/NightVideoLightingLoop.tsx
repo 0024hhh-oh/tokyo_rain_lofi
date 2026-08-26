@@ -36,7 +36,7 @@ const MAX_GLOW_OPACITY = 0.34;
 
 const safeLightZones = (lighting.zones as unknown as LightZone[])
   .filter((zone) => zone.eligible)
-  .sort((first, second) => first.y - second.y)
+  .sort((first, second) => second.y - first.y)
   .slice(0, 1);
 
 const flickerSchedules: Flicker[][] = [
