@@ -55,6 +55,10 @@ jobs:
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+          TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
           BGM_VOLUME: "1.0"
           RAIN_AUDIO_VOLUME: "0.20"
           AUDIO_LIMIT: "0.98"
@@ -122,6 +126,10 @@ jobs:
               echo "Using the project background video as a silent visual loop."
               echo "Using audio_source/rain_audio_source.mp4 as the separate rain soundtrack."
               scripts/generate_lofi_video.sh
+              echo "Google Drive upload and verification starting: dist/${OUTPUT_FILE}"
+              python scripts/upload_drive_output.py \
+                --file "dist/${OUTPUT_FILE}" \
+                --output-name "${OUTPUT_FILE}"
               echo "YouTube upload starting: dist/${OUTPUT_FILE}"
               python scripts/upload_youtube_video.py \
                 --file "dist/${OUTPUT_FILE}" \
@@ -192,6 +200,20 @@ jobs:
           echo "Using the project background video as a silent visual loop."
           echo "Using audio_source/rain_audio_source.mp4 as the separate rain soundtrack."
           scripts/generate_lofi_video.sh
+
+      - name: Upload and verify MP4 in personal Google Drive
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
+        env:
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+          TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
+          OUTPUT_FILE: ${{ inputs.output_file }}
+        run: |
+          echo "Google Drive upload and verification starting: dist/${OUTPUT_FILE}"
+          python scripts/upload_drive_output.py \
+            --file "dist/${OUTPUT_FILE}" \
+            --output-name "${OUTPUT_FILE}"
 
       - name: Upload private video to YouTube
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}
