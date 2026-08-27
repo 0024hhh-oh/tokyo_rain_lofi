@@ -9,6 +9,7 @@ import os
 import sys
 import traceback
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
@@ -86,6 +87,23 @@ def quote_drive_query(value: str) -> str:
     return value.replace("'", "\\'")
 
 
+def normalize_drive_folder_id(value: str) -> str:
+    """Accept either a raw Drive folder ID or a copied Drive folder URL."""
+    candidate = value.strip()
+    if not candidate:
+        return ""
+    if candidate.startswith(("https://", "http://")):
+        parsed = urlparse(candidate)
+        marker = "/folders/"
+        if marker in parsed.path:
+            return parsed.path.split(marker, 1)[1].split("/", 1)[0]
+        query_id = parse_qs(parsed.query).get("id", [""])[0]
+        if query_id:
+            return query_id
+        raise RuntimeError("Google DriveフォルダURLからフォルダIDを取得できませんでした。")
+    return candidate
+
+
 def find_existing_file(service, name: str, parent_id: str) -> dict | None:
     safe_name = quote_drive_query(name)
     safe_parent = quote_drive_query(parent_id)
@@ -128,7 +146,9 @@ def upload_output(service, source_path: Path, output_name: str, parent_id: str) 
 
 
 def resolve_output_folder_id(args: argparse.Namespace) -> str:
-    folder_id = (args.output_folder_id or os.environ.get(OUTPUT_FOLDER_ID_ENV, "")).strip()
+    folder_id = normalize_drive_folder_id(
+        args.output_folder_id or os.environ.get(OUTPUT_FOLDER_ID_ENV, "")
+    )
     if folder_id:
         return folder_id
     legacy = os.environ.get(LEGACY_ROOT_FOLDER_ID_ENV)
