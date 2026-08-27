@@ -30,8 +30,8 @@ jobs:
 
       - name: Upload test MP4 to personal Google Drive
         env:
-          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
-          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
           TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_OUTPUT_FOLDER_ID }}
         run: |
