@@ -25,6 +25,8 @@ LEGACY_ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
 OAUTH_CLIENT_ID_ENV = "GOOGLE_DRIVE_CLIENT_ID"
 OAUTH_CLIENT_SECRET_ENV = "GOOGLE_DRIVE_CLIENT_SECRET"
 OAUTH_REFRESH_TOKEN_ENV = "GOOGLE_DRIVE_REFRESH_TOKEN"
+UPLOAD_CHUNK_SIZE = 32 * 1024 * 1024
+UPLOAD_RETRIES = 5
 
 
 def get_drive_service():
@@ -121,28 +123,77 @@ def find_existing_file(service, name: str, parent_id: str) -> dict | None:
     return files[0] if files else None
 
 
+def execute_resumable_upload(request) -> dict:
+    response = None
+    last_progress_bucket = -1
+    while response is None:
+        status, response = request.next_chunk(num_retries=UPLOAD_RETRIES)
+        if status:
+            progress_bucket = int(status.progress() * 10) * 10
+            if progress_bucket > last_progress_bucket:
+                print(f"Google Drive upload progress: {min(progress_bucket, 100)}%")
+                last_progress_bucket = progress_bucket
+    return response
+
+
+def verify_uploaded_file(service, file_id: str, source_path: Path, output_name: str, parent_id: str) -> dict:
+    uploaded = service.files().get(
+        fileId=file_id,
+        fields="id,name,mimeType,size,webViewLink,parents,videoMediaMetadata",
+        supportsAllDrives=True,
+    ).execute()
+    source_size = source_path.stat().st_size
+    drive_size = int(uploaded.get("size", -1))
+    if uploaded.get("name") != output_name:
+        raise RuntimeError(
+            f"Drive上のファイル名が一致しません: expected={output_name} actual={uploaded.get('name')}"
+        )
+    if uploaded.get("mimeType") != "video/mp4":
+        raise RuntimeError(f"Drive上のMIMEタイプがvideo/mp4ではありません: {uploaded.get('mimeType')}")
+    if parent_id not in uploaded.get("parents", []):
+        raise RuntimeError("Drive上の保存先フォルダが一致しません。")
+    if drive_size != source_size:
+        raise RuntimeError(
+            f"Drive上の容量が一致しません: local_bytes={source_size} drive_bytes={drive_size}"
+        )
+    print(
+        "Google Drive upload verified: "
+        f"file_id={uploaded['id']} local_bytes={source_size} drive_bytes={drive_size}"
+    )
+    return uploaded
+
+
 def upload_output(service, source_path: Path, output_name: str, parent_id: str) -> dict:
-    media = MediaFileUpload(str(source_path), mimetype="video/mp4", resumable=True)
+    media = MediaFileUpload(
+        str(source_path),
+        mimetype="video/mp4",
+        chunksize=UPLOAD_CHUNK_SIZE,
+        resumable=True,
+    )
     existing_file = find_existing_file(service, output_name, parent_id)
 
     if existing_file:
         print(f"Updating existing Drive file: file_id={existing_file['id']} file_name={output_name} folder_id={parent_id}")
-        return service.files().update(
+        request = service.files().update(
             fileId=existing_file["id"],
             media_body=media,
             body={"name": output_name},
             fields="id,name,webViewLink,parents",
             supportsAllDrives=True,
-        ).execute()
+        )
+        uploaded = execute_resumable_upload(request)
+        return verify_uploaded_file(service, uploaded["id"], source_path, output_name, parent_id)
 
     metadata = {"name": output_name, "parents": [parent_id]}
     print(f"Creating new Drive file: file_name={output_name} folder_id={parent_id}")
-    return service.files().create(
+    request = service.files().create(
         body=metadata,
         media_body=media,
         fields="id,name,webViewLink,parents",
         supportsAllDrives=True,
-    ).execute()
+    )
+    uploaded = execute_resumable_upload(request)
+    return verify_uploaded_file(service, uploaded["id"], source_path, output_name, parent_id)
 
 
 def resolve_output_folder_id(args: argparse.Namespace) -> str:
