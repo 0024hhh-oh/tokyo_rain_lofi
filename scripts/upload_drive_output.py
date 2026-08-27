@@ -27,9 +27,9 @@ OAUTH_REFRESH_TOKEN_ENV = "GOOGLE_DRIVE_REFRESH_TOKEN"
 
 
 def get_drive_service():
-    oauth_client_id = os.environ.get(OAUTH_CLIENT_ID_ENV)
-    oauth_client_secret = os.environ.get(OAUTH_CLIENT_SECRET_ENV)
-    oauth_refresh_token = os.environ.get(OAUTH_REFRESH_TOKEN_ENV)
+    oauth_client_id = os.environ.get(OAUTH_CLIENT_ID_ENV, "").strip() or None
+    oauth_client_secret = os.environ.get(OAUTH_CLIENT_SECRET_ENV, "").strip() or None
+    oauth_refresh_token = os.environ.get(OAUTH_REFRESH_TOKEN_ENV, "").strip() or None
     oauth_values = (oauth_client_id, oauth_client_secret, oauth_refresh_token)
 
     if any(oauth_values):
@@ -128,7 +128,7 @@ def upload_output(service, source_path: Path, output_name: str, parent_id: str) 
 
 
 def resolve_output_folder_id(args: argparse.Namespace) -> str:
-    folder_id = args.output_folder_id or os.environ.get(OUTPUT_FOLDER_ID_ENV)
+    folder_id = (args.output_folder_id or os.environ.get(OUTPUT_FOLDER_ID_ENV, "")).strip()
     if folder_id:
         return folder_id
     legacy = os.environ.get(LEGACY_ROOT_FOLDER_ID_ENV)
