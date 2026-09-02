@@ -9,8 +9,9 @@ const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 
 test('production night video uses positive-only glow on eligible emitters', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
+  assert.doesNotMatch(component, /SAFE_MIN_WARMTH/);
   assert.match(component, /zone\.hasLightCore/);
+  assert.match(component, /zone\.isCompactSource/);
   assert.match(component, /zone\.color/);
   assert.match(component, /Math\.max\(0, brightness - 1\)/);
   assert.match(component, /if \(brightness <= 1\) return null/);
@@ -24,8 +25,10 @@ test('production night video uses positive-only glow on eligible emitters', () =
 });
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
-  assert.match(renderer, /z\.warmth >= 0\.4/);
+  assert.doesNotMatch(renderer, /z\.warmth >=/);
+  assert.match(renderer, /z\.isCompactSource/);
   assert.match(renderer, /z\.hasLightCore/);
+  assert.doesNotMatch(renderer, /exactly three safe warm/);
   assert.match(renderer, /-map 0:v:0 -an -c:v copy/);
   assert.match(renderer, /sourceDurationInFrames/);
   assert.match(renderer, /NightVideoLightingLoop/);

@@ -5,6 +5,7 @@ on:
     paths:
       - "test_assets/rain-video-fixture.mp4"
       - "tests/RainVideoLightingTest.tsx"
+      - "scripts/prepare_remotion_background.mjs"
       - "tests/rain-video-lighting-index.tsx"
       - "tests/rain-video-lighting-workflow.test.mjs"
       - ".github/workflows/rain_video_lighting_ci.yml"
@@ -38,10 +39,10 @@ jobs:
           import fs from 'node:fs/promises';
           const lighting = JSON.parse(await fs.readFile('src/generated-light-zones.json', 'utf8'));
           const safeZones = lighting.zones
-            .filter((zone) => zone.hasLightCore && zone.warmth >= 0.55 && zone.y < 0.72)
+            .filter((zone) => zone.hasLightCore && zone.isCompactSource && zone.y < 0.72)
             .slice(0, 3);
-          if (!lighting.animate || safeZones.length !== 3) {
-            throw new Error(`Expected the approved three light zones; got ${safeZones.length}`);
+          if (!lighting.animate || safeZones.length < 1 || safeZones.length > 3) {
+            throw new Error(`Expected one to three prominent light zones; got ${safeZones.length}`);
           }
           NODE
       - name: Type-check isolated rain-video lighting test
