@@ -43,5 +43,6 @@ test('production boundaries remain unchanged around the new night renderer', () 
   assert.match(workflow, /python scripts\/upload_youtube_video\.py/);
   assert.match(workflow, /--destination completed/);
   assert.match(workflow, /--destination failed/);
-  assert.match(detector, /require_exactly_20_tracks=True/);
+  assert.match(detector, /SUPPORTED_TRACK_COUNTS = \(20, 30\)/);
+  assert.match(detector, /require_supported_track_count=True/);
 });

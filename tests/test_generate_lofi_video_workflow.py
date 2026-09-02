@@ -164,7 +164,7 @@ def test_workflow_no_longer_exports_fixed_target_seconds():
     assert 'RAIN_AUDIO_VOLUME: "0.20"' in text
 
 
-def test_workflow_does_not_run_google_drive_upload_after_youtube_success():
+def test_workflow_uploads_to_google_drive_before_youtube():
     text = workflow_text()
     production_job = text.split("  generate:", 1)[1]
 
@@ -172,7 +172,10 @@ def test_workflow_does_not_run_google_drive_upload_after_youtube_success():
     assert "actions/upload-artifact" not in production_job
     assert "Upload MP4 to Google Drive" not in production_job
     assert "Google Drive upload starting" not in production_job
-    assert "python scripts/upload_drive_output.py" not in production_job
+    assert "python scripts/upload_drive_output.py" in production_job
+    assert production_job.index("python scripts/upload_drive_output.py") < production_job.index(
+        "python scripts/upload_youtube_video.py"
+    )
 
 
 def test_youtube_secrets_are_passed_to_all_upload_paths():
@@ -217,11 +220,20 @@ def test_workflow_runs_only_the_original_generate_job():
     assert "--destination completed" in jobs
 
 
-def test_production_job_still_requires_exactly_twenty_tracks_in_detector():
+def test_production_job_accepts_twenty_or_thirty_tracks_in_detector():
     detector = (Path(__file__).resolve().parents[1] / "scripts/drive_incoming_queue.py").read_text()
 
-    assert "require_exactly_20_tracks=True" in detector
-    assert "mp3音源は20曲ちょうど必要です" in detector
+    assert "SUPPORTED_TRACK_COUNTS = (20, 30)" in detector
+    assert "require_supported_track_count=True" in detector
+    assert "require_exactly_20_tracks" not in detector
+
+
+def test_workflow_logs_detected_track_count_batch_and_mode():
+    text = workflow_text()
+
+    assert 'echo "Processing Batch: ${work_folder_name}"' in text
+    assert 'echo "Detected tracks: ${track_count}"' in text
+    assert 'echo "Mode: ${project_mode}"' in text
 
 
 def test_production_job_applies_lighting_only_to_night_projects():

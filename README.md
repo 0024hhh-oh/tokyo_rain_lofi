@@ -756,7 +756,7 @@ Google Drive/
 
 ## iPhone中心のGoogle Drive Projects運用
 
-PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。現在の本運用は、`Projects` 配下に作品フォルダを作り、その中にSuno元タイトルのままMP3 20曲と背景素材1つを置く方式です。Drive上ではファイルのリネーム・コピー・アップロードを行いません。
+PCを常時起動せず、iPhoneでSuno素材をGoogle Driveへ保存して自動生成キューへ投入する運用です。現在の本運用は、`Projects` 配下に作品フォルダを作り、その中にSuno元タイトルのままMP3 20曲または30曲と背景素材1つを置く方式です。Drive上ではファイルのリネーム・コピー・アップロードを行いません。
 
 ### Driveフォルダ構成
 
@@ -767,7 +767,7 @@ Tokyo ChillMatic FM/
       Suno元タイトル01.mp3
       Suno元タイトル02.mp3
       ...
-      Suno元タイトル20.mp3
+      Suno元タイトル30.mp3  # 20曲Batchの場合は20まで
       background.mp4   # または background.jpg
   completed/
   failed/
@@ -776,17 +776,17 @@ Tokyo ChillMatic FM/
 ### iPhoneでの手順
 
 1. `Tokyo ChillMatic FM/Projects/` の下に作品フォルダを1つ作ります（例: `SHINBASHI`）。
-2. Sunoからダウンロードした `.mp3` 音源20曲を、Suno元タイトルのまま作品フォルダへ入れます。
+2. Sunoからダウンロードした `.mp3` 音源20曲または30曲を、Suno元タイトルのまま作品フォルダへ入れます。
 3. 背景素材 `background.jpg` または `background.mp4` を1つだけ同じ作品フォルダへ入れます。
 4. `Generate LOFI video` Workflowが `Projects/<作品フォルダ>/` を検出し、GitHub Actionsのローカル作業ディレクトリへ素材をダウンロードします。
-5. ローカル側だけでMP3を `video_assets/tracks/track01.mp3`〜`track20.mp3` に正規化し、背景素材を `video_assets/background.mp4` または `video_assets/background.jpg` として既存の動画生成・YouTubeアップロード処理へ渡します。
+5. ローカル側だけでMP3を `video_assets/tracks/track01.mp3`〜`track20.mp3` または `track30.mp3` に正規化し、背景素材を `video_assets/background.mp4` または `video_assets/background.jpg` として既存の動画生成・YouTubeアップロード処理へ渡します。
 6. 動画生成とYouTubeアップロードが成功したら、Drive上の作品フォルダを親フォルダ変更で `completed/<作品フォルダ>/` へ移動します。失敗時は `failed/<作品フォルダ>/` へ移動します。
 
 ### 自動チェックの動き
 
 - `.github/workflows/generate_lofi_video.yml` はスケジュール実行で `Tokyo ChillMatic FM/Projects` 配下の作品フォルダを確認します。
-- 作品フォルダ内に `.mp3` がちょうど20曲、かつ背景素材がちょうど1つある場合だけ処理対象にします。
-- Drive上の元ファイル名は変更せず、Suno元タイトルを保持します。`track01.mp3`〜`track20.mp3` への正規化はGitHub Actionsローカル作業時だけです。
+- 作品フォルダ内に `.mp3` がちょうど20曲または30曲、かつ背景素材がちょうど1つある場合だけ処理対象にします。
+- Drive上の元ファイル名は変更せず、Suno元タイトルを保持します。`track01.mp3`〜`track20.mp3` または `track30.mp3` への正規化はGitHub Actionsローカル作業時だけです。
 - Drive上では `files.copy` や `files.create/upload` による素材作成・複製を行いません。完了・失敗時の移動は既存フォルダの親フォルダ変更だけで行います。
 - `Projects` 直下ファイル方式は読み取り専用扱いでスキップし、失敗しないようにしています。
 - `.github/workflows/check_drive_projects.yml` は互換用の通知Workflowとして残し、`incoming` へのコピーや事前移動は行いません。
@@ -795,7 +795,7 @@ Tokyo ChillMatic FM/
 ### 処理対象になる条件
 
 - `Projects` 配下に作品フォルダがあること。
-- 作品フォルダ内に `.mp3` ファイルがちょうど20曲あること。
+- 作品フォルダ内に `.mp3` ファイルがちょうど20曲または30曲あること。
 - 作品フォルダ内に `background.jpg` または `background.mp4` がちょうど1つあること。
 - `completed` に同名作品フォルダが存在しないこと。
 
@@ -803,7 +803,7 @@ Tokyo ChillMatic FM/
 
 - `Projects` 直下にファイルだけが置かれている。
 - 作品フォルダ内の対象背景素材が0個、または2個以上。
-- 作品フォルダ内の `.mp3` ファイルが20曲未満、または20曲超。
+- 作品フォルダ内の `.mp3` ファイル数が20曲でも30曲でもない。
 - `completed` に同名作品フォルダがある。
 
 ### `processed` / `failed` の意味

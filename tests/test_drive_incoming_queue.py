@@ -27,11 +27,48 @@ def make_tracks(count):
     ]
 
 
-def validate_with_children(children, capsys):
+def validate_with_children(children, capsys, *, require_supported_track_count=False):
     folder = {"id": "work-folder-id", "name": "SHIBUYA Rain"}
     with patch.object(drive_incoming_queue, "list_files", return_value=children):
-        result = drive_incoming_queue.validate_work_folder(None, folder)
+        result = drive_incoming_queue.validate_work_folder(
+            None,
+            folder,
+            require_supported_track_count=require_supported_track_count,
+        )
     return result, capsys.readouterr().out
+
+
+def test_production_track_count_accepts_twenty_and_thirty(capsys):
+    for count in (20, 30):
+        children = [
+            {"id": "bg", "name": "background.mp4", "mimeType": "video/mp4"},
+            *make_tracks(count),
+        ]
+
+        (ok, reason, track_count), output = validate_with_children(
+            children, capsys, require_supported_track_count=True
+        )
+
+        assert ok is True
+        assert reason == "素材OK"
+        assert track_count == count
+        assert f"track検出数: {count}" in output
+
+
+def test_production_track_count_rejects_unsupported_count(capsys):
+    children = [
+        {"id": "bg", "name": "background.mp4", "mimeType": "video/mp4"},
+        *make_tracks(21),
+    ]
+
+    (ok, reason, track_count), output = validate_with_children(
+        children, capsys, require_supported_track_count=True
+    )
+
+    assert ok is False
+    assert track_count == 21
+    assert "20 または 30曲ちょうど必要です" in reason
+    assert "無効判定の理由" in output
 
 
 def test_validate_work_folder_logs_counts_and_accepts_normalized_names(capsys):
