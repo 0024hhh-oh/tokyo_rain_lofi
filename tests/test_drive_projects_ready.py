@@ -88,6 +88,30 @@ def test_background_loop_name_is_normalized_before_matching():
     assert "background_loop.mp4優先" in reason
 
 
+def test_thirty_track_project_folder_is_ready():
+    children = [
+        {"id": "loop", "name": "background_loop.mp4", "mimeType": "video/mp4"},
+        *make_tracks(30),
+    ]
+
+    ok, reason = inspect_with_children(children)
+
+    assert ok is True
+    assert "mp3 30曲" in reason
+
+
+def test_unsupported_track_count_is_not_ready():
+    children = [
+        {"id": "loop", "name": "background_loop.mp4", "mimeType": "video/mp4"},
+        *make_tracks(21),
+    ]
+
+    ok, reason = inspect_with_children(children)
+
+    assert ok is False
+    assert "20曲または30曲必要です" in reason
+
+
 def test_single_video_file_with_quicktime_mime_is_ready():
     children = [
         {"id": "video", "name": "capcut export", "mimeType": "video/quicktime"},

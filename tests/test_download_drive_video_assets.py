@@ -91,6 +91,35 @@ def test_incoming_download_logs_and_manifests_selected_background(tmp_path, caps
     assert f"BACKGROUND_SHA256='{bg_hash}'" in manifest
 
 
+def test_incoming_download_preserves_all_thirty_tracks(tmp_path):
+    children = [
+        {"id": "bg-id", "name": "background.jpg", "mimeType": "image/jpeg"},
+        *[
+            {"id": f"mp3-{index:02}", "name": f"song-{index:02}.mp3", "mimeType": "audio/mpeg"}
+            for index in range(1, 31)
+        ],
+    ]
+
+    def write_download(service, file_id, destination):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(file_id.encode())
+
+    with (
+        patch.object(download_drive_video_assets, "list_files", return_value=children),
+        patch.object(
+            download_drive_video_assets, "download_file", side_effect=write_download
+        ),
+    ):
+        download_drive_video_assets.download_incoming_work_folder(
+            None, "folder-id", tmp_path / "video_assets"
+        )
+
+    tracks = sorted((tmp_path / "video_assets/tracks").glob("track*.mp3"))
+    assert len(tracks) == 30
+    assert tracks[-1].name == "track30.mp3"
+    assert tracks[-1].read_bytes() == b"mp3-30"
+
+
 def test_incoming_download_removes_stale_background_before_selecting_latest(tmp_path):
     output_dir = tmp_path / "video_assets"
     output_dir.mkdir()

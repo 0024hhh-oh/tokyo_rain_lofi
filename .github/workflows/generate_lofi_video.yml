@@ -101,6 +101,9 @@ jobs:
             echo "incoming selected work_folder_id=${work_folder_id}"
             echo "incoming selected work_folder_name=${work_folder_name}"
             echo "incoming selected project_mode=${project_mode}"
+            echo "Processing Batch: ${work_folder_name}"
+            echo "Detected tracks: ${track_count}"
+            echo "Mode: ${project_mode}"
             echo "asset acquisition method=incoming-queue"
 
             rm -rf video_assets dist

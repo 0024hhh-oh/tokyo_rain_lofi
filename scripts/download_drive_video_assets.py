@@ -30,6 +30,7 @@ ROOT_FOLDER = "Tokyo ChillMatic FM"
 ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
 SHARED_AUDIO_FOLDER_NAME = "audio_source"
 SHARED_RAIN_SOURCE_NAME = "rain_audio_source.mp4"
+SUPPORTED_TRACK_COUNTS = (20, 30)
 
 
 def quote_drive_query(value: str) -> str:
@@ -453,8 +454,11 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
         raise FileNotFoundError(
             "mp3音源が見つかりません。理想は20曲、最低1曲以上が必要です。"
         )
-    if len(mp3_files) < 20:
-        print(f"Warning: mp3音源は{len(mp3_files)}曲です。理想は20曲です。")
+    if len(mp3_files) not in SUPPORTED_TRACK_COUNTS:
+        print(
+            f"Warning: mp3音源は{len(mp3_files)}曲です。"
+            f"本番の対応曲数は{SUPPORTED_TRACK_COUNTS}です。"
+        )
 
     if background_loop_files:
         background_loop = background_loop_files[0]
@@ -476,7 +480,7 @@ def download_incoming_work_folder(service, folder_id: str, output_dir: Path) -> 
         log_drive_download(background, destination, source_path)
         write_background_manifest(background, destination, source_path)
 
-    for index, item in enumerate(mp3_files[:20], start=1):
+    for index, item in enumerate(mp3_files, start=1):
         destination = tracks_dir / f"track{index:02d}.mp3"
         download_file(service, item["id"], destination)
         log_drive_download(

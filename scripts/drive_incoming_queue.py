@@ -29,6 +29,7 @@ IMAGE_MIME_PREFIX = "image/"
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "application/octet-stream"}
 SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
 PROJECT_MODES = ("day", "night")
+SUPPORTED_TRACK_COUNTS = (20, 30)
 
 
 def quote_drive_query(value: str) -> str:
@@ -239,7 +240,7 @@ def ensure_child_folder(service, parent_id: str, name: str) -> dict:
 
 
 def validate_work_folder(
-    service, folder: dict, *, require_exactly_20_tracks: bool = False
+    service, folder: dict, *, require_supported_track_count: bool = False
 ) -> tuple[bool, str, int]:
     folder_id = folder["id"]
     children = list_files(
@@ -298,11 +299,14 @@ def validate_work_folder(
     if not background_loops and not backgrounds:
         print("無効判定の理由: background_loop.mp4 または background.png が必要です")
         return False, "background_loop.mp4 または background.png が必要です", len(mp3s)
-    if require_exactly_20_tracks and len(mp3s) != 20:
-        print(f"無効判定の理由: mp3音源は20曲ちょうど必要です（検出数: {len(mp3s)} / 20）")
+    if require_supported_track_count and len(mp3s) not in SUPPORTED_TRACK_COUNTS:
+        expected = " または ".join(str(count) for count in SUPPORTED_TRACK_COUNTS)
+        print(
+            f"無効判定の理由: mp3音源は{expected}曲ちょうど必要です（検出数: {len(mp3s)}）"
+        )
         return (
             False,
-            f"mp3音源は20曲ちょうど必要です（検出数: {len(mp3s)} / 20）",
+            f"mp3音源は{expected}曲ちょうど必要です（検出数: {len(mp3s)}）",
             len(mp3s),
         )
     if len(mp3s) < 1:
@@ -413,7 +417,7 @@ def detect(args: argparse.Namespace) -> None:
             print(f"スキップ理由: {reason}")
             continue
         ok, message, track_count = validate_work_folder(
-            service, folder, require_exactly_20_tracks=True
+            service, folder, require_supported_track_count=True
         )
         if not ok:
             reason = f"{folder['name']} - {message}"

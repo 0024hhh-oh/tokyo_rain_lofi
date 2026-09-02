@@ -24,7 +24,7 @@ from drive_incoming_queue import (
 )
 
 REQUIRED_BACKGROUND_COUNT = 1
-REQUIRED_MP3_COUNT = 20
+SUPPORTED_MP3_COUNTS = (20, 30)
 VIDEO_MIME_PREFIX = "video/"
 MP4_MIME_TYPES = {"video/mp4", "application/octet-stream"}
 VIDEO_MIME_TYPES = {"video/mp4", "video/quicktime"}
@@ -156,21 +156,19 @@ def inspect_projects_root_assets(
             mp3s,
             None,
         )
-    if len(mp3s) < REQUIRED_MP3_COUNT:
+    if len(mp3s) not in SUPPORTED_MP3_COUNTS:
         return (
             False,
-            f"Projects直下のmp3音源が不足しています（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）",
+            f"Projects直下のmp3音源は20曲または30曲必要です（検出数: {len(mp3s)}）",
             mp3s,
             backgrounds[0],
         )
-    if len(mp3s) > REQUIRED_MP3_COUNT:
-        return (
-            False,
-            f"Projects直下のmp3音源が多すぎます（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）",
-            mp3s,
-            backgrounds[0],
-        )
-    return True, "Projects直下の素材OK（mp3 20曲、背景素材1つ）", mp3s, backgrounds[0]
+    return (
+        True,
+        f"Projects直下の素材OK（mp3 {len(mp3s)}曲、背景素材1つ）",
+        mp3s,
+        backgrounds[0],
+    )
 
 
 def project_batch_marker_name(mp3s: list[dict], background: dict) -> str:
@@ -227,19 +225,14 @@ def inspect_project_folder(service, folder: dict) -> tuple[bool, str]:
             False,
             f"background_loop.mp4 または background.png が必要です（取得一覧: {describe_children(children)}）",
         )
-    if len(mp3s) < REQUIRED_MP3_COUNT:
+    if len(mp3s) not in SUPPORTED_MP3_COUNTS:
         return (
             False,
-            f"mp3音源が不足しています（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）",
-        )
-    if len(mp3s) > REQUIRED_MP3_COUNT:
-        return (
-            False,
-            f"mp3音源が多すぎます（検出数: {len(mp3s)} / {REQUIRED_MP3_COUNT}）",
+            f"mp3音源は20曲または30曲必要です（検出数: {len(mp3s)}）",
         )
     if background_loops:
-        return True, "素材OK（background_loop.mp4優先、mp3 20曲）"
-    return True, "素材OK（background.*、mp3 20曲）"
+        return True, f"素材OK（background_loop.mp4優先、mp3 {len(mp3s)}曲）"
+    return True, f"素材OK（background.*、mp3 {len(mp3s)}曲）"
 
 
 def move_folder(service, folder: dict, destination_id: str, dry_run: bool) -> None:
