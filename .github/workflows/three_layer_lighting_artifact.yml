@@ -1,0 +1,62 @@
+name: Three-layer lighting artifact
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'experiments/depth-lighting/**'
+      - 'test_assets/three-layer-tokyo-scene.jpg'
+      - '.github/workflows/three_layer_lighting_artifact.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+
+permissions:
+  contents: read
+
+jobs:
+  render-depth-lighting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Test and type-check isolated experiment
+        run: |
+          node --test experiments/depth-lighting/timing.test.mjs
+          npx tsc -p experiments/depth-lighting/tsconfig.json
+      - name: Stage supplied image without modifying production assets
+        run: |
+          mkdir -p public/depth-lighting dist/depth-lighting
+          cp test_assets/three-layer-tokyo-scene.jpg public/depth-lighting/source.jpg
+      - name: Render clean 30-second MP4
+        run: npx remotion render experiments/depth-lighting/index.tsx DepthLightingClean dist/depth-lighting/depth-lighting-clean-30s.mp4 --codec=h264 --crf=18 --concurrency=2 --frames=0-899
+      - name: Render original versus lighting comparison
+        run: npx remotion render experiments/depth-lighting/index.tsx DepthLightingCompare dist/depth-lighting/depth-lighting-compare-30s.mp4 --codec=h264 --crf=20 --concurrency=2 --frames=0-899
+      - name: Render and verify actual scene changes without diagnostic labels
+        run: |
+          for item in baseline:0 back:120 middle:285 front:450 end:899; do
+            name="${item%:*}"
+            frame="${item#*:}"
+            npx remotion still experiments/depth-lighting/index.tsx DepthLightingClean "dist/depth-lighting/$name.png" --frame="$frame"
+          done
+          node experiments/depth-lighting/validate-frames.mjs
+      - name: Verify resolution, frame count, rate and duration
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          for video in dist/depth-lighting/*.mp4; do
+            ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames,r_frame_rate:format=duration -of json "$video" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const p=JSON.parse(s),v=p.streams[0];if(v.width!==1920||v.height!==1080||Number(v.nb_frames)!==900||v.r_frame_rate!=="30/1"||Math.abs(Number(p.format.duration)-30)>0.05)process.exit(1);console.log("Verified 1920x1080, 900 frames, 30fps, 30 seconds");});'
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: three-layer-lighting-${{ github.run_id }}
+          path: dist/depth-lighting/
+          if-no-files-found: error
+          retention-days: 7
