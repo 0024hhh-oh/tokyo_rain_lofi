@@ -32,6 +32,9 @@ test('isolated workflow and no production registration',()=>{
   assert.match(workflow,/contents: read/);
   assert.match(workflow,/persist-credentials: false/);
   assert.match(workflow,/retention-days: 7/);
+  const renders=workflow.split('\n').filter(line=>line.includes('run: npx remotion render'));
+  assert.equal(renders.length,2);
+  for(const line of renders) assert.match(line,/--muted\s*$/,'Lighting-only MP4s must not acquire AAC padding');
   assert.doesNotMatch(workflow,/secrets\.|pull_request_target:|push:|schedule:|workflow_run:|upload_youtube|upload_drive|generate_lofi/);
   assert.doesNotMatch(fs.readFileSync('src/Root.tsx','utf8'),/depth-lighting|DepthLighting/);
 });

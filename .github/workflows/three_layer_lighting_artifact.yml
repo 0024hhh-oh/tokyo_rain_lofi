@@ -36,9 +36,9 @@ jobs:
           mkdir -p public/depth-lighting dist/depth-lighting
           cp test_assets/three-layer-tokyo-scene.jpg public/depth-lighting/source.jpg
       - name: Render clean 30-second MP4
-        run: npx remotion render experiments/depth-lighting/index.tsx DepthLightingClean dist/depth-lighting/depth-lighting-clean-30s.mp4 --codec=h264 --crf=18 --concurrency=2 --frames=0-899
+        run: npx remotion render experiments/depth-lighting/index.tsx DepthLightingClean dist/depth-lighting/depth-lighting-clean-30s.mp4 --codec=h264 --crf=18 --concurrency=2 --frames=0-899 --muted
       - name: Render original versus lighting comparison
-        run: npx remotion render experiments/depth-lighting/index.tsx DepthLightingCompare dist/depth-lighting/depth-lighting-compare-30s.mp4 --codec=h264 --crf=20 --concurrency=2 --frames=0-899
+        run: npx remotion render experiments/depth-lighting/index.tsx DepthLightingCompare dist/depth-lighting/depth-lighting-compare-30s.mp4 --codec=h264 --crf=20 --concurrency=2 --frames=0-899 --muted
       - name: Render and verify actual scene changes without diagnostic labels
         run: |
           for item in baseline:0 back:120 middle:285 front:450 end:899; do
