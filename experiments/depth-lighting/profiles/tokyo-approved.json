@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "source": {
+    "file": "depth-lighting/source.jpg",
+    "width": 1536,
+    "height": 869,
+    "sha256": "3cfc83d5dc4131290c92847d29580f40ef09c851ffdfac2148464832f3c8f003"
+  },
+  "layers": {
+    "back": "<path d=\"M0 121 L890 121 L890 161 L0 164Z\"/>\n    <path d=\"M281 38 L349 38 L349 50 L281 50Z\"/>\n    <path d=\"M660 32 L688 32 L686 107 L659 106Z\"/>\n    <path d=\"M1210 28 L1239 28 L1240 161 L1210 161Z\"/>\n    <path d=\"M1395 130 L1520 120 L1520 163 L1395 164Z\"/>\n    <path d=\"M891 139 L1111 143 L1111 164 L891 161Z\"/>",
+    "middle": "<path d=\"M970 176 L1056 190 L1056 205 L970 192Z\"/>\n    <path d=\"M1135 207 L1344 244 L1344 265 L1135 225Z\"/>\n    <path d=\"M1370 254 L1535 284 L1535 306 L1370 275Z\"/>\n    <ellipse cx=\"922\" cy=\"267\" rx=\"5\" ry=\"7\"/>\n    <ellipse cx=\"1013\" cy=\"177\" rx=\"4\" ry=\"6\"/>\n    <ellipse cx=\"1489\" cy=\"267\" rx=\"4\" ry=\"6\"/>\n    <ellipse cx=\"895\" cy=\"244\" rx=\"4\" ry=\"5\"/>\n    <ellipse cx=\"724\" cy=\"205\" rx=\"4\" ry=\"4\"/>\n    <ellipse cx=\"615\" cy=\"241\" rx=\"4\" ry=\"5\"/>\n    <ellipse cx=\"512\" cy=\"204\" rx=\"4\" ry=\"4\"/>\n    <path d=\"M906 328 L947 334 L942 346 L906 338Z\"/>",
+    "front": "<path d=\"M497 310 L550 295 L550 319 L497 333Z\"/>\n    <path d=\"M502 357 L552 340 L552 362 L502 380Z\"/>\n    <path d=\"M83 505 L124 508 L124 534 L83 530Z\"/>\n    <path d=\"M661 573 L677 563 L677 598 L661 610Z\"/>\n    <path d=\"M782 532 L808 514 L808 541 L782 559Z\"/>\n    <ellipse cx=\"194\" cy=\"575\" rx=\"6\" ry=\"6\"/>\n    <ellipse cx=\"867\" cy=\"412\" rx=\"5\" ry=\"5\"/>\n    <path d=\"M283 600 L310 593 L310 616 L283 624Z\"/>\n    <path d=\"M550 397 L574 384 L574 404 L550 416Z\"/>\n    <path d=\"M837 494 L862 490 L861 557 L845 573 L835 553Z\" opacity=\".32\"/>\n    <path d=\"M184 646 L211 650 L223 692 L182 703 L177 673Z\" opacity=\".28\"/>\n    <path d=\"M284 665 L318 659 L329 699 L291 726 L275 701Z\" opacity=\".26\"/>"
+  },
+  "style": {
+    "coreOpacity": 0.9,
+    "haloOpacity": 0.55,
+    "coreBrightness": 2.8,
+    "haloBrightness": 3.6,
+    "coreBlur": 1,
+    "haloBlur": 8,
+    "imageBlur": 4
+  }
+}

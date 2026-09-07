@@ -9,3 +9,30 @@ The clean MP4 has no labels. The comparison MP4 puts the untouched original on t
 Run: `node --test experiments/depth-lighting/timing.test.mjs`, `npx tsc -p experiments/depth-lighting/tsconfig.json`. Copy `test_assets/three-layer-tokyo-scene.jpg` to `public/depth-lighting/source.jpg`, then render `experiments/depth-lighting/index.tsx` with `DepthLightingClean` or `DepthLightingCompare` (30fps, 900 frames).
 
 New workflow is PR/path-filtered and manually runnable only, with contents:read and credential persistence disabled. It uploads two MP4s for 7 days. Existing workflows and production Root are unchanged. No Drive/YouTube calls, production queues, Secrets or automatic merge. Visual acceptance is required before any later integration.
+
+## Image-specific profiles
+
+The accepted Tokyo mask is in `profiles/tokyo-approved.json`. `Scene` and
+`Comparison` now accept a `profile` prop: source dimensions, local source path,
+three SVG light masks and glow settings. Timing and the accepted Tokyo settings
+are unchanged. No production integration is enabled.
+
+For each new image, author masks around its actual emitters (not horizontal
+bands), record its exact SHA-256 and dimensions, and tune only that profile.
+Masks are not automatically detected. Do not reuse the Tokyo coordinates for
+another scene. Review a rendered comparison before accepting a new profile.
+
+Prepare and render from the repository root:
+
+```sh
+node experiments/depth-lighting/prepare-profile.mjs PROFILE.json IMAGE.jpg public dist/depth-lighting/props.json
+npx remotion render experiments/depth-lighting/index.tsx DepthLightingCompare dist/depth-lighting/comparison.mp4 --props=dist/depth-lighting/props.json --muted
+```
+
+Preparation rejects image/profile mismatches, invalid dimensions/orientation,
+unsafe paths, active SVG and invalid glow settings before writing outputs.
+The hash binds a profile to a file; it does not prove the mask is visually correct.
+New compositions may use different image aspect ratios; image and mask always
+share one plane. The synthetic alternate-image test checks configuration handling,
+not visual quality on a second real scene. AI mask generation and production
+Drive/Day/Night integration remain separate follow-up work.
