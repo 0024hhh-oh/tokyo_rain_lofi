@@ -3,22 +3,24 @@ import {AbsoluteFill, Img, staticFile, useCurrentFrame} from 'remotion';
 import {intensity, layers, type Depth} from './timing';
 
 import approvedProfile from './profiles/tokyo-approved.json';
+import {splitWindows, windowIntensity} from './window-timing';
 
-type LightPair = {id: string; depth: Depth; sourceMask: string; reflectionMask: string; reflectionGain: number};
-export type LightingProfile = typeof approvedProfile & {disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
+type LightPair = {id: string; depth: Depth; sourceMask: string; reflectionMask: string; reflectionGain: number; pulseWindow?: [number,number]};
+export type LightingProfile = typeof approvedProfile & {individualWindows?: boolean; disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
 const mask = (profile: LightingProfile, shape: string, blur: number) => `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${profile.source.width}" height="${profile.source.height}" viewBox="0 0 ${profile.source.width} ${profile.source.height}"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs><g fill="white" filter="url(#b)">${shape}</g></svg>`)}")`;
 
 export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = ({baseline = false, profile = approvedProfile as LightingProfile}) => {
   const frame = useCurrentFrame();
-  const units: LightPair[] = [...(profile.pairs ?? layers.map(depth => ({id:depth,depth,sourceMask:profile.layers[depth],reflectionMask:'',reflectionGain:0}))), ...(profile.emitters ?? []).map(e => ({...e, reflectionMask:'', reflectionGain:0}))];
+  const units: LightPair[] = [...(profile.pairs ?? layers.map(depth => ({id:depth,depth,sourceMask:profile.layers[depth],reflectionMask:'',reflectionGain:0}))), ...(profile.individualWindows ? splitWindows(profile.emitters ?? []) : (profile.emitters ?? []).map(e => ({...e, reflectionMask:'', reflectionGain:0})))];
   const source = staticFile(profile.source.file);
   return <AbsoluteFill style={{background: '#07121d', overflow: 'hidden', isolation:'isolate'}}>
     {/* A single common plane preserves EXACT registration of image and masks. */}
     <div style={{position:'absolute', width:'100%', aspectRatio:`${profile.source.width} / ${profile.source.height}`, top:'50%', transform:'translateY(-50%)'}}>
       <Img src={source} style={{display:'block',width:'100%'}}/>
       {!baseline && units.map(unit => {
-        const pulse = intensity(frame,unit.depth,profile.timing?.windows,profile.timing?.fadeFrames);
+        const pulse = unit.pulseWindow ? windowIntensity(frame,unit.pulseWindow,profile.timing?.fadeFrames) : intensity(frame,unit.depth,profile.timing?.windows,profile.timing?.fadeFrames);
+        if (pulse === 0) return null;
         const core = mask(profile,unit.sourceMask,profile.style.coreBlur);
         const halo = mask(profile,unit.sourceMask,profile.style.haloBlur);
         const reflection = mask(profile,unit.reflectionMask,3);

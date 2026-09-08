@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "individualWindows": true,
   "disableReflections": true,
   "source": {
     "file": "depth-lighting/river-night.jpg",

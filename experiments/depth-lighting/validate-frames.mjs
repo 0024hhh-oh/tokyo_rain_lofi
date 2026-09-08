@@ -42,7 +42,25 @@ if (profile.pairs) {
       }
     return total/count;
   };
-  for (const emitter of profile.emitters ?? []) {
+  if (profile.individualWindows) {
+    const ts = await import('typescript');
+    const source = await readFile(new URL('./window-timing.ts', import.meta.url), 'utf8');
+    const {outputText} = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.ESNext}});
+    const {splitWindows,windowIntensity} = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+    const windows = splitWindows(profile.emitters ?? []);
+    for (const [name,frame] of [['back',120],['middle',285],['front',450]]) {
+      const im = await decode(name);
+      for (const window of windows.filter(w=>windowIntensity(frame,w.pulseWindow)>.8)) {
+        const match = window.sourceMask.match(/M\s*([\d.]+)\s+([\d.]+)\s*h\s*([\d.]+)\s*v\s*([\d.]+)/);
+        assert.ok(match, 'Individual window must have a measurable rectangular mask');
+        const [x,y,w,h] = match.slice(1).map(Number);
+        const delta = meanDelta(im,[x,y,x+w,y+h]);
+        console.log({window:window.id,frame,meanIncrease:delta});
+        assert.ok(delta>8, 'Active individual window must visibly brighten');
+      }
+    }
+  }
+  for (const emitter of profile.individualWindows ? [] : profile.emitters ?? []) {
     const im = await decode(emitter.depth);
     const delta = meanDelta(im, emitter.sourceRoi);
     console.log({windows: emitter.id, meanIncrease: delta});
