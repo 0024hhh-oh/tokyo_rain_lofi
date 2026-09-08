@@ -23,3 +23,8 @@ test('rejects wrong dimensions, unsafe paths, active SVG and invalid strength', 
     await assert.rejects(validateProfile(bad, image));
   }
 });
+test('river profile matches its source and cannot use the Tokyo image', async()=> {
+  const river = JSON.parse(await fs.readFile(new URL('./profiles/river-night.json', import.meta.url)));
+  await validateProfile(river, await fs.readFile('test_assets/river-night.jpg'));
+  await assert.rejects(validateProfile(river, image), /does not match/);
+});

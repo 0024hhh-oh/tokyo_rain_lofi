@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import assert from 'node:assert/strict';
-const dir='dist/depth-lighting';
+const dir=process.argv[2] ?? 'dist/depth-lighting';
 const decode=async name=>sharp(`${dir}/${name}.png`).removeAlpha().raw().toBuffer({resolveWithObject:true});
 const base=await decode('baseline');
 for(const name of ['back','middle','front','end']){

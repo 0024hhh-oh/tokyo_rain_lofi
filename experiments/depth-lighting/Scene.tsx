@@ -37,6 +37,6 @@ export const Comparison: React.FC<{profile?: LightingProfile}> = ({profile = app
     <div style={{position:'absolute',top:90,left:60,fontSize:42}}>ORIGINAL</div>
     <div style={{position:'absolute',top:90,left:1020,fontSize:42}}>LIGHTING TEST</div>
     <div style={{position:'absolute',top:780,left:60,fontSize:38}}>{(frame/30).toFixed(1)}s / active: {active}</div>
-    <div style={{position:'absolute',top:855,left:60,fontSize:28,color:'#a9bdcf'}}>BACK: station / MIDDLE: trains + signals / FRONT: house lights</div>
+    <div style={{position:'absolute',top:855,left:60,fontSize:28,color:'#a9bdcf'}}>BACK / MIDDLE / FRONT: image-specific light masks</div>
   </AbsoluteFill>;
 };

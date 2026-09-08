@@ -36,3 +36,12 @@ New compositions may use different image aspect ratios; image and mask always
 share one plane. The synthetic alternate-image test checks configuration handling,
 not visual quality on a second real scene. AI mask generation and production
 Drive/Day/Night integration remain separate follow-up work.
+
+## Second scene: river at night
+
+`profiles/river-night.json` uses the supplied 1536x864 image unchanged. Selected
+background building windows, middle waterfront windows/lamps, and foreground
+street/boat lamps plus limited reflections share the same compositing and timing.
+These coordinates were authored by the assistant from visual inspection; this is
+not an unattended AI mask-detection pipeline. The Tokyo profile remains unchanged.
+The PR workflow renders and validates both scenes as separate matrix jobs.
