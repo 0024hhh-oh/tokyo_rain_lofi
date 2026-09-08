@@ -7,6 +7,7 @@ on:
       - 'experiments/depth-lighting/**'
       - 'test_assets/three-layer-tokyo-scene.jpg'
       - 'test_assets/river-night.jpg'
+      - 'test_assets/street-night.jpg'
       - '.github/workflows/three_layer_lighting_artifact.yml'
       - 'package.json'
       - 'package-lock.json'
@@ -29,6 +30,9 @@ jobs:
           - scene: river
             profile: river-night
             image: river-night
+          - scene: street
+            profile: street-night
+            image: street-night
     steps:
       - uses: actions/checkout@v4
         with:

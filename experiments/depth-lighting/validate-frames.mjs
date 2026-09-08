@@ -31,7 +31,7 @@ for(const name of ['back','middle','front','end']){
 // Paired scenes must visibly change the emitter, with a weaker synchronized reflection.
 const {readFile} = await import('node:fs/promises');
 const {profile} = JSON.parse(await readFile(`${dir}/props.json`, 'utf8'));
-if (profile.pairs) {
+if (profile.pairs || profile.scheduledLights) {
   const meanDelta = (im, roi) => {
     const scaleX=im.info.width/profile.source.width, scaleY=im.info.height/profile.source.height;
     let total=0,count=0;
@@ -42,6 +42,15 @@ if (profile.pairs) {
       }
     return total/count;
   };
+  if (profile.scheduledLights) {
+    for (const [name,frame] of [['back',120],['middle',285],['front',450]]) {
+      const im=await decode(name);
+      const active=profile.scheduledLights.filter(l=>frame>l.pulseWindow[0]+9 && frame<l.pulseWindow[1]-9);
+      assert.ok(active.length>0 && active.length<=3);
+      for(const light of active) assert.ok(meanDelta(im,light.sourceRoi)>8, 'Selected source must brighten');
+      assert.equal(meanDelta(im,[910,460,951,540]),0,'Road reflection must remain unchanged');
+    }
+  }
   if (profile.individualWindows) {
     const ts = await import('typescript');
     const source = await readFile(new URL('./window-timing.ts', import.meta.url), 'utf8');
@@ -66,7 +75,7 @@ if (profile.pairs) {
     console.log({windows: emitter.id, meanIncrease: delta});
     assert.ok(delta > 8, 'Selected window light must visibly brighten');
   }
-  for(const pair of profile.pairs) {
+  for(const pair of profile.pairs ?? []) {
     const im=await decode(pair.depth);
     const emitter=meanDelta(im,pair.sourceRoi),reflection=meanDelta(im,pair.reflectionRoi);
     console.log({pair:pair.id,emitterMeanIncrease:emitter,reflectionMeanIncrease:reflection});

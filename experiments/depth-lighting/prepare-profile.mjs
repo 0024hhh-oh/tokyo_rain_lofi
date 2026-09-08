@@ -18,6 +18,18 @@ export async function validateProfile(profile, image) {
     throw new Error('Source must be a local depth-lighting image');
   for (const d of ['back','middle','front']) if (!layers?.[d]) throw new Error('Missing source layer');
   const shapesToValidate = Object.entries(layers ?? {});
+  if (profile.scheduledLights) {
+    if (!profile.disableReflections || !Array.isArray(profile.scheduledLights) || !profile.scheduledLights.length) throw new Error('Scheduled sources require reflections disabled');
+    for (const light of profile.scheduledLights) {
+      const w = light.pulseWindow;
+      if (!light.building || !['back','middle','front'].includes(light.depth) || light.reflectionMask !== '' || light.reflectionGain !== 0 || !Array.isArray(w) || w.length!==2 || !w.every(Number.isInteger) || w[0]<1 || w[1]>899 || w[1]-w[0]<30) throw new Error('Invalid scheduled source');
+      shapesToValidate.push([light.id,light.sourceMask]);
+    }
+    for (let frame=0;frame<900;frame++) {
+      const active=profile.scheduledLights.filter(l=>frame>l.pulseWindow[0] && frame<l.pulseWindow[1]);
+      if(active.length>3 || new Set(active.map(l=>l.building)).size!==active.length) throw new Error('Too many simultaneous lights');
+    }
+  }
   if (profile.pairs) {
     if (!Array.isArray(profile.pairs) || profile.pairs.length !== 3 || new Set(profile.pairs.map(p=>p.depth)).size !== 3) throw new Error('Expected three unique source-reflection pairs');
     for (const pair of profile.pairs) {
