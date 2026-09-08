@@ -137,5 +137,40 @@
         811
       ]
     }
+  ],
+  "emitters": [
+    {
+      "id": "high-rise-windows",
+      "depth": "back",
+      "sourceMask": "<path d=\"M1191 97 h8 v12 h-8 Z\"/>\n<path d=\"M1211 84 h11 v12 h-11 Z\"/>\n<path d=\"M1210 128 h13 v15 h-13 Z\"/>\n<path d=\"M1184 164 h9 v13 h-9 Z\"/>\n<path d=\"M1208 164 h13 v14 h-13 Z\"/>\n<path d=\"M1244 161 h7 v13 h-7 Z\"/>\n<path d=\"M1257 161 h8 v13 h-8 Z\"/>\n<path d=\"M1284 159 h9 v14 h-9 Z\"/>\n<path d=\"M1255 194 h8 v12 h-8 Z\"/>\n<path d=\"M1282 193 h10 v13 h-10 Z\"/>\n<path d=\"M1205 201 h8 v12 h-8 Z\"/>\n<path d=\"M1215 201 h7 v12 h-7 Z\"/>\n<path d=\"M1154 120 h15 v10 h-15 Z\"/>\n<path d=\"M1120 167 h10 v10 h-10 Z\"/>",
+      "sourceRoi": [
+        1208,
+        126,
+        1226,
+        145
+      ]
+    },
+    {
+      "id": "waterfront-windows",
+      "depth": "middle",
+      "sourceMask": "<path d=\"M826 290 h11 v16 h-11 Z\"/>\n<path d=\"M840 290 h10 v16 h-10 Z\"/>\n<path d=\"M825 330 h12 v17 h-12 Z\"/>\n<path d=\"M839 332 h11 v16 h-11 Z\"/>\n<path d=\"M990 302 h17 v16 h-17 Z\"/>\n<path d=\"M1028 306 h25 v20 h-25 Z\"/>\n<path d=\"M778 326 h12 v16 h-12 Z\"/>\n<path d=\"M753 282 h8 v12 h-8 Z\"/>",
+      "sourceRoi": [
+        824,
+        287,
+        852,
+        310
+      ]
+    },
+    {
+      "id": "right-building-windows",
+      "depth": "front",
+      "sourceMask": "<path d=\"M1483 309 h12 v12 h-12 Z\"/>\n<path d=\"M1508 308 h16 v16 h-16 Z\"/>\n<path d=\"M1490 364 h16 v15 h-16 Z\"/>\n<path d=\"M1514 365 h13 v21 h-13 Z\"/>\n<path d=\"M1486 427 h13 v18 h-13 Z\"/>\n<path d=\"M1512 432 h18 v24 h-18 Z\"/>",
+      "sourceRoi": [
+        1508,
+        428,
+        1532,
+        458
+      ]
+    }
   ]
 }

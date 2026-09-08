@@ -42,6 +42,12 @@ if (profile.pairs) {
       }
     return total/count;
   };
+  for (const emitter of profile.emitters ?? []) {
+    const im = await decode(emitter.depth);
+    const delta = meanDelta(im, emitter.sourceRoi);
+    console.log({windows: emitter.id, meanIncrease: delta});
+    assert.ok(delta > 8, 'Selected window light must visibly brighten');
+  }
   for(const pair of profile.pairs) {
     const im=await decode(pair.depth);
     const emitter=meanDelta(im,pair.sourceRoi),reflection=meanDelta(im,pair.reflectionRoi);

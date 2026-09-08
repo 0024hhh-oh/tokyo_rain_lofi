@@ -4,6 +4,16 @@ import fs from 'node:fs/promises';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {validateProfile} from './prepare-profile.mjs';
+test('window masks contain 28 selected apertures without new reflections', async()=> {
+  const p=JSON.parse(await fs.readFile(new URL('./profiles/river-night.json',import.meta.url)));
+  const bytes=await fs.readFile('test_assets/river-night.jpg');
+  assert.equal(p.emitters.length,3);
+  assert.equal(p.emitters.reduce((n,e)=>n+(e.sourceMask.match(/<path /g)??[]).length,0),28);
+  await validateProfile(p,bytes);
+  for(const mutate of [p=>p.emitters[0].reflectionGain=.1,p=>p.emitters[0].sourceMask='<image href="x"/>',p=>p.emitters[0].depth='unknown']) {
+    const bad=structuredClone(p);mutate(bad);await assert.rejects(validateProfile(bad,bytes));
+  }
+});
 const profile = JSON.parse(await fs.readFile(new URL('./profiles/tokyo-approved.json', import.meta.url)));
 const image = await fs.readFile('test_assets/three-layer-tokyo-scene.jpg');
 test('accepted Tokyo masks match original image', async()=> {

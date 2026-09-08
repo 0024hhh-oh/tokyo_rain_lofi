@@ -24,6 +24,13 @@ export async function validateProfile(profile, image) {
       shapesToValidate.push([pair.id, pair.reflectionMask]);
     }
   }
+  if (profile.emitters) {
+    if (!Array.isArray(profile.emitters) || profile.emitters.length > 30) throw new Error('Invalid standalone emitters');
+    for (const emitter of profile.emitters) {
+      if (!['back','middle','front'].includes(emitter.depth) || !emitter.id || 'reflectionMask' in emitter || 'reflectionGain' in emitter) throw new Error('Standalone emitters cannot animate reflections');
+      shapesToValidate.push([emitter.id, emitter.sourceMask]);
+    }
+  }
   for (const [depth, shapes] of shapesToValidate) {
     // Only inert numeric path/ellipse shapes: no scripts, URLs, styles or SVG filters.
 
