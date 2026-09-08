@@ -26,6 +26,16 @@ export async function validateProfile(profile, image) {
     if (!Number.isFinite(style?.[key]) || style[key] < 0 || style[key] > max)
       throw new Error(`Invalid lighting style: ${key}`);
   }
+  if (profile.timing) {
+    const {windows, fadeFrames} = profile.timing;
+    if (!Number.isFinite(fadeFrames) || fadeFrames < 6 || fadeFrames > 60) throw new Error('Invalid fade');
+    for (const depth of ['back','middle','front']) {
+      if (!Array.isArray(windows?.[depth]) || !windows[depth].length) throw new Error('Missing pulse schedule');
+      for (const pair of windows[depth]) {
+        if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(Number.isInteger) || pair[0] < 1 || pair[1] > 899 || pair[1]-pair[0] < fadeFrames*2) throw new Error('Invalid pulse window');
+      }
+    }
+  }
   return profile;
 }
 

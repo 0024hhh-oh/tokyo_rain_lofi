@@ -4,11 +4,11 @@ import {intensity, layers, type Depth} from './timing';
 
 import approvedProfile from './profiles/tokyo-approved.json';
 
-export type LightingProfile = typeof approvedProfile;
+export type LightingProfile = typeof approvedProfile & {timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
 const mask = (profile: LightingProfile, depth: Depth, blur: number) => `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${profile.source.width}" height="${profile.source.height}" viewBox="0 0 ${profile.source.width} ${profile.source.height}"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs><g fill="white" filter="url(#b)">${profile.layers[depth]}</g></svg>`)}")`;
 
-export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = ({baseline = false, profile = approvedProfile}) => {
+export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = ({baseline = false, profile = approvedProfile as LightingProfile}) => {
   const frame = useCurrentFrame();
   const masks = Object.fromEntries(layers.map(d => [d, {core: mask(profile, d, profile.style.coreBlur), halo: mask(profile, d, profile.style.haloBlur)}])) as Record<Depth, {core:string;halo:string}>;
   const source = staticFile(profile.source.file);
@@ -17,10 +17,10 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
     <div style={{position:'absolute', width:'100%', aspectRatio:`${profile.source.width} / ${profile.source.height}`, top:'50%', transform:'translateY(-50%)'}}>
       <Img src={source} style={{display:'block',width:'100%'}}/>
       {!baseline && layers.map(depth => <React.Fragment key={depth}>
-        <AbsoluteFill style={{mixBlendMode:'screen',opacity:intensity(frame,depth)*profile.style.coreOpacity,maskImage:masks[depth].core,WebkitMaskImage:masks[depth].core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+        <AbsoluteFill style={{mixBlendMode:'screen',opacity:intensity(frame,depth,profile.timing?.windows,profile.timing?.fadeFrames)*profile.style.coreOpacity,maskImage:masks[depth].core,WebkitMaskImage:masks[depth].core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
           <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.coreBrightness})`}}/>
         </AbsoluteFill>
-        <AbsoluteFill style={{mixBlendMode:'screen',opacity:intensity(frame,depth)*profile.style.haloOpacity,maskImage:masks[depth].halo,WebkitMaskImage:masks[depth].halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+        <AbsoluteFill style={{mixBlendMode:'screen',opacity:intensity(frame,depth,profile.timing?.windows,profile.timing?.fadeFrames)*profile.style.haloOpacity,maskImage:masks[depth].halo,WebkitMaskImage:masks[depth].halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
           <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.haloBrightness}) blur(${profile.style.imageBlur}px)`}}/>
         </AbsoluteFill>
       </React.Fragment>)}
@@ -28,9 +28,9 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
   </AbsoluteFill>;
 };
 
-export const Comparison: React.FC<{profile?: LightingProfile}> = ({profile = approvedProfile}) => {
+export const Comparison: React.FC<{profile?: LightingProfile}> = ({profile = approvedProfile as LightingProfile}) => {
   const frame=useCurrentFrame();
-  const active=layers.filter(d=>intensity(frame,d)>0.01).join(' + ') || 'baseline';
+  const active=layers.filter(d=>intensity(frame,d,profile.timing?.windows,profile.timing?.fadeFrames)>0.01).join(' + ') || 'baseline';
   return <AbsoluteFill style={{background:'#07121d',color:'white',fontFamily:'Arial'}}>
     <div style={{position:'absolute',top:180,left:0,width:960,height:540}}><Scene baseline profile={profile}/></div>
     <div style={{position:'absolute',top:180,left:960,width:960,height:540}}><Scene profile={profile}/></div>

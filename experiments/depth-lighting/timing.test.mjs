@@ -38,3 +38,11 @@ test('isolated workflow and no production registration',()=>{
   assert.doesNotMatch(workflow,/secrets\.|pull_request_target:|push:|schedule:|workflow_run:|upload_youtube|upload_drive|generate_lofi/);
   assert.doesNotMatch(fs.readFileSync('src/Root.tsx','utf8'),/depth-lighting|DepthLighting/);
 });
+
+test('river motion starts in first second and remains loop-safe',()=>{
+  const p=JSON.parse(fs.readFileSync('experiments/depth-lighting/profiles/river-night.json'));
+  const sample=(f,d)=>intensity(f,d,p.timing.windows,p.timing.fadeFrames);
+  assert.equal(sample(15,'back'),1);
+  for(const d of layers){assert.equal(sample(0,d),0);assert.equal(sample(899,d),0);}
+  for(const [f,d] of [[120,'back'],[285,'middle'],[450,'front']]) assert.equal(sample(f,d),1);
+});
