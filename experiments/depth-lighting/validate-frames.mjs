@@ -27,3 +27,31 @@ for(const name of ['back','middle','front','end']){
     assert.equal(darkened,0,'Screen lighting must not dim the source');
   }
 }
+
+// Paired scenes must visibly change the emitter, with a weaker synchronized reflection.
+const {readFile} = await import('node:fs/promises');
+const {profile} = JSON.parse(await readFile(`${dir}/props.json`, 'utf8'));
+if (profile.pairs) {
+  const meanDelta = (im, roi) => {
+    const scaleX=im.info.width/profile.source.width, scaleY=im.info.height/profile.source.height;
+    let total=0,count=0;
+    for(let y=Math.floor(roi[1]*scaleY);y<Math.ceil(roi[3]*scaleY);y++)
+      for(let x=Math.floor(roi[0]*scaleX);x<Math.ceil(roi[2]*scaleX);x++) {
+        const i=(y*im.info.width+x)*3;
+        total+=(im.data[i]-base.data[i]+im.data[i+1]-base.data[i+1]+im.data[i+2]-base.data[i+2])/3;count++;
+      }
+    return total/count;
+  };
+  for(const pair of profile.pairs) {
+    const im=await decode(pair.depth);
+    const emitter=meanDelta(im,pair.sourceRoi),reflection=meanDelta(im,pair.reflectionRoi);
+    console.log({pair:pair.id,emitterMeanIncrease:emitter,reflectionMeanIncrease:reflection});
+    assert.ok(emitter>8, 'Emitter itself must visibly brighten');
+    assert.ok(reflection>0.2 && reflection<emitter*.5, 'Reflection must remain weaker than emitter');
+    for(const other of profile.pairs.filter(p=>p.id!==pair.id)) {
+      assert.equal(meanDelta(im,other.sourceRoi),0,'Inactive emitter must remain unchanged');
+      assert.equal(meanDelta(im,other.reflectionRoi),0,'No orphan reflection pulse');
+    }
+    assert.equal(meanDelta(im,[1050,700,1110,815]),0,'Unverified right-hand white reflection must remain unchanged');
+  }
+}

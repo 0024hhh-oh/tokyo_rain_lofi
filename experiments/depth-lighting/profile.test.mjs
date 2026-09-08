@@ -28,3 +28,10 @@ test('river profile matches its source and cannot use the Tokyo image', async()=
   await validateProfile(river, await fs.readFile('test_assets/river-night.jpg'));
   await assert.rejects(validateProfile(river, image), /does not match/);
 });
+test('paired reflections reject detached source and excessive reflection strength', async()=> {
+  const p=JSON.parse(await fs.readFile(new URL('./profiles/river-night.json',import.meta.url)));
+  const image=await fs.readFile('test_assets/river-night.jpg');
+  for(const change of [p=>p.pairs[0].sourceMask='',p=>p.pairs[0].reflectionGain=.9,p=>p.pairs[0].reflectionMask='<image href="x"/>']) {
+    const bad=structuredClone(p);change(bad);await assert.rejects(validateProfile(bad,image));
+  }
+});

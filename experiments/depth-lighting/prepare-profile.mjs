@@ -15,9 +15,18 @@ export async function validateProfile(profile, image) {
     throw new Error('Source dimensions/orientation do not match profile');
   if (typeof source.file !== 'string' || !/^depth-lighting\/[a-zA-Z0-9_-]+\.(jpg|jpeg|png)$/.test(source.file))
     throw new Error('Source must be a local depth-lighting image');
-  for (const depth of ['back', 'middle', 'front']) {
+  for (const d of ['back','middle','front']) if (!layers?.[d]) throw new Error('Missing source layer');
+  const shapesToValidate = Object.entries(layers ?? {});
+  if (profile.pairs) {
+    if (!Array.isArray(profile.pairs) || profile.pairs.length !== 3 || new Set(profile.pairs.map(p=>p.depth)).size !== 3) throw new Error('Expected three unique source-reflection pairs');
+    for (const pair of profile.pairs) {
+      if (!['back','middle','front'].includes(pair.depth) || pair.sourceMask !== layers[pair.depth] || !Number.isFinite(pair.reflectionGain) || pair.reflectionGain <= 0 || pair.reflectionGain > .25) throw new Error('Invalid source-reflection pair');
+      shapesToValidate.push([pair.id, pair.reflectionMask]);
+    }
+  }
+  for (const [depth, shapes] of shapesToValidate) {
     // Only inert numeric path/ellipse shapes: no scripts, URLs, styles or SVG filters.
-    const shapes = layers?.[depth];
+
     if (typeof shapes !== 'string' || !shapes.trim()) throw new Error(`Missing ${depth} mask`);
     const stripped = shapes.replace(/<(path|ellipse)\s+(?:(?:d|cx|cy|rx|ry|opacity)="[MmLlHhVvCcSsQqTtAaZz0-9.,\s+\-]+"\s*)+\/>/g, '').trim();
     if (stripped) throw new Error(`Invalid ${depth} mask`);
