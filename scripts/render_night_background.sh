@@ -73,41 +73,22 @@ PY_VIDEO_FRAMES
   exit 0
 fi
 
-if [[ ! -s "$ASSET_DIR/background.png" && ! -s "$ASSET_DIR/background.jpg" && ! -s "$ASSET_DIR/background.jpeg" ]]; then
-  echo "Remotion lighting skipped: no supported night background was found." >&2
-  exit 1
-fi
-
+# Static images use the exact masks and compositor reviewed in PR #110.
 if [[ ! -d node_modules ]]; then
   npm ci --no-audit --no-fund
 fi
-
-node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
-animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
-safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.hasLightCore && z.warmth >= 0.55 && z.y < 0.72).slice(0, 3).length)")"
-if [[ "$animate" != "true" || "$safe_zone_count" != "3" ]]; then
-  echo "Remotion lighting skipped: the supplied image did not contain exactly three safe warm light candidates."
+props_path="$ASSET_DIR/approved-lighting-props.json"
+node scripts/prepare_approved_lighting.mjs "$ASSET_DIR" public "$props_path"
+if [[ ! -s "$props_path" ]]; then
   exit 0
 fi
-
-rm -f "$ASSET_DIR/background.mp4"
-render_args=(
-  npx remotion render
-  src/index.ts
-  NightLightingLoop
-  "$ASSET_DIR/background.mp4"
-  --codec=h264
-  --crf=23
-  --concurrency=2
-  --log=verbose
-)
-if [[ -n "${REMOTION_FRAMES:-}" ]]; then
-  render_args+=(--frames "$REMOTION_FRAMES")
-fi
-"${render_args[@]}"
-
-ffprobe -v error \
-  -show_entries stream=codec_name,width,height,r_frame_rate \
-  -show_entries format=duration,size \
-  -of default=noprint_wrappers=1 \
-  "$ASSET_DIR/background.mp4"
+rendered_path="$ASSET_DIR/approved-lighting-render.mp4"
+trap 'rm -f "$rendered_path"' EXIT
+npx remotion render experiments/depth-lighting/index.tsx DepthLightingClean "$rendered_path" \
+  --props="$props_path" --codec=h264 --crf=18 --concurrency=2 --frames=0-899 --muted
+ffprobe -v error -show_entries stream=codec_type,width,height,nb_frames,r_frame_rate:format=duration -of json "$rendered_path" | node --input-type=module -e '
+let s=""; for await (const c of process.stdin) s+=c;
+const p=JSON.parse(s), v=p.streams.find(x=>x.codec_type==="video");
+if(!v || v.width!==1920 || v.height!==1080 || v.nb_frames!=="900" || v.r_frame_rate!=="30/1" || p.streams.some(x=>x.codec_type==="audio") || Math.abs(Number(p.format.duration)-30)>.05) process.exit(1);
+'
+mv "$rendered_path" "$ASSET_DIR/background.mp4"

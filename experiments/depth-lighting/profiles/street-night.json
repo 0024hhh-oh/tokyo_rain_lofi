@@ -1,0 +1,224 @@
+{
+  "version": 1,
+  "source": {
+    "file": "depth-lighting/street-night.jpg",
+    "width": 1536,
+    "height": 864,
+    "sha256": "0990a72acd1811ebb35e9c42311048541c584e45e3fea5ebd186ef41af575e99"
+  },
+  "disableReflections": true,
+  "style": {
+    "coreOpacity": 1,
+    "haloOpacity": 0.65,
+    "coreBrightness": 3.4,
+    "haloBrightness": 3.8,
+    "coreBlur": 1,
+    "haloBlur": 4,
+    "imageBlur": 3
+  },
+  "layers": {
+    "back": "<path d=\"M1207 227 h29 v9 h-29 Z\"/>",
+    "middle": "<path d=\"M630 333 h16 v28 h-16 Z\"/>",
+    "front": "<path d=\"M1402 653 h85 v39 h-85 Z\"/>"
+  },
+  "scheduledLights": [
+    {
+      "id": "left-white",
+      "building": "left-house",
+      "depth": "middle",
+      "sourceMask": "<path d=\"M630 333 h16 v28 h-16 Z\"/>",
+      "sourceRoi": [
+        630,
+        333,
+        646,
+        361
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        15,
+        75
+      ]
+    },
+    {
+      "id": "right-lower",
+      "building": "right-house",
+      "depth": "front",
+      "sourceMask": "<path d=\"M1402 653 h85 v39 h-85 Z\"/>",
+      "sourceRoi": [
+        1402,
+        653,
+        1487,
+        692
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        90,
+        150
+      ]
+    },
+    {
+      "id": "upper-small",
+      "building": "upper-right",
+      "depth": "back",
+      "sourceMask": "<path d=\"M1207 227 h29 v9 h-29 Z\"/>",
+      "sourceRoi": [
+        1207,
+        227,
+        1236,
+        236
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        170,
+        230
+      ]
+    },
+    {
+      "id": "left-green",
+      "building": "left-house",
+      "depth": "middle",
+      "sourceMask": "<path d=\"M632 399 h37 v11 h-37 Z\"/>",
+      "sourceRoi": [
+        632,
+        399,
+        669,
+        410
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        255,
+        315
+      ]
+    },
+    {
+      "id": "wall-lamp",
+      "building": "right-house",
+      "depth": "front",
+      "sourceMask": "<path d=\"M1352 416 h13 v12 h-13 Z\"/>",
+      "sourceRoi": [
+        1352,
+        416,
+        1365,
+        428
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        335,
+        395
+      ]
+    },
+    {
+      "id": "right-upper",
+      "building": "right-house",
+      "depth": "front",
+      "sourceMask": "<path d=\"M1494 240 h38 v65 h-38 Z\"/>",
+      "sourceRoi": [
+        1494,
+        240,
+        1532,
+        305
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        420,
+        480
+      ]
+    },
+    {
+      "id": "street-lamp",
+      "building": "street-lamp",
+      "depth": "middle",
+      "sourceMask": "<path d=\"M862 475 h7 v10 h-7 Z\"/>",
+      "sourceRoi": [
+        862,
+        475,
+        869,
+        485
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        500,
+        560
+      ]
+    },
+    {
+      "id": "upper-small-lower",
+      "building": "upper-right",
+      "depth": "back",
+      "sourceMask": "<path d=\"M1208 259 h17 v10 h-17 Z\"/>",
+      "sourceRoi": [
+        1208,
+        259,
+        1225,
+        269
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        585,
+        645
+      ]
+    },
+    {
+      "id": "narrow-window",
+      "building": "near-right",
+      "depth": "front",
+      "sourceMask": "<path d=\"M1158 580 h12 v29 h-12 Z\"/>",
+      "sourceRoi": [
+        1158,
+        580,
+        1170,
+        609
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        665,
+        725
+      ]
+    },
+    {
+      "id": "left-white-repeat",
+      "building": "left-house",
+      "depth": "middle",
+      "sourceMask": "<path d=\"M630 333 h16 v28 h-16 Z\"/>",
+      "sourceRoi": [
+        630,
+        333,
+        646,
+        361
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        750,
+        810
+      ]
+    },
+    {
+      "id": "right-lower-repeat",
+      "building": "right-house",
+      "depth": "front",
+      "sourceMask": "<path d=\"M1402 653 h85 v39 h-85 Z\"/>",
+      "sourceRoi": [
+        1402,
+        653,
+        1487,
+        692
+      ],
+      "reflectionMask": "",
+      "reflectionGain": 0,
+      "pulseWindow": [
+        825,
+        885
+      ]
+    }
+  ]
+}
