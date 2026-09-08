@@ -5,7 +5,7 @@ import {intensity, layers, type Depth} from './timing';
 import approvedProfile from './profiles/tokyo-approved.json';
 
 type LightPair = {id: string; depth: Depth; sourceMask: string; reflectionMask: string; reflectionGain: number};
-export type LightingProfile = typeof approvedProfile & {pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
+export type LightingProfile = typeof approvedProfile & {disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
 const mask = (profile: LightingProfile, shape: string, blur: number) => `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${profile.source.width}" height="${profile.source.height}" viewBox="0 0 ${profile.source.width} ${profile.source.height}"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs><g fill="white" filter="url(#b)">${shape}</g></svg>`)}")`;
 
@@ -29,7 +29,7 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
           <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.haloOpacity,maskImage:halo,WebkitMaskImage:halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
             <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.haloBrightness}) blur(${profile.style.imageBlur}px)`}}/>
           </AbsoluteFill>
-          {unit.reflectionMask && <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*unit.reflectionGain,maskImage:reflection,WebkitMaskImage:reflection,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+          {!profile.disableReflections && unit.reflectionMask && <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*unit.reflectionGain,maskImage:reflection,WebkitMaskImage:reflection,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
             <Img src={source} style={{width:'100%'}}/>
           </AbsoluteFill>}
         </React.Fragment>;

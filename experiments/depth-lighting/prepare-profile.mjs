@@ -6,6 +6,7 @@ import sharp from 'sharp';
 
 export async function validateProfile(profile, image) {
   if (profile.version !== 1) throw new Error('Unsupported lighting profile version');
+  if (profile.disableReflections !== undefined && typeof profile.disableReflections !== 'boolean') throw new Error('Invalid reflection disable flag');
   const {source, style, layers} = profile;
   if (!source || !/^[a-f0-9]{64}$/.test(source.sha256)) throw new Error('Missing source SHA-256');
   if (createHash('sha256').update(image).digest('hex') !== source.sha256)

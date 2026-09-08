@@ -53,7 +53,11 @@ if (profile.pairs) {
     const emitter=meanDelta(im,pair.sourceRoi),reflection=meanDelta(im,pair.reflectionRoi);
     console.log({pair:pair.id,emitterMeanIncrease:emitter,reflectionMeanIncrease:reflection});
     assert.ok(emitter>8, 'Emitter itself must visibly brighten');
-    assert.ok(reflection>0.2 && reflection<emitter*.5, 'Reflection must remain weaker than emitter');
+    if (profile.disableReflections) {
+      assert.ok(Math.abs(reflection)<1, 'Disabled water reflection must not brighten (sub-level tolerance for nearby emitter bloom)');
+    } else {
+      assert.ok(reflection>0.2 && reflection<emitter*.5, 'Reflection must remain weaker than emitter');
+    }
     for(const other of profile.pairs.filter(p=>p.id!==pair.id)) {
       assert.equal(meanDelta(im,other.sourceRoi),0,'Inactive emitter must remain unchanged');
       assert.equal(meanDelta(im,other.reflectionRoi),0,'No orphan reflection pulse');

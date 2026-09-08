@@ -4,6 +4,14 @@ import fs from 'node:fs/promises';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {validateProfile} from './prepare-profile.mjs';
+test('river reflections disabled while window and source masks remain', async()=> {
+  const p=JSON.parse(await fs.readFile(new URL('./profiles/river-night.json',import.meta.url)));
+  assert.equal(p.disableReflections,true);
+  assert.equal(p.pairs.length,3);
+  assert.equal(p.emitters.length,3);
+  const scene=await fs.readFile(new URL('./Scene.tsx',import.meta.url),'utf8');
+  assert.match(scene,/!profile.disableReflections && unit.reflectionMask/);
+});
 test('window masks contain 28 selected apertures without new reflections', async()=> {
   const p=JSON.parse(await fs.readFile(new URL('./profiles/river-night.json',import.meta.url)));
   const bytes=await fs.readFile('test_assets/river-night.jpg');

@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "disableReflections": true,
   "source": {
     "file": "depth-lighting/river-night.jpg",
     "width": 1536,
