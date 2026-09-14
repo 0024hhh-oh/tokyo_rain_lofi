@@ -13,7 +13,7 @@ export async function prepareApprovedLighting(assetDir, publicDir, propsPath) {
     try { image=await fs.readFile(source); } catch(e) { if(e.code==='ENOENT') continue; throw e; }
     if (!image.length) continue;
     const hash=createHash('sha256').update(image).digest('hex');
-    for(const filename of ['tokyo-approved.json','river-night.json','street-night.json']) {
+    for(const filename of ['tokyo-approved.json','river-night.json','street-thirds.json','street-night.json']) {
       const profilePath=new URL(filename,profilesDir);
       const profile=JSON.parse(await fs.readFile(profilePath,'utf8'));
       if(profile.source.sha256!==hash) continue;
