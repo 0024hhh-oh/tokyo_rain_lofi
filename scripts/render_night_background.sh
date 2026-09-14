@@ -84,7 +84,15 @@ if [[ ! -s "$props_path" ]]; then
 fi
 rendered_path="$ASSET_DIR/approved-lighting-render.mp4"
 trap 'rm -f "$rendered_path"' EXIT
-npx remotion render experiments/depth-lighting/index.tsx DepthLightingClean "$rendered_path" \
+rain_composition="DepthLightingRain"
+if [[ "${RAIN_LAYERS:-2}" == "0" ]]; then
+  rain_composition="DepthLightingClean"
+elif [[ "${RAIN_LAYERS:-2}" != "2" ]]; then
+  echo "RAIN_LAYERS must be 0 or 2." >&2
+  exit 1
+fi
+echo "Rendering approved still background with $rain_composition."
+npx remotion render experiments/depth-lighting/index.tsx "$rain_composition" "$rendered_path" \
   --props="$props_path" --codec=h264 --crf=18 --concurrency=2 --frames=0-899 --muted
 ffprobe -v error -show_entries stream=codec_type,width,height,nb_frames,r_frame_rate:format=duration -of json "$rendered_path" | node --input-type=module -e '
 let s=""; for await (const c of process.stdin) s+=c;
