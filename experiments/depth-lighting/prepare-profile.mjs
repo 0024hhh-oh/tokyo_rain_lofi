@@ -18,6 +18,33 @@ export async function validateProfile(profile, image) {
     throw new Error('Source must be a local depth-lighting image');
   for (const d of ['back','middle','front']) if (!layers?.[d]) throw new Error('Missing source layer');
   const shapesToValidate = Object.entries(layers ?? {});
+  if (profile.localLightSearch) {
+    for (const [key, value] of Object.entries(profile.localLightSearch)) {
+      if (!['thirdsRadiusX','thirdsRadiusY','centerRadiusX','centerRadiusY'].includes(key) ||
+          !Number.isFinite(value) || value < 0.01 || value > 0.2)
+        throw new Error('Invalid local search radius');
+    }
+  }
+  if (profile.localLightCandidates !== undefined) {
+    if (!Array.isArray(profile.localLightCandidates) || profile.localLightCandidates.length > 30)
+      throw new Error('Invalid local light candidates');
+    // Selection geometry is checked below; rendering validates masks independently.
+    for (const candidate of profile.localLightCandidates) {
+      if (!candidate || typeof candidate.id !== 'string' || !candidate.id ||
+          !['back','middle','front'].includes(candidate.depth) ||
+          !['vending_machine','phone_booth','sign','shop_light','streetlamp','station_light','convenience_store_light','window','neon','artificial_light'].includes(candidate.kind) ||
+          candidate.isEmitter !== true || !Array.isArray(candidate.sourceRoi) ||
+          candidate.sourceRoi.length !== 4 || !candidate.sourceRoi.every(Number.isFinite) ||
+          candidate.sourceRoi[0] < 0 || candidate.sourceRoi[1] < 0 ||
+          candidate.sourceRoi[2] > source.width || candidate.sourceRoi[3] > source.height ||
+          candidate.sourceRoi[2] <= candidate.sourceRoi[0] || candidate.sourceRoi[3] <= candidate.sourceRoi[1] ||
+          ((candidate.sourceRoi[2]-candidate.sourceRoi[0])*(candidate.sourceRoi[3]-candidate.sourceRoi[1]))/(source.width*source.height) > 0.035 ||
+          !Number.isFinite(candidate.prominence) || candidate.prominence < 0 || candidate.prominence > 1 ||
+          !Number.isFinite(candidate.clipRisk) || candidate.clipRisk < 0 || candidate.clipRisk > 0.2)
+        throw new Error('Invalid local light candidate');
+      shapesToValidate.push([candidate.id,candidate.sourceMask]);
+    }
+  }
   if (profile.scheduledLights) {
     if (!profile.disableReflections || !Array.isArray(profile.scheduledLights) || !profile.scheduledLights.length) throw new Error('Scheduled sources require reflections disabled');
     for (const light of profile.scheduledLights) {

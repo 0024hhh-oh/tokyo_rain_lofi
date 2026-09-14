@@ -15,7 +15,7 @@ New workflow is PR/path-filtered and manually runnable only, with contents:read 
 The accepted Tokyo mask is in `profiles/tokyo-approved.json`. `Scene` and
 `Comparison` now accept a `profile` prop: source dimensions, local source path,
 three SVG light masks and glow settings. Timing and the accepted Tokyo settings
-are unchanged. No production integration is enabled.
+are unchanged. Registered night still images are rendered through this scene by `scripts/render_night_background.sh`.
 
 For each new image, author masks around its actual emitters (not horizontal
 bands), record its exact SHA-256 and dimensions, and tune only that profile.
@@ -34,8 +34,7 @@ unsafe paths, active SVG and invalid glow settings before writing outputs.
 The hash binds a profile to a file; it does not prove the mask is visually correct.
 New compositions may use different image aspect ratios; image and mask always
 share one plane. The synthetic alternate-image test checks configuration handling,
-not visual quality on a second real scene. AI mask generation and production
-Drive/Day/Night integration remain separate follow-up work.
+not visual quality on a second real scene. Automatic mask generation remains separate work. The Drive night still-image path uses registered profiles; day and video-source paths remain unchanged.
 
 ## Second scene: river at night
 
@@ -45,3 +44,15 @@ street/boat lamps plus limited reflections share the same compositing and timing
 These coordinates were authored by the assistant from visual inspection; this is
 not an unattended AI mask-detection pipeline. The Tokyo profile remains unchanged.
 The PR workflow renders and validates both scenes as separate matrix jobs.
+
+## Optional thirds → center → existing-lighting selection
+
+For a new, reviewed image profile, add `localLightCandidates` (maximum 30). Each candidate needs a unique `id`, `kind` (for example `vending_machine`, `phone_booth`, `sign`, `window`), `depth`, source-only SVG `sourceMask`, pixel `sourceRoi: [left, top, right, bottom]`, `isEmitter: true`, `prominence` (0..1), and `clipRisk` (0..0.2). Only include objects confirmed visually to emit artificial light; never add reflections, white patches, wall glare, or a mask covering them. The source image hash and mask registration remain mandatory. The metadata cannot establish from pixels whether an object truly emits light: a person must inspect the original and a rendered sample.
+
+Candidate centers inside a fraction of the image width/height around any of the four thirds intersections are considered first (default 8% horizontally and vertically). If none are valid, consider the center (default 12% per axis). `localLightSearch` may set `thirdsRadiusX`, `thirdsRadiusY`, `centerRadiusX`, and `centerRadiusY` between .01 and .20. The nearest valid candidate wins and only its source mask is lit, with existing staggered per-depth fade timing and a reduced local opacity. Masks above 3.5% of image area or with clipRisk over .20 are ineligible. If neither region has an eligible candidate, the entire old lighting-unit selection and timing remain in effect, including the existing scheduled light behavior of the street scene.
+
+The registered `street-thirds.json` selects one previously masked window for the exact street-night JPEG in the normal night still-image video flow. Tokyo and river profiles retain their original lighting; the legacy `street-night.json` remains available for regression checks. New images need image-specific masks, SHA-256 and registration in `prepare_approved_lighting.mjs`; an unregistered image stays unchanged. Selection is isolated in `select-light.ts`, with cases A–F, invalid-profile checks and production path coverage. This change does not add automatic image understanding.
+
+## Street scene comparison for the new selection mode
+
+`street-thirds.json` reuses a previously masked left white window on the exact street-night source with 9%-width thirds tolerance. The PR workflow checks frames 0, 285 and 899 for local brightening, no distant changes and no dimming, then renders a 30-second comparison. Automated checks cannot establish aesthetic quality; the five additional images were not evaluated.

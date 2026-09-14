@@ -13,6 +13,12 @@ test('production selects exact approved images and removes stale props for unkno
       await fs.copyFile(`test_assets/${name}.jpg`,path.join(dir,'background.jpg'));
       assert.equal(await prepareApprovedLighting(dir,publicDir,props),true);
       const {profile}=JSON.parse(await fs.readFile(props));
+      if (name === 'street-night') {
+        assert.equal(profile.localLightCandidates?.length, 1, 'production uses one registered street emitter');
+        assert.equal(profile.localLightCandidates[0].id, 'left-white-window');
+      } else {
+        assert.equal(profile.localLightCandidates, undefined, 'existing profiles keep their original lighting');
+      }
       assert.deepEqual(await fs.readFile(path.join(publicDir,profile.source.file)),await fs.readFile(path.join(dir,'background.jpg')));
     }
     await fs.writeFile(path.join(dir,'background.jpg'),'unregistered image');
