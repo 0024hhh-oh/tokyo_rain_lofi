@@ -66,6 +66,10 @@ jobs:
       - name: Render silent 30-second 1080p preview
         run: |
           npx remotion render experiments/depth-lighting/index.tsx DepthLightingRain dist/rain-preview/two-layer-rain-30s.mp4 --props=dist/rain-preview/props.json --codec=h264 --crf=18 --concurrency=2 --frames=0-899 --muted
+      - name: Install FFmpeg for output verification
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
       - name: Verify video output
         run: |
           ffprobe -v error -show_entries stream=codec_type,width,height,nb_frames,r_frame_rate:format=duration -of json dist/rain-preview/two-layer-rain-30s.mp4 | node --input-type=module -e '
