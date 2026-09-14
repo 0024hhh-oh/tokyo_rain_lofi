@@ -76,7 +76,7 @@ jobs:
       - name: Verify thirds-selected source in a real street image
         if: matrix.scene == 'street'
         run: |
-          node experiments/depth-lighting/prepare-profile.mjs experiments/depth-lighting/profiles/street-thirds-test.json test_assets/street-night.jpg public dist/depth-lighting/local-props.json
+          node experiments/depth-lighting/prepare-profile.mjs experiments/depth-lighting/profiles/street-thirds.json test_assets/street-night.jpg public dist/depth-lighting/local-props.json
           node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("dist/depth-lighting/local-props.json"));x.baseline=true;fs.writeFileSync("dist/depth-lighting/baseline-props.json",JSON.stringify(x))'
           npx remotion still experiments/depth-lighting/index.tsx DepthLightingClean dist/depth-lighting/baseline.png --frame=285 --props=dist/depth-lighting/baseline-props.json
           npx remotion still experiments/depth-lighting/index.tsx DepthLightingClean dist/depth-lighting/local-start.png --frame=0 --props=dist/depth-lighting/local-props.json
