@@ -47,13 +47,16 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
 
 export const Comparison: React.FC<{profile?: LightingProfile}> = ({profile = approvedProfile as LightingProfile}) => {
   const frame=useCurrentFrame();
-  const active=layers.filter(d=>intensity(frame,d,profile.timing?.windows,profile.timing?.fadeFrames)>0.01).join(' + ') || 'baseline';
+  const selection=selectLightingMode(profile);
+  const active=selection.mode === 'local'
+    ? (intensity(frame,selection.candidate.depth,profile.timing?.windows,profile.timing?.fadeFrames)>0.01 ? selection.candidate.id : 'baseline')
+    : (layers.filter(d=>intensity(frame,d,profile.timing?.windows,profile.timing?.fadeFrames)>0.01).join(' + ') || 'baseline');
   return <AbsoluteFill style={{background:'#07121d',color:'white',fontFamily:'Arial'}}>
     <div style={{position:'absolute',top:180,left:0,width:960,height:540}}><Scene baseline profile={profile}/></div>
     <div style={{position:'absolute',top:180,left:960,width:960,height:540}}><Scene profile={profile}/></div>
     <div style={{position:'absolute',top:90,left:60,fontSize:42}}>ORIGINAL</div>
     <div style={{position:'absolute',top:90,left:1020,fontSize:42}}>LIGHTING TEST</div>
     <div style={{position:'absolute',top:780,left:60,fontSize:38}}>{(frame/30).toFixed(1)}s / active: {active}</div>
-    <div style={{position:'absolute',top:855,left:60,fontSize:28,color:'#a9bdcf'}}>BACK / MIDDLE / FRONT: image-specific light masks</div>
+    <div style={{position:'absolute',top:855,left:60,fontSize:28,color:'#a9bdcf'}}>{selection.mode === 'local' ? 'ONE SOURCE: image-specific light mask' : 'BACK / MIDDLE / FRONT: image-specific light masks'}</div>
   </AbsoluteFill>;
 };
