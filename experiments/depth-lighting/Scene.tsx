@@ -4,15 +4,20 @@ import {intensity, layers, type Depth} from './timing';
 
 import approvedProfile from './profiles/tokyo-approved.json';
 import {splitWindows, windowIntensity} from './window-timing';
+import {selectLightingMode, type LightSelectionProfile} from './select-light';
 
 type LightPair = {id: string; depth: Depth; sourceMask: string; reflectionMask: string; reflectionGain: number; pulseWindow?: [number,number]};
-export type LightingProfile = typeof approvedProfile & {scheduledLights?: LightPair[]; individualWindows?: boolean; disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
+export type LightingProfile = typeof approvedProfile & LightSelectionProfile & {scheduledLights?: LightPair[]; individualWindows?: boolean; disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
 const mask = (profile: LightingProfile, shape: string, blur: number) => `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${profile.source.width}" height="${profile.source.height}" viewBox="0 0 ${profile.source.width} ${profile.source.height}"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs><g fill="white" filter="url(#b)">${shape}</g></svg>`)}")`;
 
 export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = ({baseline = false, profile = approvedProfile as LightingProfile}) => {
   const frame = useCurrentFrame();
-  const units: LightPair[] = profile.scheduledLights ?? [...(profile.pairs ?? layers.map(depth => ({id:depth,depth,sourceMask:profile.layers[depth],reflectionMask:'',reflectionGain:0}))), ...(profile.individualWindows ? splitWindows(profile.emitters ?? []) : (profile.emitters ?? []).map(e => ({...e, reflectionMask:'', reflectionGain:0})))];
+  const choice = selectLightingMode(profile);
+  const fallbackToExistingThreeLayerMode = (): LightPair[] => profile.scheduledLights ?? [...(profile.pairs ?? layers.map(depth => ({id:depth,depth,sourceMask:profile.layers[depth],reflectionMask:'',reflectionGain:0}))), ...(profile.individualWindows ? splitWindows(profile.emitters ?? []) : (profile.emitters ?? []).map(e => ({...e, reflectionMask:'', reflectionGain:0})))];
+  const units: LightPair[] = choice.mode === 'local'
+    ? [{id:choice.candidate.id,depth:choice.candidate.depth,sourceMask:choice.candidate.sourceMask,reflectionMask:'',reflectionGain:0}]
+    : fallbackToExistingThreeLayerMode();
   const source = staticFile(profile.source.file);
   return <AbsoluteFill style={{background: '#07121d', overflow: 'hidden', isolation:'isolate'}}>
     {/* A single common plane preserves EXACT registration of image and masks. */}
@@ -25,10 +30,10 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
         const halo = mask(profile,unit.sourceMask,profile.style.haloBlur);
         const reflection = mask(profile,unit.reflectionMask,3);
         return <React.Fragment key={unit.id}>
-          <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.coreOpacity,maskImage:core,WebkitMaskImage:core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+          <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.coreOpacity*(choice.mode === 'local' ? 0.65 : 1),maskImage:core,WebkitMaskImage:core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
             <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.coreBrightness})`}}/>
           </AbsoluteFill>
-          <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.haloOpacity,maskImage:halo,WebkitMaskImage:halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+          <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.haloOpacity*(choice.mode === 'local' ? 0.65 : 1),maskImage:halo,WebkitMaskImage:halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
             <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.haloBrightness}) blur(${profile.style.imageBlur}px)`}}/>
           </AbsoluteFill>
           {!profile.disableReflections && unit.reflectionMask && <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*unit.reflectionGain,maskImage:reflection,WebkitMaskImage:reflection,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>

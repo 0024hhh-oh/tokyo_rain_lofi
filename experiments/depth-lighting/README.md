@@ -45,3 +45,11 @@ street/boat lamps plus limited reflections share the same compositing and timing
 These coordinates were authored by the assistant from visual inspection; this is
 not an unattended AI mask-detection pipeline. The Tokyo profile remains unchanged.
 The PR workflow renders and validates both scenes as separate matrix jobs.
+
+## Optional thirds → center → existing-lighting selection
+
+For a new, reviewed image profile, add `localLightCandidates` (maximum 30). Each candidate needs a unique `id`, `kind` (for example `vending_machine`, `phone_booth`, `sign`, `window`), `depth`, source-only SVG `sourceMask`, pixel `sourceRoi: [left, top, right, bottom]`, `isEmitter: true`, `prominence` (0..1), and `clipRisk` (0..0.2). Only include objects confirmed visually to emit artificial light; never add reflections, white patches, wall glare, or a mask covering them. The source image hash and mask registration remain mandatory. The metadata cannot establish from pixels whether an object truly emits light: a person must inspect the original and a rendered sample.
+
+Candidate centers inside a fraction of the image width/height around any of the four thirds intersections are considered first (default 8% horizontally and vertically). If none are valid, consider the center (default 12% per axis). `localLightSearch` may set `thirdsRadiusX`, `thirdsRadiusY`, `centerRadiusX`, and `centerRadiusY` between .01 and .20. The nearest valid candidate wins and only its source mask is lit, with existing staggered per-depth fade timing and a reduced local opacity. Masks above 3.5% of image area or with clipRisk over .20 are ineligible. If neither region has an eligible candidate, the entire old lighting-unit selection and timing remain in effect, including the existing scheduled light behavior of the street scene.
+
+All existing approved profiles omit `localLightCandidates`, so their renders take the original fallback path. The optional selector is isolated in `select-light.ts`; test cases A–F and invalid profile tests live in `select-light.test.mjs`. To see the new mode in a render, first author and visually approve an image-specific profile, then run `prepare-profile.mjs` and the PR-only artifact workflow. This change does not add automatic image understanding.
