@@ -12,6 +12,7 @@ on:
       - "scripts/night_test_drive.py"
       - "scripts/render_night_test_video.sh"
       - "scripts/validate_visible_lighting.mjs"
+      - "scripts/validate_video_lighting_pair.mjs"
       - "scripts/create_remotion_fixture.mjs"
       - "tests/**"
       - "test_assets/rain-video-fixture.mp4"
@@ -78,10 +79,20 @@ jobs:
           if audio_streams != 0:
               raise SystemExit(f"Expected zero audio streams; got {audio_streams}")
           PY
+      - name: Verify production video has visible local positive lighting
+        run: |
+          npx remotion still src/index.ts NightVideoLightingBaseline \
+            dist/video-lighting-baseline.png --frame=150
+          npx remotion still src/index.ts NightVideoLightingLoop \
+            dist/video-lighting-peak.png --frame=150
+          node scripts/validate_video_lighting_pair.mjs \
+            dist/video-lighting-baseline.png dist/video-lighting-peak.png
       - uses: actions/upload-artifact@v4
         with:
           name: remotion-lighting-test
           path: |
             dist/night-test.mp4
+            dist/video-lighting-baseline.png
+            dist/video-lighting-peak.png
             video_assets/background.mp4
           retention-days: 7

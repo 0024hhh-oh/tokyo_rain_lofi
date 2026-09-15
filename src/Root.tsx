@@ -21,6 +21,14 @@ export const Root: React.FC = () => {
         width={1920}
         height={1080}
       />
+      <Composition
+        id="NightVideoLightingBaseline"
+        component={() => <NightVideoLightingLoop lightingEnabled={false}/>}
+        durationInFrames={900}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
     </>
   );
 };

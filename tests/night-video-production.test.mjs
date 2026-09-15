@@ -6,12 +6,17 @@ const component = fs.readFileSync('src/NightVideoLightingLoop.tsx', 'utf8');
 const renderer = fs.readFileSync('scripts/render_night_background.sh', 'utf8');
 const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'utf8');
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
+const lightingCi = fs.readFileSync('.github/workflows/remotion_lighting_ci.yml', 'utf8');
 
 test('production night video uses positive-only glow on eligible emitters', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
-  assert.match(component, /SAFE_MIN_WARMTH = 0\.4/);
-  assert.match(component, /zone\.hasLightCore/);
+  assert.match(component, /selectVideoLightZones/);
+  assert.match(component, /selectedLightZones\.map/);
+  assert.match(component, /MAX_GLOW_OPACITY = 0\.7/);
+  assert.match(component, /start: 3\.6, end: 6\.4, level: 1\.75/);
   assert.match(component, /zone\.color/);
+  assert.match(component, /zone\.y - zone\.height \* 0\.2/);
+  assert.match(component, /heightScale.*0\.44/);
   assert.match(component, /Math\.max\(0, brightness - 1\)/);
   assert.match(component, /if \(brightness <= 1\) return null/);
   assert.doesNotMatch(component, /MAX_DIM_OPACITY|DIM_ZONE_SCALES/);
@@ -21,6 +26,7 @@ test('production night video uses positive-only glow on eligible emitters', () =
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
   assert.equal(component.match(/<OffthreadVideo/g)?.length, 1);
+  assert.match(component, /lightingEnabled && lighting\.animate/);
 });
 test('night renderer makes one silent 30-second CRF14 Remotion loop from video', () => {
   assert.match(renderer, /public\/night-source\.mp4/);
@@ -45,4 +51,11 @@ test('production boundaries remain unchanged around the new night renderer', () 
   assert.match(workflow, /--destination failed/);
   assert.match(detector, /SUPPORTED_TRACK_COUNTS = \(20, 30\)/);
   assert.match(detector, /require_supported_track_count=True/);
+});
+
+test('CI compares the same production frame with and without local lighting', () => {
+  assert.match(lightingCi, /NightVideoLightingBaseline/);
+  assert.match(lightingCi, /NightVideoLightingLoop/);
+  assert.match(lightingCi, /--frame=150/);
+  assert.match(lightingCi, /validate_video_lighting_pair\.mjs/);
 });
