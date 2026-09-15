@@ -24,34 +24,55 @@ const zone = (id, x, y, extra = {}) => ({
   ...extra,
 });
 
-test('video selects exactly one safe emitter near a thirds intersection', () => {
+test('video combines thirds, center, and depth-layer candidates without duplicates', () => {
   const result = selectVideoLightZones([
-    zone('thirds', 1 / 3 + 0.03, 1 / 3),
+    zone('thirds-a', 1 / 3 + 0.03, 1 / 3),
+    zone('thirds-b', 2 / 3, 1 / 3),
     zone('center', 0.5, 0.5),
-    zone('other', 0.8, 0.5),
+    zone('foreground', 0.82, 0.66),
   ]);
-  assert.equal(result.mode, 'thirds');
-  assert.deepEqual(result.zones.map(({id}) => id), ['thirds']);
+  assert.equal(result.mode, 'expanded');
+  assert.deepEqual(result.zones.map(({id}) => id), [
+    'thirds-a',
+    'thirds-b',
+    'center',
+    'foreground',
+  ]);
 });
 
-test('video uses center after thirds and rejects unsafe reflection-like regions', () => {
+test('video rejects unsafe wall-sized, cold, and reflection-only regions', () => {
   const result = selectVideoLightZones([
     zone('large', 1 / 3, 1 / 3, {width: 0.3, height: 0.2}),
+    zone('broad-wall', 2 / 3, 1 / 3, {width: 0.2, height: 0.1}),
     zone('cold', 2 / 3, 1 / 3, {warmth: 0.1}),
     zone('low', 1 / 3, 2 / 3, {y: 0.82}),
     zone('center', 0.52, 0.48),
   ]);
-  assert.equal(result.mode, 'center');
+  assert.equal(result.mode, 'expanded');
   assert.deepEqual(result.zones.map(({id}) => id), ['center']);
 });
 
-test('video retains up to three existing safe zones as fallback', () => {
+test('video contributes one strongest safe source from each depth layer', () => {
   const result = selectVideoLightZones([
-    zone('a', 0.1, 0.2),
-    zone('b', 0.9, 0.2),
-    zone('c', 0.1, 0.5),
-    zone('d', 0.9, 0.5),
+    zone('background-weak', 0.1, 0.2, {strength: 0.7}),
+    zone('background-strong', 0.9, 0.2),
+    zone('midground', 0.1, 0.5),
+    zone('foreground', 0.9, 0.65),
   ]);
-  assert.equal(result.mode, 'fallback');
-  assert.deepEqual(result.zones.map(({id}) => id), ['a', 'b', 'c']);
+  assert.equal(result.mode, 'expanded');
+  assert.deepEqual(result.zones.map(({id}) => id), [
+    'background-strong',
+    'midground',
+    'foreground',
+    'background-weak',
+  ]);
+});
+
+test('video expands beyond anchor points while capping the safe source pool', () => {
+  const candidates = Array.from({length: 16}, (_, index) =>
+    zone(`safe-${index}`, 0.05 + index * 0.055, 0.45),
+  );
+  const result = selectVideoLightZones(candidates);
+  assert.equal(result.zones.length, 12);
+  assert.equal(new Set(result.zones.map(({id}) => id)).size, 12);
 });
