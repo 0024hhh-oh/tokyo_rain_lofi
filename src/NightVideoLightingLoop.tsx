@@ -9,18 +9,10 @@ import {
 } from 'remotion';
 import lighting from './generated-light-zones.json';
 import videoMetadata from './generated-video-metadata.json';
-
-type LightZone = {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  warmth: number;
-  strength: number;
-  hasLightCore: boolean;
-  color: [number, number, number];
-};
+import {
+  selectVideoLightZones,
+  type VideoLightZone,
+} from './video-light-selection';
 
 type Flicker = {
   start: number;
@@ -28,28 +20,20 @@ type Flicker = {
   level: number;
 };
 
-const MAX_LIGHTS = 3;
-// Video compression and rain mute warm pixels more than the still reference.
-// 0.4 keeps the accepted vending/sign/lantern trio without admitting cool lights.
-const SAFE_MIN_WARMTH = 0.4;
-const SAFE_MAX_Y = 0.72;
 const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
-const MAX_GLOW_OPACITY = 0.34;
-
-const safeLightZones = (lighting.zones as LightZone[])
-  .filter((zone) =>
-    zone.hasLightCore &&
-    zone.warmth >= SAFE_MIN_WARMTH &&
-    zone.y < SAFE_MAX_Y)
-  .slice(0, MAX_LIGHTS);
+const MAX_GLOW_OPACITY = 0.7;
+const selection = selectVideoLightZones(
+  lighting.zones as VideoLightZone[],
+);
+const selectedLightZones = selection.zones;
 
 const flickerSchedules: Flicker[][] = [
   [
-    {start: 0.85, end: 1.55, level: 1.28},
-    {start: 5.70, end: 6.38, level: 1.24},
-    {start: 18.40, end: 19.12, level: 1.26},
+    {start: 3.6, end: 6.4, level: 1.75},
+    {start: 15.2, end: 18.1, level: 1.68},
+    {start: 25.0, end: 27.8, level: 1.72},
   ],
   [
     {start: 3.45, end: 4.20, level: 1.30},
@@ -67,7 +51,7 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
   const seconds = frame / fps;
   let brightness = 1;
   for (const flicker of flickers) {
-    const fade = Math.min(0.16, (flicker.end - flicker.start) / 3);
+    const fade = Math.min(0.65, (flicker.end - flicker.start) / 3);
     const level = interpolate(
       seconds,
       [flicker.start, flicker.start + fade, flicker.end - fade, flicker.end],
@@ -80,9 +64,11 @@ const getBrightness = (frame: number, fps: number, flickers: Flicker[]) => {
 };
 
 const getOverlayOpacity = (brightness: number) =>
-  Math.min(MAX_GLOW_OPACITY, Math.max(0, brightness - 1) * 0.9);
+  Math.min(MAX_GLOW_OPACITY, Math.max(0, brightness - 1) * 0.84);
 
-export const NightVideoLightingLoop: React.FC = () => {
+export const NightVideoLightingLoop: React.FC<{lightingEnabled?: boolean}> = ({
+  lightingEnabled = true,
+}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
 
@@ -97,29 +83,38 @@ export const NightVideoLightingLoop: React.FC = () => {
         />
       </Loop>
 
-      {lighting.animate && safeLightZones.map((zone, index) => {
+      {lightingEnabled && lighting.animate && selectedLightZones.map((zone, index) => {
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
         if (brightness <= 1) return null;
         const opacity = getOverlayOpacity(brightness);
-        const sizeScale = 0.58;
+        const sizeScale = selection.mode === 'fallback' ? 0.62 : 0.78;
         const width = zone.width * sizeScale;
-        const height = zone.height * sizeScale;
+        // Detected boxes often include a wet-road reflection immediately below
+        // a storefront. Limit automatic local glow to the emitter-facing upper
+        // half instead of brightening the full detected box.
+        const heightScale = selection.mode === 'fallback' ? sizeScale : 0.44;
+        const height = zone.height * heightScale;
+        const emitterY =
+          selection.mode === 'fallback' ? zone.y : zone.y - zone.height * 0.2;
         const [red, green, blue] = zone.color;
+        const coreRed = Math.min(255, Math.round(red * 0.45 + 255 * 0.55));
+        const coreGreen = Math.min(255, Math.round(green * 0.45 + 248 * 0.55));
+        const coreBlue = Math.min(255, Math.round(blue * 0.45 + 224 * 0.55));
 
         return (
           <div
             key={zone.id}
             style={{
-              backgroundColor: `rgba(${red}, ${green}, ${blue}, ${opacity})`,
+              background: `radial-gradient(ellipse, rgba(255, 252, 235, ${Math.min(0.82, opacity * 1.18)}) 0%, rgba(${coreRed}, ${coreGreen}, ${coreBlue}, ${opacity}) 32%, rgba(${red}, ${green}, ${blue}, ${opacity * 0.72}) 68%, transparent 100%)`,
               borderRadius: '50%',
-              boxShadow: `0 0 16px 8px rgba(${red}, ${green}, ${blue}, ${opacity * 0.45})`,
-              filter: 'blur(2px)',
+              boxShadow: `0 0 22px 10px rgba(${red}, ${green}, ${blue}, ${opacity * 0.5})`,
+              filter: 'blur(3px)',
               height: `${height * 100}%`,
               left: `${(zone.x - width / 2) * 100}%`,
               mixBlendMode: 'screen',
               pointerEvents: 'none',
               position: 'absolute',
-              top: `${(zone.y - height / 2) * 100}%`,
+              top: `${(emitterY - height / 2) * 100}%`,
               width: `${width * 100}%`,
             }}
           />
