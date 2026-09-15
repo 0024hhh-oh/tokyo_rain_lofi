@@ -71,6 +71,30 @@ export async function validateProfile(profile, image) {
       shapesToValidate.push([emitter.id, emitter.sourceMask]);
     }
   }
+  if (profile.cloudGlow) {
+    const {zones, style: cloudStyle} = profile.cloudGlow;
+    if (!Array.isArray(zones) || zones.length < 1 || zones.length > 6)
+      throw new Error('Invalid cloud glow zones');
+    for (const zone of zones) {
+      const w = zone.pulseWindow;
+      if (!zone.id || !Array.isArray(w) || w.length !== 2 || !w.every(Number.isInteger) ||
+          w[0] < 1 || w[1] > 899 || w[1] - w[0] < cloudStyle.fadeFrames * 2)
+        throw new Error('Invalid cloud glow pulse');
+      shapesToValidate.push([`cloud-${zone.id}`, zone.mask]);
+    }
+    for (const [key, max] of Object.entries({coreOpacity:0.7,haloOpacity:0.5,coreBrightness:3,haloBrightness:3,coreBlur:30,haloBlur:40,imageBlur:20,tintOpacity:0.3,fadeFrames:60})) {
+      if (!Number.isFinite(cloudStyle?.[key]) || cloudStyle[key] < 0 || cloudStyle[key] > max)
+        throw new Error(`Invalid cloud glow style: ${key}`);
+    }
+    if (cloudStyle.fadeFrames < 18) throw new Error('Cloud glow must fade slowly');
+    if (!Array.isArray(cloudStyle.tint) || cloudStyle.tint.length !== 3 ||
+        !cloudStyle.tint.every(value => Number.isInteger(value) && value >= 0 && value <= 255))
+      throw new Error('Invalid cloud glow tint');
+    for (let frame = 0; frame < 900; frame++) {
+      const active = zones.filter(zone => frame > zone.pulseWindow[0] && frame < zone.pulseWindow[1]);
+      if (active.length > 1) throw new Error('Cloud banks must not flash together');
+    }
+  }
   for (const [depth, shapes] of shapesToValidate) {
     // Only inert numeric path/ellipse shapes: no scripts, URLs, styles or SVG filters.
 
