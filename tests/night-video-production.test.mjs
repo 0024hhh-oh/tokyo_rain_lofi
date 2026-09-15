@@ -15,13 +15,16 @@ test('production night video uses positive-only glow on eligible emitters', () =
   assert.match(component, /MAX_GLOW_OPACITY = 0\.7/);
   assert.match(component, /start: 3\.6, end: 6\.4, level: 1\.75/);
   assert.match(component, /zone\.color/);
-  assert.match(component, /zone\.y - zone\.height \* 0\.2/);
-  assert.match(component, /heightScale.*0\.44/);
+  assert.match(component, /zone\.maskCells/);
+  assert.match(component, /reflectionCutoff/);
+  assert.match(component, /<feGaussianBlur/);
+  assert.match(component, /<rect/);
   assert.match(component, /Math\.max\(0, brightness - 1\)/);
   assert.match(component, /if \(brightness <= 1\) return null/);
   assert.doesNotMatch(component, /MAX_DIM_OPACITY|DIM_ZONE_SCALES/);
   assert.doesNotMatch(component, /level: 0\./);
   assert.doesNotMatch(component, /rgba\(0, 0, 0/);
+  assert.doesNotMatch(component, /radial-gradient|borderRadius: '50%'|boxShadow/);
   assert.doesNotMatch(component, /brightness < 1/);
   assert.match(component, /<OffthreadVideo/);
   assert.match(component, /muted/);
