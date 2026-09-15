@@ -24,6 +24,8 @@ const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_GLOW_OPACITY = 0.7;
+const MASK_WIDTH = 160;
+const MASK_HEIGHT = 90;
 const selection = selectVideoLightZones(
   lighting.zones as VideoLightZone[],
 );
@@ -87,37 +89,64 @@ export const NightVideoLightingLoop: React.FC<{lightingEnabled?: boolean}> = ({
         const brightness = getBrightness(frame, fps, flickerSchedules[index]);
         if (brightness <= 1) return null;
         const opacity = getOverlayOpacity(brightness);
-        const sizeScale = selection.mode === 'fallback' ? 0.62 : 0.78;
-        const width = zone.width * sizeScale;
-        // Detected boxes often include a wet-road reflection immediately below
-        // a storefront. Limit automatic local glow to the emitter-facing upper
-        // half instead of brightening the full detected box.
-        const heightScale = selection.mode === 'fallback' ? sizeScale : 0.44;
-        const height = zone.height * heightScale;
-        const emitterY =
-          selection.mode === 'fallback' ? zone.y : zone.y - zone.height * 0.2;
+        const reflectionCutoff = (zone.y + zone.height * 0.02) * MASK_HEIGHT;
+        const maskCells = (zone.maskCells ?? []).filter(([, y]) =>
+          selection.mode === 'fallback' || zone.y < 0.62 || y <= reflectionCutoff,
+        );
+        if (maskCells.length === 0) return null;
         const [red, green, blue] = zone.color;
         const coreRed = Math.min(255, Math.round(red * 0.45 + 255 * 0.55));
         const coreGreen = Math.min(255, Math.round(green * 0.45 + 248 * 0.55));
         const coreBlue = Math.min(255, Math.round(blue * 0.45 + 224 * 0.55));
 
+        const filterId = `source-feather-${zone.id}`;
         return (
-          <div
+          <svg
             key={zone.id}
+            viewBox={`0 0 ${MASK_WIDTH} ${MASK_HEIGHT}`}
+            preserveAspectRatio="none"
             style={{
-              background: `radial-gradient(ellipse, rgba(255, 252, 235, ${Math.min(0.82, opacity * 1.18)}) 0%, rgba(${coreRed}, ${coreGreen}, ${coreBlue}, ${opacity}) 32%, rgba(${red}, ${green}, ${blue}, ${opacity * 0.72}) 68%, transparent 100%)`,
-              borderRadius: '50%',
-              boxShadow: `0 0 22px 10px rgba(${red}, ${green}, ${blue}, ${opacity * 0.5})`,
-              filter: 'blur(3px)',
-              height: `${height * 100}%`,
-              left: `${(zone.x - width / 2) * 100}%`,
+              height: '100%',
+              left: 0,
               mixBlendMode: 'screen',
               pointerEvents: 'none',
               position: 'absolute',
-              top: `${(emitterY - height / 2) * 100}%`,
-              width: `${width * 100}%`,
+              top: 0,
+              width: '100%',
             }}
-          />
+          >
+            <defs>
+              <filter id={filterId} x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="0.42" />
+              </filter>
+            </defs>
+            <g filter={`url(#${filterId})`} opacity={opacity * 0.72}>
+              {maskCells.map(([x, y], cellIndex) => (
+                <rect
+                  key={`halo-${cellIndex}`}
+                  x={x - 0.18}
+                  y={y - 0.18}
+                  width="1.36"
+                  height="1.36"
+                  rx="0.16"
+                  fill={`rgb(${red}, ${green}, ${blue})`}
+                />
+              ))}
+            </g>
+            <g opacity={Math.min(0.88, opacity * 1.16)}>
+              {maskCells.map(([x, y], cellIndex) => (
+                <rect
+                  key={`core-${cellIndex}`}
+                  x={x}
+                  y={y}
+                  width="1"
+                  height="1"
+                  rx="0.1"
+                  fill={`rgb(${coreRed}, ${coreGreen}, ${coreBlue})`}
+                />
+              ))}
+            </g>
+          </svg>
         );
       })}
     </AbsoluteFill>
