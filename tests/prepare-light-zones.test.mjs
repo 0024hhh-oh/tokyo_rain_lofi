@@ -37,6 +37,7 @@ test('detects separated warm lights in a dark scene', () => {
   assert.ok(result.zones.length >= 4);
   assert.ok(result.zones.length <= 14);
   assert.ok(result.zones.every((zone) => zone.strength <= 1));
+  assert.ok(result.zones.every((zone) => zone.maskCells.length > 0));
 });
 
 test('does not animate a bright daytime scene', () => {

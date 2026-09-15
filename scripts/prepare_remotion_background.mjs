@@ -124,6 +124,10 @@ export const analyzeLightZones = ({data, width, height}) => {
 
     components.push({
       area,
+      maskCells: queue.map((index) => [
+        index % width,
+        Math.floor(index / width),
+      ]),
       x: weightedX / totalWeight / width,
       y: weightedY / totalWeight / height,
       width: clamp((boxWidth + 7) / width, 0.045, 0.2),
@@ -159,6 +163,7 @@ export const analyzeLightZones = ({data, width, height}) => {
     warmth: Number(zone.warmth.toFixed(4)),
     hasLightCore: zone.hasLightCore,
     color: zone.color,
+    maskCells: zone.maskCells,
     strength: Number(clamp(0.62 + Math.log2(zone.area + 1) * 0.08, 0.62, 1).toFixed(4)),
   }));
 

@@ -8,6 +8,7 @@ export type VideoLightZone = {
   strength: number;
   hasLightCore: boolean;
   color: [number, number, number];
+  maskCells?: [number, number][];
 };
 
 const THIRDS_RADIUS_X = 0.11;
