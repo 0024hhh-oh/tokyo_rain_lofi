@@ -7,7 +7,22 @@ import {splitWindows, windowIntensity} from './window-timing';
 import {selectLightingMode, type LightSelectionProfile} from './select-light';
 
 type LightPair = {id: string; depth: Depth; sourceMask: string; reflectionMask: string; reflectionGain: number; pulseWindow?: [number,number]};
-export type LightingProfile = typeof approvedProfile & LightSelectionProfile & {scheduledLights?: LightPair[]; individualWindows?: boolean; disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
+type CloudGlow = {
+  zones: {id: string; mask: string; pulseWindow: [number, number]}[];
+  style: {
+    coreOpacity: number;
+    haloOpacity: number;
+    coreBrightness: number;
+    haloBrightness: number;
+    coreBlur: number;
+    haloBlur: number;
+    imageBlur: number;
+    tint: [number, number, number];
+    tintOpacity: number;
+    fadeFrames: number;
+  };
+};
+export type LightingProfile = typeof approvedProfile & LightSelectionProfile & {scheduledLights?: LightPair[]; individualWindows?: boolean; disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}; cloudGlow?: CloudGlow};
 const mask = (profile: LightingProfile, shape: string, blur: number) => `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${profile.source.width}" height="${profile.source.height}" viewBox="0 0 ${profile.source.width} ${profile.source.height}"><defs><filter id="b" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${blur}"/></filter></defs><g fill="white" filter="url(#b)">${shape}</g></svg>`)}")`;
 
@@ -39,6 +54,23 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
           {!profile.disableReflections && unit.reflectionMask && <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*unit.reflectionGain,maskImage:reflection,WebkitMaskImage:reflection,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
             <Img src={source} style={{width:'100%'}}/>
           </AbsoluteFill>}
+        </React.Fragment>;
+      })}
+      {!baseline && profile.cloudGlow?.zones.map(zone => {
+        const glow = windowIntensity(frame, zone.pulseWindow as [number, number], profile.cloudGlow?.style.fadeFrames);
+        if (glow === 0) return null;
+        const cloudStyle = profile.cloudGlow.style;
+        const core = mask(profile, zone.mask, cloudStyle.coreBlur);
+        const halo = mask(profile, zone.mask, cloudStyle.haloBlur);
+        const [red, green, blue] = cloudStyle.tint;
+        return <React.Fragment key={`cloud-${zone.id}`}>
+          <AbsoluteFill style={{mixBlendMode:'screen',opacity:glow*cloudStyle.haloOpacity,maskImage:halo,WebkitMaskImage:halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+            <Img src={source} style={{width:'100%',filter:`brightness(${cloudStyle.haloBrightness}) saturate(.78) blur(${cloudStyle.imageBlur}px)`}}/>
+          </AbsoluteFill>
+          <AbsoluteFill style={{mixBlendMode:'screen',opacity:glow*cloudStyle.coreOpacity,maskImage:core,WebkitMaskImage:core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+            <Img src={source} style={{width:'100%',filter:`brightness(${cloudStyle.coreBrightness}) saturate(.72)`}}/>
+          </AbsoluteFill>
+          <AbsoluteFill style={{backgroundColor:`rgb(${red}, ${green}, ${blue})`,mixBlendMode:'screen',opacity:glow*cloudStyle.tintOpacity,maskImage:core,WebkitMaskImage:core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}/>
         </React.Fragment>;
       })}
     </div>

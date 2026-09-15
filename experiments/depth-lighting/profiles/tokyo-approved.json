@@ -19,5 +19,36 @@
     "coreBlur": 1,
     "haloBlur": 8,
     "imageBlur": 4
+  },
+  "cloudGlow": {
+    "zones": [
+      {
+        "id": "left-cloud-bank",
+        "mask": "<path d=\"M40 82 C120 45 205 42 285 70 C340 48 405 58 468 94 C385 108 306 112 226 105 C160 112 96 106 40 82Z\"/>",
+        "pulseWindow": [90, 180]
+      },
+      {
+        "id": "centre-cloud-bank",
+        "mask": "<path d=\"M455 64 C530 24 622 28 690 61 C760 22 858 27 925 68 C850 105 770 112 680 99 C590 112 510 102 455 64Z\"/>",
+        "pulseWindow": [390, 480]
+      },
+      {
+        "id": "right-cloud-bank",
+        "mask": "<path d=\"M910 72 C1000 34 1090 39 1162 67 C1235 31 1348 39 1492 83 C1418 112 1328 115 1238 102 C1137 116 1018 108 910 72Z\"/>",
+        "pulseWindow": [690, 780]
+      }
+    ],
+    "style": {
+      "coreOpacity": 0.42,
+      "haloOpacity": 0.24,
+      "coreBrightness": 1.9,
+      "haloBrightness": 2.15,
+      "coreBlur": 10,
+      "haloBlur": 28,
+      "imageBlur": 6,
+      "tint": [145, 185, 225],
+      "tintOpacity": 0.13,
+      "fadeFrames": 30
+    }
   }
 }

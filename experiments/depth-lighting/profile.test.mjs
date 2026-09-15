@@ -26,6 +26,19 @@ const profile = JSON.parse(await fs.readFile(new URL('./profiles/tokyo-approved.
 const image = await fs.readFile('test_assets/three-layer-tokyo-scene.jpg');
 test('accepted Tokyo masks match original image', async()=> {
   await validateProfile(profile, image);
+  assert.equal(profile.cloudGlow.zones.length, 3);
+  assert.deepEqual(profile.cloudGlow.zones.map(zone => zone.pulseWindow), [[90,180],[390,480],[690,780]]);
+});
+test('cloud glow remains image-specific, slow and non-overlapping', async()=> {
+  for (const mutate of [
+    p=>p.cloudGlow.zones[1].pulseWindow=[120,210],
+    p=>p.cloudGlow.zones[0].mask='<image href="x"/>',
+    p=>p.cloudGlow.style.coreOpacity=.9,
+    p=>p.cloudGlow.style.fadeFrames=4,
+  ]) {
+    const bad=structuredClone(profile); mutate(bad);
+    await assert.rejects(validateProfile(bad,image));
+  }
 });
 test('another image cannot silently reuse approved Tokyo masks', async()=> {
   const other = await sharp({create:{width:32,height:18,channels:3,background:'#102030'}}).png().toBuffer();
