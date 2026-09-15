@@ -42,7 +42,7 @@ const seededOrder = (length: number, seed: number) =>
 
 const eventSpecs = [
   {start: 1.2, end: 3.8, level: 2.14, count: 3},
-  {start: 4.0, end: 6.8, level: 2.22, count: 2},
+  {start: 4.0, end: 6.8, level: 2.22, count: 1},
   {start: 8.4, end: 11.0, level: 2.16, count: 3},
   {start: 12.0, end: 14.6, level: 2.20, count: 2},
   {start: 15.6, end: 18.2, level: 2.18, count: 3},
