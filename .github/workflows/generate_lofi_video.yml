@@ -79,6 +79,7 @@ jobs:
             track_count=""
             output_file=""
             youtube_title=""
+            youtube_description_b64=""
             project_mode=""
             while IFS='=' read -r key value; do
               case "${key}" in
@@ -88,6 +89,7 @@ jobs:
                 track_count) track_count="${value}" ;;
                 output_file) output_file="${value}" ;;
                 youtube_title) youtube_title="${value}" ;;
+                youtube_description_b64) youtube_description_b64="${value}" ;;
                 project_mode) project_mode="${value}" ;;
               esac
             done < "${incoming_output}"
@@ -134,11 +136,18 @@ jobs:
                 --file "dist/${OUTPUT_FILE}" \
                 --output-name "${OUTPUT_FILE}"
               echo "YouTube upload starting: dist/${OUTPUT_FILE}"
+              description_file="$(mktemp)"
+              if [[ -n "${youtube_description_b64}" ]]; then
+                printf '%s' "${youtube_description_b64}" | base64 --decode > "${description_file}"
+              else
+                printf '%s' "${YOUTUBE_DESCRIPTION}" > "${description_file}"
+              fi
               python scripts/upload_youtube_video.py \
                 --file "dist/${OUTPUT_FILE}" \
                 --title "${youtube_title}" \
-                --description "${YOUTUBE_DESCRIPTION}" \
+                --description "$(cat "${description_file}")" \
                 --tags "${YOUTUBE_TAGS}"
+              rm -f "${description_file}"
             )
             status=$?
             set -e
@@ -155,7 +164,7 @@ jobs:
               failed_count=$((failed_count + 1))
             fi
 
-            unset found work_folder_id work_folder_name track_count output_file youtube_title project_mode
+            unset found work_folder_id work_folder_name track_count output_file youtube_title youtube_description_b64 project_mode
           done
 
           echo "incoming processing summary: completed=${processed_count} failed=${failed_count}"

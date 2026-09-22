@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from io import BytesIO
 import json
 import os
@@ -15,7 +16,10 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-from youtube_titles import generate_youtube_title
+from youtube_titles import (
+    generate_youtube_description,
+    generate_youtube_title,
+)
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 ROOT_FOLDER = "Tokyo ChillMatic FM"
@@ -346,6 +350,8 @@ def safe_file_stem(name: str) -> str:
 
 TITLE_FILE_NAME = "youtube_title.txt"
 TITLE_OVERRIDE_FILE_NAME = "youtube_title_override.txt"
+DESCRIPTION_FILE_NAME = "youtube_description.txt"
+DESCRIPTION_OVERRIDE_FILE_NAME = "youtube_description_override.txt"
 
 
 def read_drive_text_file(service, item: dict) -> str:
@@ -359,20 +365,22 @@ def first_nonempty_line(value: str) -> str:
     return next((line.strip() for line in value.splitlines() if line.strip()), "")
 
 
-def save_youtube_title_file(
-    service, folder_id: str, title: str, children: list[dict]
+def save_drive_text_file(
+    service,
+    folder_id: str,
+    file_name: str,
+    content: str,
+    children: list[dict],
 ) -> None:
     existing = [
         item
         for item in children
-        if normalized_drive_name(item) == TITLE_FILE_NAME.casefold()
+        if normalized_drive_name(item) == file_name.casefold()
     ]
     if len(existing) > 1:
-        raise RuntimeError(
-            f"{TITLE_FILE_NAME} が複数あります。1件に整理してください"
-        )
+        raise RuntimeError(f"{file_name} が複数あります。1件に整理してください")
     media = MediaIoBaseUpload(
-        BytesIO(f"{title}\n".encode("utf-8")),
+        BytesIO(f"{content.rstrip()}\n".encode("utf-8")),
         mimetype="text/plain",
         resumable=False,
     )
@@ -381,7 +389,7 @@ def save_youtube_title_file(
             service.files()
             .update(
                 fileId=existing[0]["id"],
-                body={"name": TITLE_FILE_NAME},
+                body={"name": file_name},
                 media_body=media,
                 fields="id,name",
                 supportsAllDrives=True,
@@ -394,7 +402,7 @@ def save_youtube_title_file(
             service.files()
             .create(
                 body={
-                    "name": TITLE_FILE_NAME,
+                    "name": file_name,
                     "mimeType": "text/plain",
                     "parents": [folder_id],
                 },
@@ -406,8 +414,8 @@ def save_youtube_title_file(
         )
         action = "created"
     print(
-        f"YouTube title file {action}: "
-        f"name={result.get('name', TITLE_FILE_NAME)} id={result.get('id', '<no id>')}"
+        f"Drive text file {action}: "
+        f"name={result.get('name', file_name)} id={result.get('id', '<no id>')}"
     )
 
 
@@ -442,10 +450,54 @@ def resolve_and_save_youtube_title(service, folder: dict, mode: str) -> str:
             [item.get("name", "") for item in children],
         )
         source = "folder/background metadata"
-    save_youtube_title_file(service, folder["id"], title, children)
+    save_drive_text_file(service, folder["id"], TITLE_FILE_NAME, title, children)
     print(f"YouTube title source: {source}")
     print(f"YouTube title: {title}")
     return title
+
+
+def resolve_and_save_youtube_description(service, folder: dict, mode: str) -> str:
+    children = list_files(
+        service,
+        f"'{quote_drive_query(folder['id'])}' in parents and trashed = false",
+        fields="files(id,name,mimeType,size,shortcutDetails)",
+    )
+    overrides = [
+        item
+        for item in children
+        if normalized_drive_name(item) == DESCRIPTION_OVERRIDE_FILE_NAME.casefold()
+    ]
+    if len(overrides) > 1:
+        raise RuntimeError(
+            f"{DESCRIPTION_OVERRIDE_FILE_NAME} が複数あります。1件に整理してください"
+        )
+    if overrides:
+        description = read_drive_text_file(service, overrides[0]).strip()
+        if not description:
+            raise RuntimeError(f"{DESCRIPTION_OVERRIDE_FILE_NAME} が空です")
+        if len(description) > 5000:
+            raise RuntimeError(
+                f"{DESCRIPTION_OVERRIDE_FILE_NAME} は5000文字以内にしてください"
+                f"（現在{len(description)}文字）"
+            )
+        source = DESCRIPTION_OVERRIDE_FILE_NAME
+    else:
+        description = generate_youtube_description(
+            mode,
+            folder["name"],
+            [item.get("name", "") for item in children],
+        )
+        source = "folder/background metadata"
+    save_drive_text_file(
+        service,
+        folder["id"],
+        DESCRIPTION_FILE_NAME,
+        description,
+        children,
+    )
+    print(f"YouTube description source: {source}")
+    print(f"YouTube description length: {len(description)}")
+    return description
 
 
 def list_incoming_items(service, incoming: dict) -> list[dict]:
@@ -536,6 +588,12 @@ def detect(args: argparse.Namespace) -> None:
         print(f"最終的に選ばれた folder id: {folder['id']}")
         stem = safe_file_stem(folder["name"])
         youtube_title = resolve_and_save_youtube_title(service, folder, mode)
+        youtube_description = resolve_and_save_youtube_description(
+            service, folder, mode
+        )
+        youtube_description_b64 = base64.b64encode(
+            youtube_description.encode("utf-8")
+        ).decode("ascii")
         write_github_output(
             {
                 "found": "true",
@@ -544,6 +602,7 @@ def detect(args: argparse.Namespace) -> None:
                 "track_count": str(track_count),
                 "output_file": f"{stem}.mp4",
                 "youtube_title": youtube_title,
+                "youtube_description_b64": youtube_description_b64,
                 "source_queue": f"projects/{mode}",
                 "project_mode": mode,
             }

@@ -27,8 +27,11 @@ def test_debug_metadata_defaults_are_blank_so_incoming_outputs_are_used():
     assert 'default: "Tokyo Memory Archive 001 - Tokyo ChillMatic FM"' not in text
     assert 'output_file=""' in text
     assert 'youtube_title=""' in text
+    assert 'youtube_description_b64=""' in text
     assert 'export OUTPUT_FILE="${output_file}"' in text
     assert '--title "${youtube_title}"' in text
+    assert 'youtube_description_b64) youtube_description_b64="${value}" ;;' in text
+    assert '--description "$(cat "${description_file}")"' in text
 
 
 def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
@@ -252,7 +255,7 @@ def test_workflow_reads_mode_from_detector_and_clears_it_between_projects():
     assert 'project_mode=""' in text
     assert 'project_mode) project_mode="${value}" ;;' in text
     assert 'echo "incoming selected project_mode=${project_mode}"' in text
-    assert "unset found work_folder_id work_folder_name track_count output_file youtube_title project_mode" in text
+    assert "unset found work_folder_id work_folder_name track_count output_file youtube_title youtube_description_b64 project_mode" in text
 
 
 def test_night_test_renderer_requires_motion_audio_and_exact_duration():
