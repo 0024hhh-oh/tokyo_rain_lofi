@@ -1,0 +1,60 @@
+name: Generate YouTube thumbnails
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Process day, night, or both folders
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - night
+          - day
+      force:
+        description: Replace existing thumbnail.jpg files
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: generate-youtube-thumbnails
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg and Drive dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install google-api-python-client google-auth
+
+      - name: Generate and return thumbnails to Drive
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          TOKYO_CHILLMATIC_DRIVE_FOLDER_ID: ${{ secrets.TOKYO_CHILLMATIC_DRIVE_FOLDER_ID }}
+        run: |
+          args=(
+            --mode "${{ inputs.mode }}"
+            --preview-dir generated-thumbnails
+          )
+          if [[ "${{ inputs.force }}" == "true" ]]; then args+=(--force); fi
+          python scripts/generate_drive_thumbnails.py "${args[@]}"
+
+      - name: Upload previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-thumbnails
+          path: generated-thumbnails/*.jpg
+          if-no-files-found: warn
+          retention-days: 7
