@@ -1,3 +1,4 @@
+import base64
 import sys
 import types
 from pathlib import Path
@@ -304,6 +305,10 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
         drive_incoming_queue,
         "resolve_and_save_youtube_title",
         side_effect=lambda _service, folder, mode: f"{mode}:{folder['name']}",
+    ), patch.object(
+        drive_incoming_queue,
+        "resolve_and_save_youtube_description",
+        side_effect=lambda _service, folder, mode: f"{mode} description for {folder['name']}",
     ):
         detected_names = []
         while True:
@@ -390,6 +395,10 @@ def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
         drive_incoming_queue,
         "resolve_and_save_youtube_title",
         side_effect=lambda _service, folder, mode: f"{mode}:{folder['name']}",
+    ), patch.object(
+        drive_incoming_queue,
+        "resolve_and_save_youtube_description",
+        side_effect=lambda _service, folder, mode: f"{mode} description for {folder['name']}",
     ):
         drive_incoming_queue.detect(args)
 
@@ -399,4 +408,6 @@ def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
     assert "source_queue=projects/day" in output
     assert "project_mode=day" in output
     assert "youtube_title=day:Day Archive" in output
+    encoded = output.split("youtube_description_b64=", 1)[1].splitlines()[0]
+    assert base64.b64decode(encoded).decode("utf-8") == "day description for Day Archive"
     assert "night-test" not in output.split("処理対象:", 1)[-1]

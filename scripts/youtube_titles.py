@@ -9,6 +9,7 @@ from typing import Iterable
 
 TITLE_SUFFIX = "【LOFI】【CHILL】【BGM】"
 TITLE_LIMIT = 100
+DESCRIPTION_LIMIT = 5000
 SERIES_BY_MODE = {
     "day": "Tokyo Memory Archive",
     "night": "Tokyo Rainy Night Memories",
@@ -101,3 +102,58 @@ def generate_youtube_title(mode: str, folder_name: str, file_names: Iterable[str
     if len(scene) > available:
         scene = scene[: max(0, available - 1)].rstrip() + "…"
     return f"{prefix}{separator}{scene}{TITLE_SUFFIX}"
+
+
+def generate_youtube_description(
+    mode: str, folder_name: str, file_names: Iterable[str]
+) -> str:
+    """Return a stable channel description with one mode-specific scene line."""
+    normalized_mode = mode.casefold()
+    if normalized_mode not in SERIES_BY_MODE:
+        raise ValueError(f"Unsupported project mode: {mode}")
+
+    scene = scene_label(folder_name, file_names)
+    if normalized_mode == "night":
+        scene_line = (
+            f"Tonight's broadcast drifts through {scene} on a rainy Tokyo night."
+            if scene
+            else "Tonight's broadcast drifts through the quiet streets of Tokyo on a rainy night."
+        )
+    else:
+        scene_line = (
+            f"Today's broadcast drifts through {scene}, a fading memory from somewhere in Tokyo."
+            if scene
+            else "Today's broadcast drifts through a fading memory from somewhere in Tokyo."
+        )
+
+    description = f"""Welcome to Tokyo ChillMatic FM.
+
+A fictional radio station broadcasting memories from somewhere in Tokyo.
+
+{scene_line}
+
+Perfect for:
+
+• Study
+• Work
+• Reading
+• Relaxation
+• Sleep
+
+Tokyo ChillMatic FM is an ongoing archive of rainy streets, fading landscapes, forgotten places, and everyday memories.
+
+Thank you for listening.
+
+🎧 Tokyo ChillMatic FM
+
+Broadcasting memories from somewhere in Tokyo.
+
+#lofi
+#chill
+#rain
+#tokyo
+#studymusic
+#sleepmusic"""
+    if len(description) > DESCRIPTION_LIMIT:
+        raise ValueError("Generated description exceeds YouTube's description limit")
+    return description

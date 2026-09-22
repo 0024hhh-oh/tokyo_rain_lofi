@@ -5,7 +5,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from youtube_titles import generate_youtube_title, scene_label
+from youtube_titles import (
+    generate_youtube_description,
+    generate_youtube_title,
+    scene_label,
+)
 
 
 def test_night_title_uses_folder_and_background_metadata():
@@ -43,3 +47,21 @@ def test_title_is_limited_to_100_characters():
 def test_invalid_mode_is_rejected():
     with pytest.raises(ValueError):
         generate_youtube_title("evening", "Oji", [])
+
+
+def test_night_description_contains_scene_and_existing_channel_structure():
+    description = generate_youtube_description(
+        "night", "batch_041_Oji_station", ["background_rainy_platform.png"]
+    )
+    assert "Tonight's broadcast drifts through Oji station — rainy platform" in description
+    assert "• Study\n• Work\n• Reading\n• Relaxation\n• Sleep" in description
+    assert description.endswith("#sleepmusic")
+
+
+def test_day_description_uses_day_language():
+    description = generate_youtube_description("day", "Kameido backstreet", ["background.png"])
+    assert (
+        "Today's broadcast drifts through Kameido backstreet, "
+        "a fading memory from somewhere in Tokyo."
+    ) in description
+    assert len(description) <= 5000
