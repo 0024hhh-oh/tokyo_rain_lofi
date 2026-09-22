@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from io import BytesIO
 import json
 import os
 import re
@@ -12,6 +13,9 @@ from pathlib import Path
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+
+from youtube_titles import generate_youtube_title
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 ROOT_FOLDER = "Tokyo ChillMatic FM"
@@ -340,6 +344,110 @@ def safe_file_stem(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-") or "incoming_work"
 
 
+TITLE_FILE_NAME = "youtube_title.txt"
+TITLE_OVERRIDE_FILE_NAME = "youtube_title_override.txt"
+
+
+def read_drive_text_file(service, item: dict) -> str:
+    payload = service.files().get_media(fileId=item["id"]).execute()
+    if isinstance(payload, bytes):
+        return payload.decode("utf-8-sig")
+    return str(payload)
+
+
+def first_nonempty_line(value: str) -> str:
+    return next((line.strip() for line in value.splitlines() if line.strip()), "")
+
+
+def save_youtube_title_file(
+    service, folder_id: str, title: str, children: list[dict]
+) -> None:
+    existing = [
+        item
+        for item in children
+        if normalized_drive_name(item) == TITLE_FILE_NAME.casefold()
+    ]
+    if len(existing) > 1:
+        raise RuntimeError(
+            f"{TITLE_FILE_NAME} が複数あります。1件に整理してください"
+        )
+    media = MediaIoBaseUpload(
+        BytesIO(f"{title}\n".encode("utf-8")),
+        mimetype="text/plain",
+        resumable=False,
+    )
+    if existing:
+        result = (
+            service.files()
+            .update(
+                fileId=existing[0]["id"],
+                body={"name": TITLE_FILE_NAME},
+                media_body=media,
+                fields="id,name",
+                supportsAllDrives=True,
+            )
+            .execute()
+        )
+        action = "updated"
+    else:
+        result = (
+            service.files()
+            .create(
+                body={
+                    "name": TITLE_FILE_NAME,
+                    "mimeType": "text/plain",
+                    "parents": [folder_id],
+                },
+                media_body=media,
+                fields="id,name",
+                supportsAllDrives=True,
+            )
+            .execute()
+        )
+        action = "created"
+    print(
+        f"YouTube title file {action}: "
+        f"name={result.get('name', TITLE_FILE_NAME)} id={result.get('id', '<no id>')}"
+    )
+
+
+def resolve_and_save_youtube_title(service, folder: dict, mode: str) -> str:
+    children = list_files(
+        service,
+        f"'{quote_drive_query(folder['id'])}' in parents and trashed = false",
+        fields="files(id,name,mimeType,size,shortcutDetails)",
+    )
+    overrides = [
+        item
+        for item in children
+        if normalized_drive_name(item) == TITLE_OVERRIDE_FILE_NAME.casefold()
+    ]
+    if len(overrides) > 1:
+        raise RuntimeError(
+            f"{TITLE_OVERRIDE_FILE_NAME} が複数あります。1件に整理してください"
+        )
+    if overrides:
+        title = first_nonempty_line(read_drive_text_file(service, overrides[0]))
+        if not title:
+            raise RuntimeError(f"{TITLE_OVERRIDE_FILE_NAME} が空です")
+        if len(title) > 100:
+            raise RuntimeError(
+                f"{TITLE_OVERRIDE_FILE_NAME} は100文字以内にしてください（現在{len(title)}文字）"
+            )
+        source = TITLE_OVERRIDE_FILE_NAME
+    else:
+        title = generate_youtube_title(
+            mode,
+            folder["name"],
+            [item.get("name", "") for item in children],
+        )
+        source = "folder/background metadata"
+    save_youtube_title_file(service, folder["id"], title, children)
+    print(f"YouTube title source: {source}")
+    print(f"YouTube title: {title}")
+    return title
+
+
 def list_incoming_items(service, incoming: dict) -> list[dict]:
     """Return every non-trashed item directly under incoming."""
     incoming_items_query = (
@@ -427,6 +535,7 @@ def detect(args: argparse.Namespace) -> None:
         print(f"処理対象: Projects/{mode}/{folder['name']} - {message}")
         print(f"最終的に選ばれた folder id: {folder['id']}")
         stem = safe_file_stem(folder["name"])
+        youtube_title = resolve_and_save_youtube_title(service, folder, mode)
         write_github_output(
             {
                 "found": "true",
@@ -434,7 +543,7 @@ def detect(args: argparse.Namespace) -> None:
                 "work_folder_name": folder["name"],
                 "track_count": str(track_count),
                 "output_file": f"{stem}.mp4",
-                "youtube_title": folder["name"].replace("_", " "),
+                "youtube_title": youtube_title,
                 "source_queue": f"projects/{mode}",
                 "project_mode": mode,
             }

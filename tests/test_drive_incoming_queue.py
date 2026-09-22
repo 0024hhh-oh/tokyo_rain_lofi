@@ -10,12 +10,15 @@ google.oauth2 = types.ModuleType("google.oauth2")
 google.oauth2.service_account = types.ModuleType("google.oauth2.service_account")
 googleapiclient = types.ModuleType("googleapiclient")
 googleapiclient.discovery = types.ModuleType("googleapiclient.discovery")
+googleapiclient.http = types.ModuleType("googleapiclient.http")
+googleapiclient.http.MediaIoBaseUpload = lambda *args, **kwargs: (args, kwargs)
 googleapiclient.discovery.build = lambda *args, **kwargs: None
 sys.modules.setdefault("google", google)
 sys.modules.setdefault("google.oauth2", google.oauth2)
 sys.modules.setdefault("google.oauth2.service_account", google.oauth2.service_account)
 sys.modules.setdefault("googleapiclient", googleapiclient)
 sys.modules.setdefault("googleapiclient.discovery", googleapiclient.discovery)
+sys.modules.setdefault("googleapiclient.http", googleapiclient.http)
 
 import drive_incoming_queue
 
@@ -297,6 +300,10 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
         side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
     ), patch.object(
         drive_incoming_queue, "list_files", side_effect=fake_list_files
+    ), patch.object(
+        drive_incoming_queue,
+        "resolve_and_save_youtube_title",
+        side_effect=lambda _service, folder, mode: f"{mode}:{folder['name']}",
     ):
         detected_names = []
         while True:
@@ -379,6 +386,10 @@ def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
         side_effect=lambda _s, _p, name: {"id": f"{name}-id", "name": name},
     ), patch.object(
         drive_incoming_queue, "list_files", side_effect=fake_list_files
+    ), patch.object(
+        drive_incoming_queue,
+        "resolve_and_save_youtube_title",
+        side_effect=lambda _service, folder, mode: f"{mode}:{folder['name']}",
     ):
         drive_incoming_queue.detect(args)
 
@@ -387,4 +398,5 @@ def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
     assert "work_folder_id=day-work" in output
     assert "source_queue=projects/day" in output
     assert "project_mode=day" in output
+    assert "youtube_title=day:Day Archive" in output
     assert "night-test" not in output.split("処理対象:", 1)[-1]

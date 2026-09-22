@@ -27,6 +27,7 @@ class FakeMediaIoBaseDownload:
 
 
 googleapiclient.http.MediaIoBaseDownload = FakeMediaIoBaseDownload
+googleapiclient.http.MediaIoBaseUpload = lambda *args, **kwargs: (args, kwargs)
 googleapiclient.http.MediaFileUpload = (
     lambda filename, mimetype=None, resumable=False: {
         "filename": filename,
