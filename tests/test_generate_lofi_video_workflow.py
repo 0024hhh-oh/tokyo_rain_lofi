@@ -33,11 +33,12 @@ def test_debug_metadata_defaults_are_blank_so_incoming_outputs_are_used():
     assert 'default: "Tokyo Memory Archive 001 - Tokyo ChillMatic FM"' not in text
     assert 'output_file=""' in text
     assert 'youtube_title=""' in text
-    assert 'youtube_description_b64=""' in text
+    assert 'youtube_description_file="$(mktemp)"' in text
     assert 'export OUTPUT_FILE="${output_file}"' in text
     assert '--title "${youtube_title}"' in text
-    assert 'youtube_description_b64) youtube_description_b64="${value}" ;;' in text
-    assert '--description "$(cat "${description_file}")"' in text
+    assert 'YOUTUBE_DESCRIPTION_OUTPUT_FILE="${youtube_description_file}"' in text
+    assert 'base64 --decode' not in text
+    assert '--description "$(cat "${youtube_description_file}")"' in text
 
 
 def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
