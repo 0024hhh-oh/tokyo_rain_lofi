@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -22,8 +23,12 @@ from youtube_titles import (
 )
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
+TOKEN_URI = "https://oauth2.googleapis.com/token"
 ROOT_FOLDER = "Tokyo ChillMatic FM"
 ROOT_FOLDER_ID_ENV = "TOKYO_CHILLMATIC_DRIVE_FOLDER_ID"
+OAUTH_CLIENT_ID_ENV = "GOOGLE_DRIVE_CLIENT_ID"
+OAUTH_CLIENT_SECRET_ENV = "GOOGLE_DRIVE_CLIENT_SECRET"
+OAUTH_REFRESH_TOKEN_ENV = "GOOGLE_DRIVE_REFRESH_TOKEN"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 BACKGROUND_LOOP_NAME = "background_loop.mp4"
@@ -45,6 +50,35 @@ def quote_drive_query(value: str) -> str:
 
 
 def get_drive_service():
+    oauth_client_id = os.environ.get(OAUTH_CLIENT_ID_ENV, "").strip() or None
+    oauth_client_secret = os.environ.get(OAUTH_CLIENT_SECRET_ENV, "").strip() or None
+    oauth_refresh_token = os.environ.get(OAUTH_REFRESH_TOKEN_ENV, "").strip() or None
+    oauth_values = (oauth_client_id, oauth_client_secret, oauth_refresh_token)
+
+    if any(oauth_values):
+        if not all(oauth_values):
+            missing = [
+                name
+                for name, value in (
+                    (OAUTH_CLIENT_ID_ENV, oauth_client_id),
+                    (OAUTH_CLIENT_SECRET_ENV, oauth_client_secret),
+                    (OAUTH_REFRESH_TOKEN_ENV, oauth_refresh_token),
+                )
+                if not value
+            ]
+            raise RuntimeError(
+                f"Google Drive OAuth secrets are incomplete: {', '.join(missing)}"
+            )
+        credentials = Credentials(
+            token=None,
+            refresh_token=oauth_refresh_token,
+            token_uri=TOKEN_URI,
+            client_id=oauth_client_id,
+            client_secret=oauth_client_secret,
+            scopes=SCOPES,
+        )
+        return build("drive", "v3", credentials=credentials, cache_discovery=False)
+
     info_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     info_path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON_PATH")
     if info_json:
@@ -57,7 +91,8 @@ def get_drive_service():
         )
     else:
         raise RuntimeError(
-            "GOOGLE_SERVICE_ACCOUNT_JSON または GOOGLE_SERVICE_ACCOUNT_JSON_PATH を設定してください。"
+            f"{OAUTH_CLIENT_ID_ENV}, {OAUTH_CLIENT_SECRET_ENV}, {OAUTH_REFRESH_TOKEN_ENV} "
+            "または GOOGLE_SERVICE_ACCOUNT_JSON / GOOGLE_SERVICE_ACCOUNT_JSON_PATH を設定してください。"
         )
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 

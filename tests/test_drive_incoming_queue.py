@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 google = types.ModuleType("google")
 google.oauth2 = types.ModuleType("google.oauth2")
 google.oauth2.service_account = types.ModuleType("google.oauth2.service_account")
+google.oauth2.credentials = types.ModuleType("google.oauth2.credentials")
+google.oauth2.credentials.Credentials = object
 googleapiclient = types.ModuleType("googleapiclient")
 googleapiclient.discovery = types.ModuleType("googleapiclient.discovery")
 googleapiclient.http = types.ModuleType("googleapiclient.http")
@@ -17,11 +19,56 @@ googleapiclient.discovery.build = lambda *args, **kwargs: None
 sys.modules.setdefault("google", google)
 sys.modules.setdefault("google.oauth2", google.oauth2)
 sys.modules.setdefault("google.oauth2.service_account", google.oauth2.service_account)
+sys.modules.setdefault("google.oauth2.credentials", google.oauth2.credentials)
 sys.modules.setdefault("googleapiclient", googleapiclient)
 sys.modules.setdefault("googleapiclient.discovery", googleapiclient.discovery)
 sys.modules.setdefault("googleapiclient.http", googleapiclient.http)
 
 import drive_incoming_queue
+
+
+def test_get_drive_service_prefers_user_oauth_for_writable_personal_drive(monkeypatch):
+    monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_ID", "client-id")
+    monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("GOOGLE_DRIVE_REFRESH_TOKEN", "refresh-token")
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", '{"type":"service_account"}')
+    credentials = object()
+    service = object()
+
+    with patch.object(
+        drive_incoming_queue, "Credentials", return_value=credentials
+    ) as credentials_class, patch.object(
+        drive_incoming_queue, "build", return_value=service
+    ) as build:
+        result = drive_incoming_queue.get_drive_service()
+
+    assert result is service
+    credentials_class.assert_called_once_with(
+        token=None,
+        refresh_token="refresh-token",
+        token_uri=drive_incoming_queue.TOKEN_URI,
+        client_id="client-id",
+        client_secret="client-secret",
+        scopes=drive_incoming_queue.SCOPES,
+    )
+    build.assert_called_once_with(
+        "drive", "v3", credentials=credentials, cache_discovery=False
+    )
+
+
+def test_get_drive_service_rejects_incomplete_user_oauth(monkeypatch):
+    monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_ID", "client-id")
+    monkeypatch.delenv("GOOGLE_DRIVE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GOOGLE_DRIVE_REFRESH_TOKEN", raising=False)
+
+    try:
+        drive_incoming_queue.get_drive_service()
+    except RuntimeError as exc:
+        assert "Google Drive OAuth secrets are incomplete" in str(exc)
+        assert "GOOGLE_DRIVE_CLIENT_SECRET" in str(exc)
+        assert "GOOGLE_DRIVE_REFRESH_TOKEN" in str(exc)
+    else:
+        raise AssertionError("incomplete OAuth configuration should fail")
 
 
 def make_tracks(count):
