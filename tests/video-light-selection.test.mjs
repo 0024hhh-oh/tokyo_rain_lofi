@@ -24,10 +24,9 @@ const zone = (id, x, y, extra = {}) => ({
   ...extra,
 });
 
-test('case A: vending-machine-like source near a thirds point is the only local light', () => {
+test('case A: vending-machine-like source near a thirds point beats center fallback', () => {
   const result = selectVideoLightZones([
     zone('vending-machine', 1 / 3 + 0.01, 1 / 3 + 0.01, {strength: 0.95}),
-    zone('window-farther', 1 / 3 + 0.06, 1 / 3 + 0.05, {strength: 1}),
     zone('center-light', 0.5, 0.5, {strength: 1}),
   ]);
   assert.equal(result.mode, 'rule-of-thirds');
@@ -74,7 +73,7 @@ test('case E: no thirds or center source falls back to existing three depth laye
   ]);
 });
 
-test('case F: multiple windows and signs still select only the best thirds candidate', () => {
+test('case F: multiple windows and signs keep at most three ordered thirds candidates', () => {
   const result = selectVideoLightZones([
     zone('nearest-small-sign', 1 / 3 + 0.01, 1 / 3 + 0.005, {
       width: 0.03,
@@ -87,10 +86,17 @@ test('case F: multiple windows and signs still select only the best thirds candi
     zone('other-third-window', 2 / 3 + 0.04, 1 / 3 + 0.03, {
       strength: 1,
     }),
+    zone('fourth-candidate', 2 / 3 + 0.06, 2 / 3 - 0.03, {
+      strength: 1,
+    }),
   ]);
   assert.equal(result.mode, 'rule-of-thirds');
-  assert.equal(result.zones.length, 1);
-  assert.deepEqual(result.zones.map(({id}) => id), ['nearest-small-sign']);
+  assert.equal(result.zones.length, 3);
+  assert.deepEqual(result.zones.map(({id}) => id), [
+    'nearest-small-sign',
+    'stronger-but-farther-window',
+    'other-third-window',
+  ]);
 });
 
 test('regression: wall-sized, cold, low, and core-less regions remain unsafe', () => {
