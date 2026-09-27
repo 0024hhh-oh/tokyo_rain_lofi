@@ -9,15 +9,18 @@ export type VideoLightZone = {
   hasLightCore: boolean;
   color: [number, number, number];
   maskCells?: [number, number][];
+  isReflection?: boolean;
 };
 
-const THIRDS_RADIUS_X = 0.11;
-const THIRDS_RADIUS_Y = 0.11;
-const CENTER_RADIUS_X = 0.14;
-const CENTER_RADIUS_Y = 0.14;
+export const LIGHT_SELECTION_CONFIG = {
+  thirdsRadiusX: 0.09,
+  thirdsRadiusY: 0.09,
+  centerRadiusX: 0.14,
+  centerRadiusY: 0.14,
+} as const;
+
 const SAFE_MIN_WARMTH = 0.4;
 const SAFE_MAX_AREA = 0.018;
-const MAX_CANDIDATES = 12;
 // Video inputs already contain wet-road motion. Keep automatic candidates
 // above the lower street/reflection band; source-only masks remain the route
 // for reviewed lights lower in the frame.
@@ -36,45 +39,83 @@ const thirds = [
   [2 / 3, 2 / 3],
 ] as const;
 
-const isSafeEmitter = (zone: VideoLightZone) =>
+export const validateLightSource = (zone: VideoLightZone) =>
+  !zone.isReflection &&
   zone.hasLightCore &&
   zone.warmth >= SAFE_MIN_WARMTH &&
   zone.y < SAFE_MAX_Y &&
   zone.width * zone.height <= SAFE_MAX_AREA;
 
-const distanceWithin = (
+const normalizedDistance = (
+  zone: VideoLightZone,
+  target: readonly [number, number],
+  radiusX: number,
+  radiusY: number,
+) => {
+  const dx = Math.abs(zone.x - target[0]);
+  const dy = Math.abs(zone.y - target[1]);
+  if (dx > radiusX || dy > radiusY) return Number.POSITIVE_INFINITY;
+  return Math.hypot(dx / radiusX, dy / radiusY);
+};
+
+const distanceToTargets = (
   zone: VideoLightZone,
   targets: readonly (readonly [number, number])[],
   radiusX: number,
   radiusY: number,
-) => {
-  let best = Number.POSITIVE_INFINITY;
-  for (const [x, y] of targets) {
-    const dx = Math.abs(zone.x - x);
-    const dy = Math.abs(zone.y - y);
-    if (dx <= radiusX && dy <= radiusY) {
-      best = Math.min(best, Math.hypot(dx / radiusX, dy / radiusY));
-    }
-  }
-  return best;
-};
+) => Math.min(
+  ...targets.map((target) => normalizedDistance(zone, target, radiusX, radiusY)),
+);
 
-const bestNear = (
+export const getRuleOfThirdsCandidates = (
   zones: VideoLightZone[],
-  targets: readonly (readonly [number, number])[],
-  radiusX: number,
-  radiusY: number,
+  radiusX = LIGHT_SELECTION_CONFIG.thirdsRadiusX,
+  radiusY = LIGHT_SELECTION_CONFIG.thirdsRadiusY,
 ) =>
   zones
+    .filter(validateLightSource)
+    .filter((zone) =>
+      Number.isFinite(distanceToTargets(zone, thirds, radiusX, radiusY)),
+    );
+
+export const getCenterCandidate = (
+  zones: VideoLightZone[],
+  radiusX = LIGHT_SELECTION_CONFIG.centerRadiusX,
+  radiusY = LIGHT_SELECTION_CONFIG.centerRadiusY,
+) => {
+  const candidates = zones
+    .filter(validateLightSource)
+    .filter((zone) =>
+      Number.isFinite(
+        normalizedDistance(zone, [0.5, 0.5], radiusX, radiusY),
+      ),
+    );
+  return selectBestLightCandidate(
+    candidates,
+    [[0.5, 0.5]],
+    radiusX,
+    radiusY,
+  );
+};
+
+export const selectBestLightCandidate = (
+  zones: VideoLightZone[],
+  targets: readonly (readonly [number, number])[] = thirds,
+  radiusX = LIGHT_SELECTION_CONFIG.thirdsRadiusX,
+  radiusY = LIGHT_SELECTION_CONFIG.thirdsRadiusY,
+) =>
+  zones
+    .filter(validateLightSource)
     .map((zone) => ({
       zone,
-      distance: distanceWithin(zone, targets, radiusX, radiusY),
+      distance: distanceToTargets(zone, targets, radiusX, radiusY),
     }))
     .filter(({distance}) => Number.isFinite(distance))
     .sort(
       (a, b) =>
         a.distance - b.distance ||
         b.zone.strength - a.zone.strength ||
+        b.zone.warmth - a.zone.warmth ||
         a.zone.width * a.zone.height - b.zone.width * b.zone.height ||
         a.zone.id.localeCompare(b.zone.id),
     )[0]?.zone;
@@ -85,6 +126,7 @@ const bestInLayer = (
   maxY: number,
 ) =>
   zones
+    .filter(validateLightSource)
     .filter((zone) => zone.y >= minY && zone.y < maxY)
     .sort(
       (a, b) =>
@@ -94,45 +136,36 @@ const bestInLayer = (
         a.id.localeCompare(b.id),
     )[0];
 
-const uniqueZones = (zones: Array<VideoLightZone | undefined>) => {
-  const seen = new Set<string>();
-  return zones.filter((zone): zone is VideoLightZone => {
-    if (!zone || seen.has(zone.id)) return false;
-    seen.add(zone.id);
-    return true;
-  });
+export const fallbackToExistingThreeLayerMode = (
+  zones: VideoLightZone[],
+) => {
+  const layerCandidates = depthLayers
+    .map(({minY, maxY}) => bestInLayer(zones, minY, maxY))
+    .filter((zone): zone is VideoLightZone => Boolean(zone));
+
+  return {
+    mode: layerCandidates.length > 0 ? 'three-layer-fallback' as const : 'none' as const,
+    zones: layerCandidates,
+  };
 };
 
 export const selectVideoLightZones = (zones: VideoLightZone[]) => {
-  const safe = zones.filter(isSafeEmitter);
-  const thirdsCandidates = thirds.map((target) =>
-    bestNear(safe, [target], THIRDS_RADIUS_X, THIRDS_RADIUS_Y),
-  );
-  const centerCandidate = bestNear(
-    safe,
-    [[0.5, 0.5]],
-    CENTER_RADIUS_X,
-    CENTER_RADIUS_Y,
-  );
-  const layerCandidates = depthLayers.map(({minY, maxY}) =>
-    bestInLayer(safe, minY, maxY),
-  );
-  const remainingSafeCandidates = [...safe].sort(
-    (a, b) =>
-      b.strength - a.strength ||
-      b.warmth - a.warmth ||
-      a.width * a.height - b.width * b.height ||
-      a.id.localeCompare(b.id),
-  );
-  const selected = uniqueZones([
-    ...thirdsCandidates,
-    centerCandidate,
-    ...layerCandidates,
-    ...remainingSafeCandidates,
-  ]).slice(0, MAX_CANDIDATES);
+  const thirdsCandidates = getRuleOfThirdsCandidates(zones);
+  const bestThirds = selectBestLightCandidate(thirdsCandidates);
+  if (bestThirds) {
+    return {
+      mode: 'rule-of-thirds' as const,
+      zones: [bestThirds],
+    };
+  }
 
-  return {
-    mode: selected.length > 0 ? 'expanded' as const : 'none' as const,
-    zones: selected,
-  };
+  const centerCandidate = getCenterCandidate(zones);
+  if (centerCandidate) {
+    return {
+      mode: 'center' as const,
+      zones: [centerCandidate],
+    };
+  }
+
+  return fallbackToExistingThreeLayerMode(zones);
 };
