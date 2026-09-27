@@ -7,6 +7,12 @@ def workflow_text() -> str:
     return WORKFLOW.read_text()
 
 
+def incoming_step(text: str) -> str:
+    return text.split("      - name: Process one incoming work folder", 1)[1].split(
+        "      - name: Download assets from Google Drive", 1
+    )[0]
+
+
 def test_workflow_dispatch_keeps_drive_folder_id_as_debug_only_input():
     text = workflow_text()
 
@@ -41,7 +47,8 @@ def test_workflow_dispatch_without_drive_folder_uses_incoming_queue():
     debug_only_condition = "if: ${{ github.event_name == 'workflow_dispatch' && inputs.DRIVE_FOLDER_ID != '' }}"
 
     assert detect_condition in text
-    assert "while true; do" in text
+    assert "Process one incoming work folder" in text
+    assert "while true; do" not in text
     assert text.count(debug_only_condition) >= 3
 
 
@@ -101,42 +108,47 @@ def test_blank_workflow_dispatch_drive_folder_id_does_not_enter_drive_folder_id_
     assert "DRIVE_FOLDER_ID: ${{ inputs.DRIVE_FOLDER_ID || steps.incoming.outputs.work_folder_id }}" not in text
 
     drive_branch = text.split('if [[ -n "${RESOLVED_DRIVE_FOLDER_ID}" ]]; then', 1)[1].split("else", 1)[0]
-    incoming_loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
+    incoming = incoming_step(text)
 
     assert 'asset acquisition method=drive-folder-id' in drive_branch
     assert 'work_folder_id' not in drive_branch
-    assert 'asset acquisition method=incoming-queue' in incoming_loop
-    assert '--drive-folder-id "${work_folder_id}"' in incoming_loop
+    assert 'asset acquisition method=incoming-queue' in incoming
+    assert '--drive-folder-id "${work_folder_id}"' in incoming
 
 
-def test_workflow_moves_successful_incoming_work_to_completed_inside_loop():
+def test_workflow_moves_successful_incoming_work_to_completed_in_single_run():
     text = workflow_text()
 
-    assert "Process all incoming work folders" in text
+    assert "Process one incoming work folder" in text
     assert "--destination completed" in text
     assert "Move incoming work to processed" not in text
     assert "--destination processed" not in text
 
 
-def test_workflow_loops_until_incoming_queue_is_empty():
+def test_workflow_processes_at_most_one_incoming_folder_per_run():
     text = workflow_text()
+    incoming = incoming_step(text)
 
-    assert "Process all incoming work folders" in text
-    assert "while true; do" in text
-    assert "GITHUB_OUTPUT=\"${incoming_output}\" python scripts/drive_incoming_queue.py detect" in text
-    assert "No valid incoming work folder found. Exiting without generation." in text
-    assert "--destination completed" in text
-    assert "--destination failed" in text
-    assert "processed_count=$((processed_count + 1))" in text
+    assert "Process one incoming work folder" in text
+    assert "while true; do" not in text
+    assert incoming.count(
+        'GITHUB_OUTPUT="${incoming_output}" python scripts/drive_incoming_queue.py detect'
+    ) == 1
+    assert "No valid incoming work folder found. Exiting without generation." in incoming
+    assert "--destination completed" in incoming
+    assert "--destination failed" in incoming
+    assert "processed_count=1" in incoming
+    assert "failed_count=1" in incoming
 
 
-def test_incoming_loop_processes_folders_sequentially_before_redetecting():
+def test_incoming_step_processes_one_folder_in_order_without_redetecting():
     text = workflow_text()
-    loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
+    incoming = incoming_step(text)
 
-    assert loop.index("python scripts/download_drive_video_assets.py") < loop.index("scripts/generate_lofi_video.sh")
-    assert loop.index("scripts/generate_lofi_video.sh") < loop.index("python scripts/upload_youtube_video.py")
-    assert loop.index("--destination completed") < loop.index("unset found work_folder_id")
+    assert incoming.index("python scripts/download_drive_video_assets.py") < incoming.index("scripts/generate_lofi_video.sh")
+    assert incoming.index("scripts/generate_lofi_video.sh") < incoming.index("python scripts/upload_youtube_video.py")
+    assert incoming.index("python scripts/upload_youtube_video.py") < incoming.index("--destination completed")
+    assert incoming.count("python scripts/drive_incoming_queue.py detect") == 1
 
 
 def test_youtube_upload_is_enabled_and_not_behind_restore_flag():
@@ -191,11 +203,11 @@ def test_youtube_secrets_are_passed_to_all_upload_paths():
     assert '--file "dist/${{ inputs.output_file }}"' not in text
 
 
-def test_incoming_loop_does_not_upload_when_generation_fails_and_moves_failed():
+def test_incoming_step_does_not_upload_when_generation_fails_and_moves_failed():
     text = workflow_text()
-    loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
-    subshell = loop.split("(", 1)[1].split(")\n            status=$?", 1)[0]
-    failure_branch = loop.split("else", 1)[1]
+    incoming = incoming_step(text)
+    subshell = incoming.split("(", 1)[1].split(")\n          status=$?", 1)[0]
+    failure_branch = incoming.split("if [[ ${status} -eq 0 ]]; then", 1)[1].split("else", 1)[1]
 
     assert subshell.index("scripts/generate_lofi_video.sh") < subshell.index("python scripts/upload_youtube_video.py")
     assert "set -euo pipefail" in subshell
@@ -204,10 +216,10 @@ def test_incoming_loop_does_not_upload_when_generation_fails_and_moves_failed():
 
 def test_workflow_successful_youtube_upload_still_moves_completed():
     text = workflow_text()
-    loop = text.split("while true; do", 1)[1].rsplit("done", 1)[0]
-    success_branch = loop.split("if [[ ${status} -eq 0 ]]; then", 1)[1].split("else", 1)[0]
+    incoming = incoming_step(text)
+    success_branch = incoming.split("if [[ ${status} -eq 0 ]]; then", 1)[1].split("else", 1)[0]
 
-    assert "python scripts/upload_youtube_video.py" in loop
+    assert "python scripts/upload_youtube_video.py" in incoming
     assert "--destination completed" in success_branch
 
 
@@ -218,7 +230,7 @@ def test_workflow_runs_only_the_original_generate_job():
     assert "\n  generate:\n" in jobs
     assert "\n  night-test:\n" not in jobs
     assert jobs.count("\n  generate:\n") == 1
-    assert "Process all incoming work folders" in jobs
+    assert "Process one incoming work folder" in jobs
     assert "python scripts/upload_youtube_video.py" in jobs
     assert "--destination completed" in jobs
 
@@ -249,13 +261,13 @@ def test_production_job_applies_lighting_only_to_night_projects():
     assert production_job.index('if [[ "${project_mode}" == "night" ]]; then') < production_job.index("scripts/generate_lofi_video.sh")
 
 
-def test_workflow_reads_mode_from_detector_and_clears_it_between_projects():
+def test_workflow_reads_mode_from_detector_for_the_selected_project():
     text = workflow_text()
 
     assert 'project_mode=""' in text
     assert 'project_mode) project_mode="${value}" ;;' in text
     assert 'echo "incoming selected project_mode=${project_mode}"' in text
-    assert "unset found work_folder_id work_folder_name track_count output_file youtube_title youtube_description_b64 project_mode" in text
+    assert "unset found work_folder_id" not in text
 
 
 def test_night_test_renderer_requires_motion_audio_and_exact_duration():
