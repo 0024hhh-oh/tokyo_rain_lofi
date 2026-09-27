@@ -98,8 +98,9 @@ export const getCenterCandidate = (
   );
 };
 
-export const selectBestLightCandidate = (
+export const selectBestLightCandidates = (
   zones: VideoLightZone[],
+  limit = 1,
   targets: readonly (readonly [number, number])[] = thirds,
   radiusX = LIGHT_SELECTION_CONFIG.thirdsRadiusX,
   radiusY = LIGHT_SELECTION_CONFIG.thirdsRadiusY,
@@ -118,7 +119,16 @@ export const selectBestLightCandidate = (
         b.zone.warmth - a.zone.warmth ||
         a.zone.width * a.zone.height - b.zone.width * b.zone.height ||
         a.zone.id.localeCompare(b.zone.id),
-    )[0]?.zone;
+    )
+    .slice(0, Math.max(0, limit))
+    .map(({zone}) => zone);
+
+export const selectBestLightCandidate = (
+  zones: VideoLightZone[],
+  targets: readonly (readonly [number, number])[] = thirds,
+  radiusX = LIGHT_SELECTION_CONFIG.thirdsRadiusX,
+  radiusY = LIGHT_SELECTION_CONFIG.thirdsRadiusY,
+) => selectBestLightCandidates(zones, 1, targets, radiusX, radiusY)[0];
 
 const bestInLayer = (
   zones: VideoLightZone[],
@@ -151,11 +161,11 @@ export const fallbackToExistingThreeLayerMode = (
 
 export const selectVideoLightZones = (zones: VideoLightZone[]) => {
   const thirdsCandidates = getRuleOfThirdsCandidates(zones);
-  const bestThirds = selectBestLightCandidate(thirdsCandidates);
-  if (bestThirds) {
+  const bestThirds = selectBestLightCandidates(thirdsCandidates, 3);
+  if (bestThirds.length > 0) {
     return {
       mode: 'rule-of-thirds' as const,
-      zones: [bestThirds],
+      zones: bestThirds,
     };
   }
 
