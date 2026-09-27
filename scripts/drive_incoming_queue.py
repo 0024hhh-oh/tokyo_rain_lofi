@@ -629,6 +629,9 @@ def detect(args: argparse.Namespace) -> None:
         youtube_description_b64 = base64.b64encode(
             youtube_description.encode("utf-8")
         ).decode("ascii")
+        description_output_file = os.environ.get("YOUTUBE_DESCRIPTION_OUTPUT_FILE", "").strip()
+        if description_output_file:
+            Path(description_output_file).write_text(youtube_description, encoding="utf-8")
         write_github_output(
             {
                 "found": "true",

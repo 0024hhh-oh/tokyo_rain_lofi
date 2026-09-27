@@ -380,7 +380,7 @@ def test_incoming_loop_detects_and_moves_two_direct_work_folders_sequentially(ca
     assert incoming_ids == []
 
 
-def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
+def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys, tmp_path, monkeypatch):
     day_work = {
         "id": "day-work",
         "name": "Day Archive",
@@ -415,6 +415,9 @@ def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
                 *make_tracks(20),
             ]
         return []
+
+    description_output = tmp_path / "youtube-description.txt"
+    monkeypatch.setenv("YOUTUBE_DESCRIPTION_OUTPUT_FILE", str(description_output))
 
     args = types.SimpleNamespace(
         root_folder="Tokyo ChillMatic FM",
@@ -457,4 +460,5 @@ def test_detect_reads_day_and_night_subfolders_and_outputs_mode(capsys):
     assert "youtube_title=day:Day Archive" in output
     encoded = output.split("youtube_description_b64=", 1)[1].splitlines()[0]
     assert base64.b64decode(encoded).decode("utf-8") == "day description for Day Archive"
+    assert description_output.read_text(encoding="utf-8") == "day description for Day Archive"
     assert "night-test" not in output.split("処理対象:", 1)[-1]
