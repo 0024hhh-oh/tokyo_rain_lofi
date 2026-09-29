@@ -106,7 +106,7 @@ def build_ffmpeg_command(
             "crop=1280:720[bg];"
             "[1:v]scale=435:-1,format=rgba,"
             "colorkey=0x080808:0.24:0.10[logo];"
-            "[bg][logo]overlay=77:(H-h)/2:format=auto[v]"
+            "[bg][logo]overlay=77:(H-h)/2+20:format=auto[v]"
         ),
         "-map",
         "[v]",
