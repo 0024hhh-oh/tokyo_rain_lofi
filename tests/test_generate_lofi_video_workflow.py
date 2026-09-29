@@ -152,6 +152,22 @@ def test_incoming_step_processes_one_folder_in_order_without_redetecting():
     assert incoming.count("python scripts/drive_incoming_queue.py detect") == 1
 
 
+def test_incoming_step_generates_and_sets_the_thumbnail_automatically():
+    incoming = incoming_step(workflow_text())
+
+    assert "python scripts/generate_drive_thumbnails.py" in incoming
+    assert '--mode "${project_mode}"' in incoming
+    assert '--project-folder-id "${work_folder_id}"' in incoming
+    assert '--output-file "dist/thumbnail.jpg"' in incoming
+    assert '--thumbnail "dist/thumbnail.jpg"' in incoming
+    assert incoming.index("python scripts/generate_drive_thumbnails.py") < incoming.index(
+        "python scripts/download_drive_video_assets.py"
+    )
+    assert incoming.index("scripts/generate_lofi_video.sh") < incoming.index(
+        '--thumbnail "dist/thumbnail.jpg"'
+    )
+
+
 def test_youtube_upload_is_enabled_and_not_behind_restore_flag():
     text = workflow_text()
 

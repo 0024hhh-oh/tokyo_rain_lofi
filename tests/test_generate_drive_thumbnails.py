@@ -6,7 +6,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from generate_drive_thumbnails import build_ffmpeg_command, select_thumbnail_source
+from generate_drive_thumbnails import (
+    build_ffmpeg_command,
+    build_parser,
+    select_thumbnail_source,
+)
 
 
 class ThumbnailSelectionTests(unittest.TestCase):
@@ -58,7 +62,25 @@ class ThumbnailSelectionTests(unittest.TestCase):
         self.assertNotIn("-ss", image)
         filters = video[video.index("-filter_complex") + 1]
         self.assertIn("colorkey=0x080808:0.24:0.10", filters)
-        self.assertIn("overlay=77:(H-h)/2", filters)
+        self.assertIn("overlay=77:(H-h)/2+20", filters)
+
+    def test_targeted_project_can_also_write_a_local_thumbnail(self):
+        args = build_parser().parse_args(
+            [
+                "--mode",
+                "day",
+                "--project-folder-id",
+                "drive-folder-id",
+                "--output-file",
+                "dist/thumbnail.jpg",
+                "--force",
+            ]
+        )
+
+        self.assertEqual(args.mode, "day")
+        self.assertEqual(args.project_folder_id, "drive-folder-id")
+        self.assertEqual(args.output_file, Path("dist/thumbnail.jpg"))
+        self.assertTrue(args.force)
 
 
 if __name__ == "__main__":

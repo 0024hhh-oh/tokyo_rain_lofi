@@ -297,6 +297,9 @@ def process_project(
             existing_id=existing["id"] if existing else None,
             thumbnail=local_output,
         )
+        if args.output_file:
+            args.output_file.parent.mkdir(parents=True, exist_ok=True)
+            args.output_file.write_bytes(local_output.read_bytes())
         if args.preview_dir:
             args.preview_dir.mkdir(parents=True, exist_ok=True)
             preview = args.preview_dir / f"{mode}-{safe_stem(project['name'])}.jpg"
@@ -310,6 +313,28 @@ def process_project(
 
 def process(args: argparse.Namespace) -> int:
     service = get_drive_service()
+    if args.project_folder_id:
+        if args.mode == "all":
+            raise RuntimeError("--project-folder-id requires --mode day or night")
+        project = (
+            service.files()
+            .get(
+                fileId=args.project_folder_id,
+                fields="id,name,mimeType",
+                supportsAllDrives=True,
+            )
+            .execute()
+        )
+        if project.get("mimeType") != FOLDER_MIME:
+            raise RuntimeError(
+                f"Drive ID is not a folder: {args.project_folder_id}"
+            )
+        result = process_project(service, mode=args.mode, project=project, args=args)
+        generated = 1 if result == "generated" else 0
+        skipped = 0 if result == "generated" else 1
+        print(f"SUMMARY generated={generated} skipped={skipped} failed=0")
+        return 0
+
     root = resolve_root(service, args.root_folder_id)
     projects = find_folder(service, "Projects", root["id"])
     modes = ("day", "night") if args.mode == "all" else (args.mode,)
@@ -346,6 +371,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--night-logo", type=Path, default=DEFAULT_NIGHT_LOGO)
     parser.add_argument("--day-logo", type=Path, default=DEFAULT_DAY_LOGO)
     parser.add_argument("--preview-dir", type=Path)
+    parser.add_argument(
+        "--project-folder-id",
+        help="Process only this Drive project folder (requires --mode day or night)",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        help="Also save the generated thumbnail to this local path",
+    )
     parser.add_argument(
         "--root-folder-id", default=os.getenv(ROOT_FOLDER_ID_ENV)
     )

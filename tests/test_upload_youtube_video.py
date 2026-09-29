@@ -70,10 +70,17 @@ def test_main_logs_success_video_id_and_urls(monkeypatch, tmp_path, capsys):
     video = tmp_path / "incoming_work.mp4"
     video.write_bytes(b"mp4")
 
-    def fake_upload(file_path: Path, title: str, description: str, tags: list[str]):
+    def fake_upload(
+        file_path: Path,
+        title: str,
+        description: str,
+        tags: list[str],
+        thumbnail_path: Path | None = None,
+    ):
         assert file_path == video
         assert title == "title"
         assert tags == ["lofi", "rain"]
+        assert thumbnail_path is None
         return {"id": "abc123"}
 
     monkeypatch.setattr(upload_youtube_video, "upload_video", fake_upload)
@@ -89,6 +96,53 @@ def test_main_logs_success_video_id_and_urls(monkeypatch, tmp_path, capsys):
     assert "video ID: abc123" in output
     assert "https://studio.youtube.com/video/abc123/edit" in output
     assert "https://www.youtube.com/watch?v=abc123" in output
+
+
+def test_upload_video_sets_thumbnail_after_video_upload(monkeypatch, tmp_path):
+    video = tmp_path / "incoming_work.mp4"
+    thumbnail = tmp_path / "thumbnail.jpg"
+    video.write_bytes(b"mp4")
+    thumbnail.write_bytes(b"jpg")
+    events = []
+
+    class InsertRequest:
+        def next_chunk(self):
+            events.append("video-uploaded")
+            return None, {"id": "abc123"}
+
+    class Videos:
+        def insert(self, **kwargs):
+            return InsertRequest()
+
+    class ThumbnailRequest:
+        def execute(self):
+            events.append("thumbnail-set")
+            return {"items": []}
+
+    class Thumbnails:
+        def set(self, **kwargs):
+            assert kwargs["videoId"] == "abc123"
+            return ThumbnailRequest()
+
+    class YouTube:
+        def videos(self):
+            return Videos()
+
+        def thumbnails(self):
+            return Thumbnails()
+
+    monkeypatch.setattr(upload_youtube_video, "get_youtube_service", lambda: YouTube())
+
+    uploaded = upload_youtube_video.upload_video(
+        video,
+        "title",
+        "description",
+        ["lofi"],
+        thumbnail,
+    )
+
+    assert uploaded["id"] == "abc123"
+    assert events == ["video-uploaded", "thumbnail-set"]
 
 
 def test_main_logs_http_status_google_reason_and_exception_type(monkeypatch, tmp_path, capsys):
