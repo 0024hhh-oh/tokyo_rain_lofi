@@ -163,7 +163,7 @@ def test_incoming_step_generates_and_sets_the_thumbnail_automatically():
     assert incoming.index("python scripts/generate_drive_thumbnails.py") < incoming.index(
         "python scripts/download_drive_video_assets.py"
     )
-    assert incoming.index("python scripts/generate_lofi_video.sh") < incoming.index(
+    assert incoming.index("scripts/generate_lofi_video.sh") < incoming.index(
         '--thumbnail "dist/thumbnail.jpg"'
     )
 
