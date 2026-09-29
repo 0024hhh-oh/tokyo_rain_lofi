@@ -255,7 +255,7 @@ def process_project(
     existing = next(
         (item for item in items if normalized_name(item) == THUMBNAIL_NAME), None
     )
-    if existing and not args.force:
+    if existing and not args.force and not args.local_only:
         print(f"SKIP Projects/{mode}/{project['name']}: thumbnail.jpg already exists")
         return "skipped"
     source = select_thumbnail_source(items)
@@ -291,23 +291,27 @@ def process_project(
                 "FFmpeg failed: "
                 + (completed.stderr.strip() or f"exit {completed.returncode}")
             )
-        uploaded = upload_thumbnail(
-            service,
-            folder_id=project["id"],
-            existing_id=existing["id"] if existing else None,
-            thumbnail=local_output,
-        )
         if args.output_file:
             args.output_file.parent.mkdir(parents=True, exist_ok=True)
             args.output_file.write_bytes(local_output.read_bytes())
+        if not args.local_only:
+            uploaded = upload_thumbnail(
+                service,
+                folder_id=project["id"],
+                existing_id=existing["id"] if existing else None,
+                thumbnail=local_output,
+            )
         if args.preview_dir:
             args.preview_dir.mkdir(parents=True, exist_ok=True)
             preview = args.preview_dir / f"{mode}-{safe_stem(project['name'])}.jpg"
             preview.write_bytes(local_output.read_bytes())
-        print(
-            f"DONE Projects/{mode}/{project['name']}: "
-            f"thumbnail_id={uploaded.get('id', '<unknown>')}"
-        )
+        if args.local_only:
+            print(f"DONE Projects/{mode}/{project['name']}: local={args.output_file}")
+        else:
+            print(
+                f"DONE Projects/{mode}/{project['name']}: "
+                f"thumbnail_id={uploaded.get('id', '<unknown>')}"
+            )
     return "generated"
 
 
@@ -381,13 +385,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also save the generated thumbnail to this local path",
     )
     parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Save only --output-file; do not upload thumbnail.jpg to Drive",
+    )
+    parser.add_argument(
         "--root-folder-id", default=os.getenv(ROOT_FOLDER_ID_ENV)
     )
     return parser
 
 
 def main() -> int:
-    return process(build_parser().parse_args())
+    args = build_parser().parse_args()
+    if args.local_only and not args.output_file:
+        raise RuntimeError("--local-only requires --output-file")
+    return process(args)
 
 
 if __name__ == "__main__":
