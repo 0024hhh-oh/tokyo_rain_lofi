@@ -33,6 +33,26 @@ def test_generic_folder_falls_back_to_descriptive_image_name():
     assert scene_label("Batch25", ["Arakicho_after_rain.jpg"]) == "Arakicho after rain"
 
 
+def test_track_batch_folder_and_drive_copy_id_are_ignored():
+    folder = "07_曲目_181-210 — copy 7E32C4BB E793 46C4 9A64 485836DFE3BB"
+    assert scene_label(folder, ["background.png"]) == ""
+
+
+def test_track_batch_folder_falls_back_to_descriptive_background():
+    folder = "07_曲目_181-210 — copy 7E32C4BB E793 46C4 9A64 485836DFE3BB"
+    assert scene_label(folder, ["background_Kanda_after_rain.png"]) == "Kanda after rain"
+
+
+def test_track_batch_folder_does_not_leak_into_title_or_description():
+    folder = "07_曲目_181-210 — copy 7E32C4BB E793 46C4 9A64 485836DFE3BB"
+    title = generate_youtube_title("night", folder, ["background.png"])
+    description = generate_youtube_description("night", folder, ["background.png"])
+    assert title == "【Playlist】Tokyo Rainy Night Memories【LOFI】【CHILL】【BGM】"
+    assert "07 曲目" not in description
+    assert "copy 7E32C4BB" not in description
+    assert "quiet streets of Tokyo" in description
+
+
 def test_generic_metadata_uses_series_only():
     title = generate_youtube_title("night", "Batch25", ["background.png"])
     assert title == "【Playlist】Tokyo Rainy Night Memories【LOFI】【CHILL】【BGM】"
