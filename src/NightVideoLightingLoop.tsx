@@ -25,6 +25,10 @@ const SOURCE_PLAYBACK_RATE = 0.5;
 const SOURCE_DURATION_IN_FRAMES = videoMetadata.sourceDurationInFrames;
 const LOOP_DURATION_IN_FRAMES = SOURCE_DURATION_IN_FRAMES / SOURCE_PLAYBACK_RATE;
 const MAX_GLOW_OPACITY = 1;
+const LIGHT_GAIN = 0.5;
+// Halve the already-clamped bands so saturated cores are halved too.
+const glowOpacity = (value: number, oldCeiling: number, ceiling: number) =>
+  Math.min(ceiling, Math.max(0, Math.min(oldCeiling, value)) * LIGHT_GAIN);
 const MASK_WIDTH = 160;
 const MASK_HEIGHT = 90;
 const selection = selectVideoLightZones(
@@ -159,7 +163,7 @@ export const NightVideoLightingLoop: React.FC<{lightingEnabled?: boolean}> = ({
             </defs>
             <g
               filter={`url(#${outerFilterId})`}
-              opacity={Math.min(0.78, opacity * 0.78)}
+              opacity={glowOpacity(opacity * 0.78, 0.78, 0.36)}
             >
               {maskCells.map(([x, y], cellIndex) => (
                 <rect
@@ -175,7 +179,7 @@ export const NightVideoLightingLoop: React.FC<{lightingEnabled?: boolean}> = ({
             </g>
             <g
               filter={`url(#${middleFilterId})`}
-              opacity={Math.min(0.96, opacity * 1.05)}
+              opacity={glowOpacity(opacity * 1.05, 0.96, 0.44)}
             >
               {maskCells.map(([x, y], cellIndex) => (
                 <rect
@@ -189,7 +193,7 @@ export const NightVideoLightingLoop: React.FC<{lightingEnabled?: boolean}> = ({
                 />
               ))}
             </g>
-            <g opacity={Math.min(1, opacity * 1.4)}>
+            <g opacity={glowOpacity(opacity * 1.4, 1, 0.45)}>
               {maskCells.map(([x, y], cellIndex) => (
                 <rect
                   key={`core-${cellIndex}`}

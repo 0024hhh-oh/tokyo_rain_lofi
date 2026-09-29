@@ -6,6 +6,13 @@ import approvedProfile from './profiles/tokyo-approved.json';
 import {splitWindows, windowIntensity} from './window-timing';
 import {selectLightingMode, type LightSelectionProfile} from './select-light';
 
+// Scale only the added light; source image, masks and pulse schedules stay intact.
+const LIGHT_GAIN = 0.5;
+const glowOpacity = (value: number, ceiling: number) =>
+  Math.min(ceiling, Math.max(0, value) * LIGHT_GAIN);
+const MAX_CORE_BRIGHTNESS = 2.4;
+const MAX_HALO_BRIGHTNESS = 3.0;
+
 type LightPair = {id: string; depth: Depth; sourceMask: string; reflectionMask: string; reflectionGain: number; pulseWindow?: [number,number]};
 export type LightingProfile = typeof approvedProfile & LightSelectionProfile & {scheduledLights?: LightPair[]; individualWindows?: boolean; disableReflections?: boolean; pairs?: LightPair[]; emitters?: {id: string; depth: Depth; sourceMask: string}[]; timing?: {windows: Record<Depth, [number, number][]>; fadeFrames: number}};
 const mask = (profile: LightingProfile, shape: string, blur: number) => `url("data:image/svg+xml,${encodeURIComponent(
@@ -30,13 +37,13 @@ export const Scene: React.FC<{baseline?: boolean; profile?: LightingProfile}> = 
         const halo = mask(profile,unit.sourceMask,profile.style.haloBlur);
         const reflection = mask(profile,unit.reflectionMask,3);
         return <React.Fragment key={unit.id}>
-          <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.coreOpacity*(choice.mode === 'local' ? 0.65 : 1),maskImage:core,WebkitMaskImage:core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
-            <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.coreBrightness})`}}/>
+          <AbsoluteFill style={{mixBlendMode:'screen',opacity:glowOpacity(pulse*profile.style.coreOpacity*(choice.mode === 'local' ? 0.65 : 1),0.45),maskImage:core,WebkitMaskImage:core,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+            <Img src={source} style={{width:'100%',filter:`brightness(${Math.min(MAX_CORE_BRIGHTNESS,profile.style.coreBrightness)})`}}/>
           </AbsoluteFill>
-          <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*profile.style.haloOpacity*(choice.mode === 'local' ? 0.65 : 1),maskImage:halo,WebkitMaskImage:halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
-            <Img src={source} style={{width:'100%',filter:`brightness(${profile.style.haloBrightness}) blur(${profile.style.imageBlur}px)`}}/>
+          <AbsoluteFill style={{mixBlendMode:'screen',opacity:glowOpacity(pulse*profile.style.haloOpacity*(choice.mode === 'local' ? 0.65 : 1),0.275),maskImage:halo,WebkitMaskImage:halo,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+            <Img src={source} style={{width:'100%',filter:`brightness(${Math.min(MAX_HALO_BRIGHTNESS,profile.style.haloBrightness)}) blur(${profile.style.imageBlur}px)`}}/>
           </AbsoluteFill>
-          {!profile.disableReflections && unit.reflectionMask && <AbsoluteFill style={{mixBlendMode:'screen',opacity:pulse*unit.reflectionGain,maskImage:reflection,WebkitMaskImage:reflection,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
+          {!profile.disableReflections && unit.reflectionMask && <AbsoluteFill style={{mixBlendMode:'screen',opacity:glowOpacity(pulse*unit.reflectionGain,0.25),maskImage:reflection,WebkitMaskImage:reflection,maskSize:'100% 100%',WebkitMaskSize:'100% 100%'}}>
             <Img src={source} style={{width:'100%'}}/>
           </AbsoluteFill>}
         </React.Fragment>;
