@@ -109,9 +109,16 @@ jobs:
           echo "asset acquisition method=incoming-queue"
 
           rm -rf video_assets dist
+          mkdir -p dist
           set +e
           (
             set -euo pipefail
+            echo "Thumbnail generation starting for ${project_mode}: ${work_folder_name}"
+            python scripts/generate_drive_thumbnails.py \
+              --mode "${project_mode}" \
+              --project-folder-id "${work_folder_id}" \
+              --force \
+              --output-file "dist/thumbnail.jpg"
             python scripts/download_drive_video_assets.py \
               --drive-folder-id "${work_folder_id}" \
               --output-dir video_assets
@@ -143,7 +150,8 @@ jobs:
               --file "dist/${OUTPUT_FILE}" \
               --title "${youtube_title}" \
               --description "$(cat "${youtube_description_file}")" \
-              --tags "${YOUTUBE_TAGS}"
+              --tags "${YOUTUBE_TAGS}" \
+              --thumbnail "dist/thumbnail.jpg"
           )
           status=$?
           set -e

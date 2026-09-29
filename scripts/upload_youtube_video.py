@@ -52,7 +52,13 @@ def get_youtube_service():
     return build("youtube", "v3", credentials=credentials, cache_discovery=False)
 
 
-def upload_video(file_path: Path, title: str, description: str, tags: list[str]) -> dict:
+def upload_video(
+    file_path: Path,
+    title: str,
+    description: str,
+    tags: list[str],
+    thumbnail_path: Path | None = None,
+) -> dict:
     youtube = get_youtube_service()
     body = {
         "snippet": {
@@ -75,6 +81,17 @@ def upload_video(file_path: Path, title: str, description: str, tags: list[str])
         status, response = request.next_chunk()
         if status:
             print(f"YouTube upload progress: {int(status.progress() * 100)}%")
+    if thumbnail_path:
+        video_id = response.get("id")
+        if not video_id:
+            raise RuntimeError("YouTube upload response did not include a video ID")
+        thumbnail_media = MediaFileUpload(
+            str(thumbnail_path), mimetype="image/jpeg", resumable=False
+        )
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=thumbnail_media,
+        ).execute()
     return response
 
 
@@ -112,14 +129,24 @@ def main() -> None:
     parser.add_argument("--title", required=True, help="YouTube video title.")
     parser.add_argument("--description", default="", help="YouTube video description.")
     parser.add_argument("--tags", default="", help="Comma-separated YouTube tags.")
+    parser.add_argument("--thumbnail", help="JPEG thumbnail to set after upload.")
     args = parser.parse_args()
 
     file_path = Path(args.file)
     if not file_path.is_file():
         raise FileNotFoundError(f"MP4 file not found: {file_path}")
+    thumbnail_path = Path(args.thumbnail) if args.thumbnail else None
+    if thumbnail_path and not thumbnail_path.is_file():
+        raise FileNotFoundError(f"Thumbnail file not found: {thumbnail_path}")
 
     try:
-        uploaded = upload_video(file_path, args.title, args.description, parse_tags(args.tags))
+        uploaded = upload_video(
+            file_path,
+            args.title,
+            args.description,
+            parse_tags(args.tags),
+            thumbnail_path,
+        )
     except HttpError as exc:
         log_http_error(exc)
         raise
@@ -134,6 +161,8 @@ def main() -> None:
     video_id = uploaded.get("id")
     print("アップロード成功")
     print(f"video ID: {video_id}")
+    if thumbnail_path:
+        print(f"サムネイル設定成功: {thumbnail_path}")
     if video_id:
         print(f"YouTube Studio URL: https://studio.youtube.com/video/{video_id}/edit")
         print(f"Video URL: https://www.youtube.com/watch?v={video_id}")
