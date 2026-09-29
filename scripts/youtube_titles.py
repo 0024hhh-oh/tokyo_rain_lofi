@@ -36,12 +36,32 @@ IGNORED_MEDIA_WORDS = {
 
 def _humanize(value: str) -> str:
     value = Path(value).stem
+
+    # Google Drive can append identifiers such as
+    # "— copy 7E32C4BB E793 46C4 9A64 485836DFE3BB".
+    # They are transport metadata, never scene metadata.
+    value = re.sub(
+        r"\s*[—–-]?\s*copy\s+(?:[0-9a-f]{4,}\s*){2,}$",
+        "",
+        value,
+        flags=re.I,
+    )
+
     value = re.sub(r"^(?:batch|video|project)[ _-]*\d+[ _-]*", "", value, flags=re.I)
     value = re.sub(r"[_-]+", " ", value)
     value = re.sub(r"\s+", " ", value).strip(" .-|—")
+
     if not value:
         return ""
+
     folded = value.casefold()
+
+    # Track-library folders such as "07_曲目_181-210" identify audio batches,
+    # not the Tokyo scene. Ignoring them prevents titles/descriptions from
+    # leaking folder ranges or Drive copy IDs.
+    if "曲目" in value and re.fullmatch(r"\d*\s*曲目\s*\d+\s+\d+", value):
+        return ""
+
     if folded in IGNORED_MEDIA_WORDS or re.fullmatch(
         r"(?:batch|video|project)?\s*\d+", folded
     ):
