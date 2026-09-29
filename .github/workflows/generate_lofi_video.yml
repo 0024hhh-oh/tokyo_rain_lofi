@@ -117,7 +117,7 @@ jobs:
             python scripts/generate_drive_thumbnails.py \
               --mode "${project_mode}" \
               --project-folder-id "${work_folder_id}" \
-              --force \
+              --local-only \
               --output-file "dist/thumbnail.jpg"
             python scripts/download_drive_video_assets.py \
               --drive-folder-id "${work_folder_id}" \
