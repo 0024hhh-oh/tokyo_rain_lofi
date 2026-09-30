@@ -57,10 +57,12 @@ const eventSpecs = [
 
 const makeEvents = (): Flicker[] => {
   const order = seededOrder(selectedLightZones.length, 137);
-  const maxCount = Math.max(1, selectedLightZones.length - 1);
   let cursor = 0;
-  return eventSpecs.map(({start, end, level, count: requestedCount}) => {
-    const count = Math.min(requestedCount, 3, maxCount);
+  return eventSpecs.map(({start, end, level}) => {
+    // Local-selection modes intentionally contain one source. In the
+    // three-layer fallback, keep the legacy schedule but stagger layers so
+    // foreground/midground/background never brighten strongly at once.
+    const count = Math.min(1, selectedLightZones.length);
     const zoneIndexes = Array.from(
       {length: Math.min(count, order.length)},
       (_, offset) => order[(cursor + offset) % order.length],
@@ -71,7 +73,8 @@ const makeEvents = (): Flicker[] => {
 };
 
 // A seeded shuffled cycle looks random but guarantees that every selected
-// source is used before the cycle repeats. Every event still lights only 1-3.
+// source is used before the cycle repeats. Each event lights exactly one
+// selected source, preserving the existing event timings and fade behavior.
 const flickerEvents = makeEvents();
 
 const getBrightness = (frame: number, fps: number, zoneIndex: number) => {

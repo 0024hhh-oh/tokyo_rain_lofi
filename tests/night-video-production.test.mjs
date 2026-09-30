@@ -8,15 +8,14 @@ const workflow = fs.readFileSync('.github/workflows/generate_lofi_video.yml', 'u
 const detector = fs.readFileSync('scripts/drive_incoming_queue.py', 'utf8');
 const lightingCi = fs.readFileSync('.github/workflows/remotion_lighting_ci.yml', 'utf8');
 
-test('production night video uses positive-only glow on eligible emitters', () => {
+test('production night video uses positive-only one-at-a-time glow on eligible emitters', () => {
   assert.match(component, /SOURCE_PLAYBACK_RATE = 0\.5/);
   assert.match(component, /selectVideoLightZones/);
   assert.match(component, /selectedLightZones\.map/);
   assert.match(component, /MAX_GLOW_OPACITY = 1/);
   assert.match(component, /const flickerEvents = makeEvents\(\)/);
   assert.equal(component.match(/\{start: [\d.]+, end:/g)?.length, 8);
-  assert.match(component, /Math\.min\(requestedCount, 3, maxCount\)/);
-  assert.match(component, /selectedLightZones\.length - 1/);
+  assert.match(component, /Math\.min\(1, selectedLightZones\.length\)/);
   assert.match(component, /guarantees that every selected/);
   assert.match(component, /zone\.color/);
   assert.match(component, /zone\.maskCells/);
