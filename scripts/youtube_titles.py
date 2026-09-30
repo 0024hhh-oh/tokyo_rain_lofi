@@ -34,18 +34,21 @@ IGNORED_MEDIA_WORDS = {
 }
 
 
+# UUIDs may use spaces, underscores, or hyphens in copied Drive filenames.
+UUID_PATTERN = r"[0-9a-f]{8}[ _-]+[0-9a-f]{4}[ _-]+[0-9a-f]{4}[ _-]+[0-9a-f]{4}[ _-]+[0-9a-f]{12}"
+COPY_ID_PATTERN = re.compile(r"(?:[—–-]\s*)?(?<![a-z0-9])copy[ _-]+" + UUID_PATTERN, re.I)
+
+
+def clean_copy_ids(value: str) -> str:
+    return COPY_ID_PATTERN.sub("", value).strip()
+
+
 def _humanize(value: str) -> str:
     value = Path(value).stem
 
-    # Google Drive can append identifiers such as
-    # "— copy 7E32C4BB E793 46C4 9A64 485836DFE3BB".
-    # They are transport metadata, never scene metadata.
-    value = re.sub(
-        r"\s*[—–-]?\s*copy\s+(?:[0-9a-f]{4,}\s*){2,}$",
-        "",
-        value,
-        flags=re.I,
-    )
+    value = clean_copy_ids(value)
+    if re.fullmatch(UUID_PATTERN, value, flags=re.I):
+        return ""
 
     value = re.sub(r"^(?:batch|video|project)[ _-]*\d+[ _-]*", "", value, flags=re.I)
     value = re.sub(r"[_-]+", " ", value)

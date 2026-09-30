@@ -85,3 +85,25 @@ def test_day_description_uses_day_language():
         "a fading memory from somewhere in Tokyo."
     ) in description
     assert len(description) <= 5000
+
+
+@pytest.mark.parametrize("separator", ["-", "_", " "])
+@pytest.mark.parametrize("mode", ["day", "night"])
+def test_copied_background_uuid_never_becomes_scene(separator, mode):
+    identifier = separator.join(["C46F9275", "4F43", "4E3C", "8A47", "B8A1C7205A16"])
+    files = [f"background_copy_{identifier}.jpeg"]
+    assert scene_label("06_曲目_151-180", files) == ""
+    assert "copy" not in generate_youtube_title(mode, "06_曲目_151-180", files)
+    assert identifier not in generate_youtube_description(mode, "06_曲目_151-180", files)
+
+
+def test_copy_uuid_suffix_preserves_real_scene():
+    assert scene_label("Batch25", ["background_Kanda — copy C46F9275-4F43-4E3C-8A47-B8A1C7205A16.jpg"]) == "Kanda"
+
+
+def test_bare_phone_image_uuid_is_not_a_scene():
+    assert scene_label("Batch25", ["C46F9275-4F43-4E3C-8A47-B8A1C7205A16.jpeg"]) == ""
+
+
+def test_real_copy_word_is_preserved():
+    assert scene_label("Copy shop in Kanda", ["background.png"]) == "Copy shop in Kanda"
