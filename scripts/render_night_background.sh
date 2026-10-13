@@ -28,12 +28,10 @@ if [[ -n "$video_source" ]]; then
   ffmpeg -y -i "$source_copy" -map 0:v:0 -an -c:v copy public/night-source.mp4
   node scripts/prepare_remotion_background.mjs "$ASSET_DIR"
 
-  animate="$(node -p "JSON.parse(require('fs').readFileSync('src/generated-light-zones.json', 'utf8')).animate")"
-  safe_zone_count="$(node -e "const x=require('./src/generated-light-zones.json'); console.log(x.zones.filter(z => z.hasLightCore && z.warmth >= 0.4 && z.y < 0.72).slice(0, 3).length)")"
-  if [[ "$animate" != "true" || "$safe_zone_count" != "3" ]]; then
-    echo "Night video lighting requires exactly three safe warm light candidates." >&2
-    exit 1
-  fi
+  # The renderer uses selectVideoLightZones to exclude unsafe emitters and
+  # reflections. Sparse scenes may have fewer than three candidates; render
+  # the available safe lights (or the video alone) instead of failing the batch.
+  echo "Night lighting: using available safe emitters; no minimum candidate count."
 
   source_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 public/night-source.mp4)"
   source_frames="$(python - "$source_duration" <<'PY_VIDEO_FRAMES'
