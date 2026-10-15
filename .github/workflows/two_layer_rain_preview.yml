@@ -1,0 +1,87 @@
+name: Two-layer rain preview
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/depth-lighting/RainLayers.tsx'
+      - 'experiments/depth-lighting/index.tsx'
+      - 'scripts/render_night_background.sh'
+      - '.github/workflows/two_layer_rain_preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-rain-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verify production fallback and type-check rain composition
+        run: |
+          node --test tests/approved-lighting-production.test.mjs
+          bash -n scripts/render_night_background.sh
+          npx tsc -p experiments/depth-lighting/tsconfig.json
+      - name: Prepare the approved street scene
+        run: |
+          mkdir -p dist/rain-preview public
+          node experiments/depth-lighting/prepare-profile.mjs experiments/depth-lighting/profiles/street-night.json test_assets/street-night.jpg public dist/rain-preview/props.json
+      - name: Render baseline and two rain frames for comparison
+        run: |
+          for frame in 0 450 899; do
+            npx remotion still experiments/depth-lighting/index.tsx DepthLightingClean "dist/rain-preview/baseline-$frame.png" --frame="$frame" --props=dist/rain-preview/props.json
+            npx remotion still experiments/depth-lighting/index.tsx DepthLightingRain "dist/rain-preview/rain-$frame.png" --frame="$frame" --props=dist/rain-preview/props.json
+          done
+      - name: Check that rain changes pixels without dimming the original
+        run: |
+          node --input-type=module <<'NODE'
+          import sharp from 'sharp';
+          for (const frame of [0, 450, 899]) {
+            const [base, rain] = await Promise.all([
+              sharp('dist/rain-preview/baseline-' + frame + '.png').removeAlpha().raw().toBuffer(),
+              sharp('dist/rain-preview/rain-' + frame + '.png').removeAlpha().raw().toBuffer(),
+            ]);
+            let changed = 0;
+            let darkened = 0;
+            for (let i = 0; i < base.length; i += 3) {
+              const diff = rain[i] + rain[i + 1] + rain[i + 2] -
+                base[i] - base[i + 1] - base[i + 2];
+              if (diff > 2) changed++;
+              if (diff < -3) darkened++;
+            }
+            console.log({frame, changed, darkened});
+            if (changed < 100 || darkened > 100) {
+              throw new Error('Rain is missing or dims the image at frame ' + frame);
+            }
+          }
+          NODE
+      - name: Render silent 30-second 1080p preview
+        run: |
+          npx remotion render experiments/depth-lighting/index.tsx DepthLightingRain dist/rain-preview/two-layer-rain-30s.mp4 --props=dist/rain-preview/props.json --codec=h264 --crf=18 --concurrency=2 --frames=0-899 --muted
+      - name: Install FFmpeg for output verification
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Verify video output
+        run: |
+          ffprobe -v error -show_entries stream=codec_type,width,height,nb_frames,r_frame_rate:format=duration -of json dist/rain-preview/two-layer-rain-30s.mp4 | node --input-type=module -e '
+          let s=""; for await (const c of process.stdin) s+=c;
+          const p=JSON.parse(s),v=p.streams.find(x=>x.codec_type==="video");
+          if(!v || v.width!==1920 || v.height!==1080 || v.nb_frames!=="900" || v.r_frame_rate!=="30/1" || p.streams.some(x=>x.codec_type==="audio") || Math.abs(Number(p.format.duration)-30)>.05) process.exit(1);
+          console.log("Verified 1920x1080, 900 frames, 30 fps, 30 seconds, no audio");
+          '
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: two-layer-rain-preview
+          path: dist/rain-preview/
+          if-no-files-found: error
+          retention-days: 7
